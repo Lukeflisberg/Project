@@ -6,6 +6,7 @@ export function UnassignedTasks() {
   const { state, dispatch } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false)
 
   const unassignedTasks = state.tasks.filter(task => task.parentId === null);
 
@@ -33,8 +34,34 @@ export function UnassignedTasks() {
     dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    // Handles the Gantt Chart's mouse event
+    // The drop zone detection is done here
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+    <div 
+      className={`unassigned-drop-zone bg-white rounded-lg shadow-lg overflow-hidden transition-all ${
+        isDragOver ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+
       {/* Header */}
       <div 
         className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
@@ -129,6 +156,15 @@ export function UnassignedTasks() {
           <p className="text-xs text-gray-600 text-center">
             Drag tasks to the Gantt chart to assign them to teams
           </p>
+        </div>
+      )}
+
+      {/* Drop Zone Indicator */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-200 bg-opacity-30 flex items-center justify-center pointer-events-none">
+          <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
+            Drop here to unassign task
+          </div>
         </div>
       )}
     </div>
