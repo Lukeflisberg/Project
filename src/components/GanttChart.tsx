@@ -8,8 +8,7 @@ export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+  const [dragPosition, setDragPosition] = useState({ x: 0, y:0 })
   const ganttRef = useRef<HTMLDivElement>(null);
   
   const timelineStart = new Date(2025, 0, 1);
@@ -53,36 +52,50 @@ export function GanttChart() {
     const task = state.tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    console.log('Starting drag for task:', task.name); // Debug log
+    // Get the task element to calcualte the intial offset
+    const taskElement = e.currentTarget as HTMLElement;
+    const taskRect = taskElement.getBoundingClientRect();
 
+    // Calculate the intial offset between mouse and task's position    
     setDraggedTask(taskId);
-    setDragStartPos({ x: e.clientX, y: e.clientY });
-    setDragOffset({ x: 0, y: 0 });
+    const offset = { x: e.clientX, y: e.clientY }
+
+    // set initial position aligned with cursor
+    setDragPosition({
+      x: 0, 
+      y: 0 
+    });
+
+    console.log("Initial:", {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      taskRect,
+      offset,
+      dragPosition
+    });
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newOffset = { // why not just clientX and clientY?
-        x: e.clientX - dragStartPos.x,
-        y: e.clientY - dragStartPos.y
+      // Calculate how far the mouse has moved from the start position
+      const newDragPosition = { 
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y
       };
-      setDragOffset(newOffset);
 
-      // Updates the drop zone ui
+      setDragPosition(newDragPosition)
+
+      // Update drop zone UI immediately
       const targetParentId = getParentFromMousePosition(e.clientY);
-
       if (targetParentId && targetParentId !== task.parentId) {
         setDropZone({ parentId: targetParentId });
-      } 
-      else {
+      } else {
         setDropZone(null);
       }
     };
 
-    const handleMouseUp = (e: MouseEvent) => { // Test
-      console.log('Ending drag'); // Debug log
-      
+    const handleMouseUp = (e: MouseEvent) => { // Test      
       const finalOffset = {
-        x: e.clientX - dragStartPos.x,
-        y: e.clientY - dragStartPos.y
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y
       };
 
       // Get the current task state (may have been updated during drag)
@@ -91,72 +104,70 @@ export function GanttChart() {
 
       let taskUpdated = false;
 
-      // Handle horizontal movement (time change)
-      console.log("Checking horizontal")
-      if (Math.abs(finalOffset.x) > 5 && ganttRef.current) {
-        const timelineContent = ganttRef.current.querySelector('.timeline-content');
-        const timelineRect = timelineContent?.getBoundingClientRect();
-        
-        if (timelineRect) {
-          const daysDelta = Math.round((finalOffset.x / timelineRect.width) * totalDays);
-          const newStartDate = addDays(task.startDate, daysDelta);
-          const duration = differenceInDays(task.endDate, task.startDate);
-          const newEndDate = addDays(newStartDate, duration);
+      // Check for movement (small threshold to avoid accidental updates)
+      const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
-          // Ensure dates are within bounds
-          if (newStartDate >= timelineStart && newEndDate <= timelineEnd) {
-            console.log('Updating task dates:', { 
-              taskName: task.name,
-              oldStart: task.startDate,
-              newStart: newStartDate,
-              oldEnd: task.endDate,
-              newEnd: newEndDate 
-            });
-            
-            // Create updated task with new dates
-            dispatch({
-              type: 'UPDATE_TASK_DATES',
-              taskId: taskId,
-              startDate: newStartDate,
-              endDate: newEndDate
-            });
-            taskUpdated = true;
+      if (moveDistance > 5) {
+        // Handle horizontal movement (time change)
+        if (Math.abs(finalOffset.x) > 5 && ganttRef.current) {
+          const timelineContent = ganttRef.current.querySelector('.timeline-content');
+          const timelineRect = timelineContent?.getBoundingClientRect();
+          
+          if (timelineRect) {
+            const daysDelta = Math.round((finalOffset.x / timelineRect.width) * totalDays);
+            const newStartDate = addDays(task.startDate, daysDelta);
+            const duration = differenceInDays(task.endDate, task.startDate);
+            const newEndDate = addDays(newStartDate, duration);
+
+            // Ensure dates are within bounds
+            if (newStartDate >= timelineStart && newEndDate <= timelineEnd) {
+              console.log('Updating task dates:', { 
+                taskName: task.name,
+                oldStart: task.startDate,
+                newStart: newStartDate,
+                oldEnd: task.endDate,
+                newEnd: newEndDate 
+              });
+              
+              // Create updated task with new dates
+              dispatch({
+                type: 'UPDATE_TASK_DATES',
+                taskId: taskId,
+                startDate: newStartDate,
+                endDate: newEndDate
+              });
+              taskUpdated = true;
+            }
           }
         }
+
+        // Handle vertical movement (parent change)
+        const newParentId = getParentFromMousePosition(e.clientY);
+
+        if (newParentId && newParentId !== task.parentId){
+
+          // Create updated task with new parent
+          dispatch({
+            type: 'UPDATE_TASK_PARENT',
+            taskId: taskId,
+            newParentId: newParentId
+          })
+          taskUpdated = true;
+        }
       }
-
-      console.log("Checking vertical")
-      console.log(`Found dropzone ${dropZone}`)
-
-      // Handle vertical movement (parent change)
-      const newParentId = getParentFromMousePosition(e.clientY);
-
-      if (newParentId && newParentId !== task.parentId){
-        console.log('Moving task to parent: ', newParentId)
-
-        // Create updated task with new parent
+      else {
+        // If we didn't drag, treat it as a click to select the task
         dispatch({
-          type: 'UPDATE_TASK_PARENT',
+          type: 'SET_SELECTED_TASK',
           taskId: taskId,
-          newParentId: newParentId,
+          toggle_parent: 'any'
         })
-        taskUpdated = true;
-      }
-    
-      // If no updates were successful, log current state for debugging
-      if (!taskUpdated) {
-        console.log('No task updates were successful. Current state:', {
-          task: currentTask,
-          availableActions: Object.keys(state),
-          finalOffset,
-          dropZone
-        });
       }
 
       // Clean up
       setDraggedTask(null);
       setDropZone(null);
-      setDragOffset({ x: 0, y: 0 });
+      setDragPosition({ x: 0, y: 0 });
 
       // Remove global event listeners
       document.removeEventListener('mousemove', handleMouseMove);
@@ -274,9 +285,17 @@ export function GanttChart() {
                   
                   // Apply drag offset if this task is being dragged
                   const dragStyle = isBeingDragged ? {
-                    transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
-                    zIndex: 1000
-                  } : {};
+                    // position: 'absolute',
+                    // left: `${dragPosition.x}px`,
+                    // top: `${dragPosition.y}px`,
+                    transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
+                    zIndex: 1000,
+                    cursor: 'grabbing',
+                    transition: 'none',
+                    pointerEvents: 'none'
+                  } : {
+                    cursor: 'grab'
+                  };
                   
                   return (
                     <div
@@ -346,7 +365,7 @@ export function GanttChart() {
                 
                 // Apply drag offset if this task is being dragged
                 const dragStyle = isBeingDragged ? {
-                  transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+                  transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
                   zIndex: 1000
                 } : {};
                 
@@ -399,7 +418,7 @@ export function GanttChart() {
       {draggedTask && (
         <div className="fixed top-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50">
           <div>Dragging: {state.tasks.find(t => t.id === draggedTask)?.name}</div>
-          <div>Offset: {dragOffset.x.toFixed(0)}, {dragOffset.y.toFixed(0)}</div>
+          <div>Position: {dragPosition.x.toFixed(0)}, {dragPosition.y.toFixed(0)}</div>
           {dropZone && <div>Drop zone: {dropZone.parentId}</div>}
         </div>
       )}
