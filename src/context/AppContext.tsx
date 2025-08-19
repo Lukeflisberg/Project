@@ -6,7 +6,7 @@ type AppAction =
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
   | { type: 'START_DRAG'; dragData: DragData }
   | { type: 'END_DRAG' }
-  | { type: 'MOVE_TASK'; taskId: string; newParentId: string | null; newIndex: number }
+  | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
   | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date };
 
 const initialState: AppState = {
@@ -111,7 +111,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'END_DRAG':
       return { ...state, dragData: null };
     
-    case 'MOVE_TASK': {
+    case 'UPDATE_TASK_PARENT': {
       const updatedTasks = state.tasks.map(task => 
         task.id === action.taskId 
           ? { ...task, parentId: action.newParentId }

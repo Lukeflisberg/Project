@@ -163,7 +163,7 @@ export function UnassignedTasks() {
       {isDragOver && (
         <div className="absolute inset-0 bg-blue-200 bg-opacity-30 flex items-center justify-center pointer-events-none">
           <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
-            Drop here to unassign task
+            Drop here to assign the task
           </div>
         </div>
       )}
