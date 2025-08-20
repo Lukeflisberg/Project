@@ -108,6 +108,23 @@ export function GanttChart() {
       const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
       if (moveDistance > 5) {
+        // Check if dropped on unassigned tasks menu
+        const unassignedMenu = document.querySelector('.unassigned-tasks-container');
+        if (unassignedMenu) {
+          const unassignedRect = unassignedMenu.getBoundingClientRect();
+          if (e.clientX >= unassignedRect.left && e.clientX <= unassignedRect.right && 
+              e.clientY >= unassignedRect.top && e.clientY <= unassignedRect.bottom) {
+            // Unassign the task
+            dispatch({
+              type: 'UPDATE_TASK_PARENT',
+              taskId: taskId,
+              newParentId: null
+            });
+            taskUpdated = true;
+          }
+        }
+
+        if (!taskUpdated) {
         // Handle horizontal movement (time change)
         if (Math.abs(finalOffset.x) > 5 && ganttRef.current) {
           const timelineContent = ganttRef.current.querySelector('.timeline-content');
@@ -153,6 +170,7 @@ export function GanttChart() {
             newParentId: newParentId
           })
           taskUpdated = true;
+        }
         }
       }
       else {

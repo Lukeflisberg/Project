@@ -130,11 +130,19 @@ export function UnassignedTasks() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+    <div className={`unassigned-tasks-container bg-white rounded-lg shadow-lg overflow-hidden transition-all ${
+      state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null
+        ? 'ring-2 ring-blue-400 bg-blue-50' 
+        : ''
+    }`}>
 
       {/* Header */}
       <div 
-        className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+        className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
+          state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null
+            ? 'bg-blue-100 hover:bg-blue-200' 
+            : 'bg-gray-50 hover:bg-gray-100'
+        }`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
@@ -143,6 +151,11 @@ export function UnassignedTasks() {
           <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">
             {unassignedTasks.length}
           </span>
+          {state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null && (
+            <span className="ml-2 text-blue-600 text-xs font-medium">
+              Drop here to unassign
+            </span>
+          )}
         </div>
         {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </div>

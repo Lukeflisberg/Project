@@ -119,7 +119,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
           ? { ...task, parentId: action.newParentId }
           : task
       );
-      return { ...state, tasks: updatedTasks };
+      return { 
+        ...state, 
+        tasks: updatedTasks,
+        // Clear selection if task was unassigned
+        selectedTaskId: action.newParentId === null ? null : state.selectedTaskId
+      };
     }
     
     case 'UPDATE_TASK_DATES': {
