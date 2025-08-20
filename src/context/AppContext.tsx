@@ -7,7 +7,8 @@ type AppAction =
   | { type: 'START_DRAG'; dragData: DragData }
   | { type: 'END_DRAG' }
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
-  | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date };
+  | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date }
+  | { type: 'SET_DRAGGING_TASK'; taskId: string | null; isDragging: boolean };
 
 const initialState: AppState = {
   tasks: [
@@ -88,8 +89,9 @@ const initialState: AppState = {
     { id: 'group3', name: 'Conservation Unit', color: '#8B5CF6' }
   ],
   selectedTaskId: null,
-  selectedParentId: null,
-  dragData: null
+  selectedParentId: 'all',
+  dragData: null,
+  draggingTaskId: null
 };
 
 const AppContext = createContext<{
@@ -127,6 +129,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
           : task
       );
       return { ...state, tasks: updatedTasks };
+    }
+
+    case 'SET_DRAGGING_TASK': {
+      return { ...state, draggingTaskId: action.isDragging ? action.taskId : null };
     }
     
     default:

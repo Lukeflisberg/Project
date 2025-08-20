@@ -180,7 +180,7 @@ export function GanttChart() {
   };
 
   return (
-    <div ref={ganttRef} className="bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
+    <div ref={ganttRef} className="gantt-chart-container bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24} />
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
@@ -218,27 +218,12 @@ export function GanttChart() {
               )}
             </div>
           ))}
-          
-          {/* Unassigned Area */}
-          <div 
-            className={`h-16 flex items-center border-b border-gray-100 px-2 bg-gray-50 transition-all ${
-              dropZone?.parentId === 'unassigned' ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500' : ''
-            }`}
-            data-parent-row="true"
-            data-parent-id="unassigned"
-          >
-            <span className="text-sm text-gray-500">Unassigned</span>
-            {dropZone?.parentId === 'unassigned' && (
-              <div className="ml-auto text-blue-600 text-xs font-medium">
-                Drop here
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Timeline Content */}
         <div className="flex-1 overflow-x-auto">
           <div className="timeline-content relative">
+            
             {/* Timeline Header */}
             <div className="h-12 border-b border-gray-200 relative">
               {Array.from({ length: Math.ceil(totalDays / 7) }, (_, weekIndex) => {
@@ -285,9 +270,6 @@ export function GanttChart() {
                   
                   // Apply drag offset if this task is being dragged
                   const dragStyle = isBeingDragged ? {
-                    // position: 'absolute',
-                    // left: `${dragPosition.x}px`,
-                    // top: `${dragPosition.y}px`,
                     transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
                     zIndex: 1000,
                     cursor: 'grabbing',
@@ -339,77 +321,6 @@ export function GanttChart() {
                 )}
               </div>
             ))}
-
-            {/* Unassigned Tasks Row */}
-            <div 
-              className={`h-16 border-b border-gray-100 relative bg-gray-50 transition-all ${
-                dropZone?.parentId === 'unassigned' ? 'bg-blue-50 border-blue-300' : ''
-              }`}
-              data-parent-row="true"
-              data-parent-id="unassigned"
-            >
-              {/* Week Grid Lines */}
-              {Array.from({ length: Math.ceil(totalDays / 7) }, (_, weekIndex) => (
-                <div 
-                  key={weekIndex}
-                  className="absolute top-0 bottom-0 border-r border-gray-50"
-                  style={{ left: `${((weekIndex + 1) * 7 / totalDays) * 100}%` }}
-                />
-              ))}
-              
-              {/* Unassigned Tasks */}
-              {getTasksByParent(null).map(task => {
-                const position = calculateTaskPosition(task);
-                const isSelected = state.selectedTaskId === task.id;
-                const isBeingDragged = draggedTask === task.id;
-                
-                // Apply drag offset if this task is being dragged
-                const dragStyle = isBeingDragged ? {
-                  transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
-                  zIndex: 1000
-                } : {};
-                
-                return (
-                  <div
-                    key={task.id}
-                    className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none ${
-                      isSelected ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
-                    } ${
-                      isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'
-                    } ${
-                      task.status === 'completed' ? 'bg-green-500 text-white' :
-                      task.status === 'in-progress' ? 'bg-blue-500 text-white' :
-                      'bg-gray-500 text-white'
-                    }`}
-                    style={{
-                      ...position,
-                      ...dragStyle
-                    }}
-                    onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!draggedTask) {
-                        dispatch({ type: 'SET_SELECTED_TASK', taskId: task.id, toggle_parent: 'any' });
-                      }
-                    }}
-                  >
-                    <div className="truncate flex items-center justify-between h-full">
-                      <span>{task.name}</span>
-                      {task.dependencies?.length > 0 && (
-                        <AlertTriangle size={10} className="ml-1" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Drop Zone Indicator for unassigned */}
-              {dropZone?.parentId === 'unassigned' && (
-                <div className="absolute inset-0 bg-blue-200 bg-opacity-30 border-2 border-dashed border-blue-400 rounded flex items-center justify-center pointer-events-none">
-                  <span className="text-blue-700 font-medium text-sm">Drop here for unassigned</span>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>

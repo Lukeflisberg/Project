@@ -30,4 +30,5 @@ export interface AppState {
   selectedTaskId: string | null;
   selectedParentId: string | null;
   dragData: DragData | null;
+  draggingTaskId: string | null;
 }

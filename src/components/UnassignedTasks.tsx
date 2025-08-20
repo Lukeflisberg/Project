@@ -6,61 +6,131 @@ export function UnassignedTasks() {
   const { state, dispatch } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false)
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0});
 
   const unassignedTasks = state.tasks.filter(task => task.parentId === null);
 
-  const handleTaskDragStart = (e: React.DragEvent, taskId: string) => {
-    setDraggedTask(taskId);
-    const task = state.tasks.find(t => t.id === taskId);
-    if (task) {
-      dispatch({ 
-        type: 'START_DRAG', 
-        dragData: { 
-          taskId, 
-          sourceParentId: null, 
-          sourceIndex: unassignedTasks.indexOf(task) 
-        }
-      });
-    }
-  };
+  const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-  const handleTaskDragEnd = () => {
-    setDraggedTask(null);
-    dispatch({ type: 'END_DRAG' });
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Create a visual clone of the task for dragging
+    const taskElement = e.currentTarget as HTMLElement;
+    const taskRect = taskElement.getBoundingClientRect();
+
+    // Calculate the intial offset between mouse and task's position
+    setDraggedTask(taskId);
+    const offset = { x: e.clientX, y: e.clientY }
+
+    // set initial position aligned with cursor
+    setDragPosition({
+      x: 0, 
+      y: 0 
+    });
+
+    // Create a drag preview
+    const dragPreview = taskElement.cloneNode(true) as HTMLElement;
+    dragPreview.style.position = 'fixed';
+    dragPreview.style.top = `${taskRect.top}px`;
+    dragPreview.style.left = `${taskRect.left}px`;
+    dragPreview.style.width = `${taskRect.width}px`;
+    dragPreview.style.zIndex = '9999';
+    dragPreview.style.cursor = 'grabbing',
+    dragPreview.style.transition = 'none',
+    dragPreview.style.pointerEvents = 'none';
+    dragPreview.style.transform = 'rotate(2deg)';
+    document.body.appendChild(dragPreview);
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate how far the mouse has moved from the start position
+      const newDragPosition = { 
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y
+      };
+
+      console.log('moving');
+
+      setDragPosition(newDragPosition)
+
+      dragPreview.style.left = `${taskRect.left + newDragPosition.x}px`;
+      dragPreview.style.top = `${taskRect.top + newDragPosition.y}px`;
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      // Undo the small rotation
+      dragPreview.style.transform = 'rotate(-2deg)';
+
+      const finalOffset = {
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y
+      };
+
+      // Clean up the drag preview
+      document.body.removeChild(dragPreview);
+
+      // Get the current task state (may have been updated during drag)
+      const currentTask = state.tasks.find(t => t.id === taskId);
+      if (!currentTask) return;
+
+      let taskUpdated = false;
+
+      // Check for movement (small threshold to avoid accidental updates)
+      const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
+
+      if (moveDistance > 5){
+        // Check if droppped on Gantt chart
+        const GanttChart = document.querySelector('.gantt-chart-container');
+        if (GanttChart) {
+          const ganttRect = GanttChart.getBoundingClientRect();
+          if (e.clientX >= ganttRect.left && e.clientX <= ganttRect.right && e.clientY >= ganttRect.top && e.clientY <= ganttRect.bottom ) {
+            // Handle time change
+
+            // Handle parent change
+            const parentRows = GanttChart.querySelectorAll('[data-parent-row]');
+      
+            for (let i = 0; i < parentRows.length; i++) {
+              const rect = parentRows[i].getBoundingClientRect();
+              if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                const parentId = parentRows[i].getAttribute('data-parent-id');
+                if (parentId) {
+                  dispatch({ 
+                    type: 'UPDATE_TASK_PARENT',
+                    taskId: taskId,
+                    newParentId: parentId
+                  });
+                  taskUpdated = true;
+
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Clean up
+      setDraggedTask(null);
+      setDragPosition({ x: 0, y: 0 });
+
+      // Remove event listeners
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    // Add global mouse event listeners
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   const handleTaskClick = (taskId: string) => {
     dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-
-    // Handles the Gantt Chart's mouse event
-    // The drop zone detection is done here
-  };
-
   return (
-    <div 
-      className={`unassigned-drop-zone bg-white rounded-lg shadow-lg overflow-hidden transition-all ${
-        isDragOver ? 'ring-2 ring-blue-400 bg-blue-50' : ''
-      }`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
 
       {/* Header */}
       <div 
@@ -102,9 +172,7 @@ export function UnassignedTasks() {
                     } ${
                       isDragging ? 'opacity-50 rotate-2 scale-105' : ''
                     }`}
-                    draggable
-                    onDragStart={(e) => handleTaskDragStart(e, task.id)}
-                    onDragEnd={handleTaskDragEnd}
+                    onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
                     onClick={() => handleTaskClick(task.id)}
                   >
                     <div className="flex items-start justify-between">
@@ -154,17 +222,8 @@ export function UnassignedTasks() {
       {isExpanded && unassignedTasks.length > 0 && (
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
           <p className="text-xs text-gray-600 text-center">
-            Drag tasks to the Gantt chart to assign them to teams
+            Click and drag tasks to the Gantt chart to assign them to teams
           </p>
-        </div>
-      )}
-
-      {/* Drop Zone Indicator */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-200 bg-opacity-30 flex items-center justify-center pointer-events-none">
-          <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
-            Drop here to assign the task
-          </div>
         </div>
       )}
     </div>
