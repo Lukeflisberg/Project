@@ -44,6 +44,9 @@ export function UnassignedTasks() {
     dragPreview.style.transform = 'rotate(2deg)';
     document.body.appendChild(dragPreview);
 
+    // Set dragging state for global drop zone detection
+    dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: taskId });
+
     const handleMouseMove = (e: MouseEvent) => {
       // Calculate how far the mouse has moved from the start position
       const newDragPosition = { 
@@ -70,6 +73,9 @@ export function UnassignedTasks() {
 
       // Clean up the drag preview
       document.body.removeChild(dragPreview);
+
+      // Clear dragging state
+      dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: null });
 
       // Get the current task state (may have been updated during drag)
       const currentTask = state.tasks.find(t => t.id === taskId);
@@ -131,16 +137,16 @@ export function UnassignedTasks() {
 
   return (
     <div className={`unassigned-tasks-container bg-white rounded-lg shadow-lg overflow-hidden transition-all ${
-      state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null
-        ? 'ring-2 ring-blue-400 bg-blue-50' 
+      draggedTask || state.draggingTaskId_gantt
+        ? 'ring-2 ring-orange-400 bg-orange-50' 
         : ''
     }`}>
 
       {/* Header */}
       <div 
         className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
-          state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null
-            ? 'bg-blue-100 hover:bg-blue-200' 
+          draggedTask || state.draggingTaskId_gantt
+            ? 'bg-orange-100 hover:bg-orange-200' 
             : 'bg-gray-50 hover:bg-gray-100'
         }`}
         onClick={() => setIsExpanded(!isExpanded)}
@@ -151,14 +157,22 @@ export function UnassignedTasks() {
           <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">
             {unassignedTasks.length}
           </span>
-          {state.draggingTaskId && state.tasks.find(t => t.id === state.draggingTaskId)?.parentId !== null && (
-            <span className="ml-2 text-blue-600 text-xs font-medium">
-              Drop here to unassign
-            </span>
-          )}
         </div>
         {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </div>
+
+      {/* Drop Zone Indicator for assigned tasks being dragged from Gantt */}
+      {state.draggingTaskId_gantt && (
+        <div className="mx-4 mb-4 p-3 border-2 border-dashed border-orange-400 bg-orange-50 rounded-lg text-center">
+          <div className="flex items-center justify-center gap-2 text-orange-700">
+            <Package size={18} />
+            <span className="font-medium text-sm">Drop here to unassign from team</span>
+          </div>
+          <div className="text-xs text-orange-600 mt-1">
+            Task will be moved to unassigned list
+          </div>
+        </div>
+      )}
 
       {/* Tasks List */}
       {isExpanded && (

@@ -1,14 +1,13 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Parent, DragData } from '../types';
+import { AppState, Task, Parent } from '../types';
 
 type AppAction =
   | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
-  | { type: 'START_DRAG'; dragData: DragData }
-  | { type: 'END_DRAG' }
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
   | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date }
-  | { type: 'SET_DRAGGING_TASK'; taskId: string | null; isDragging: boolean };
+  | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
+  | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null };
 
 const initialState: AppState = {
   tasks: [
@@ -90,8 +89,8 @@ const initialState: AppState = {
   ],
   selectedTaskId: null,
   selectedParentId: 'all',
-  dragData: null,
-  draggingTaskId: null
+  draggingTaskId_unassigned: null,
+  draggingTaskId_gantt: null
 };
 
 const AppContext = createContext<{
@@ -106,12 +105,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SET_SELECTED_PARENT':
       return { ...state, selectedParentId: action.parentId };
-    
-    case 'START_DRAG':
-      return { ...state, dragData: action.dragData };
-    
-    case 'END_DRAG':
-      return { ...state, dragData: null };
     
     case 'UPDATE_TASK_PARENT': {
       const updatedTasks = state.tasks.map(task => 
@@ -136,8 +129,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, tasks: updatedTasks };
     }
 
-    case 'SET_DRAGGING_TASK': {
-      return { ...state, draggingTaskId: action.isDragging ? action.taskId : null };
+    case 'SET_DRAGGING_UNASSIGNED_TASK': {
+      return { ...state, draggingTaskId_unassigned:  action.taskId };
+    }
+
+    case 'SET_DRAGGING_GANTT_TASK': {
+      return { ...state, draggingTaskId_gantt: action.taskId };
     }
     
     default:

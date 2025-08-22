@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Map as MapIcon, MapPin } from 'lucide-react';
@@ -15,7 +15,7 @@ L.Icon.Default.mergeOptions({
 
 function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
-    click(e) {
+    click() {
       onDeselect();
     }
   });
@@ -25,8 +25,10 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
-  const createCustomIcon = (color: string, isSelected: boolean = false) => {
+  // Custom marker with optional number (replaces the white dot)
+  const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
     const size = isSelected ? 35 : 25;
+
     const iconHtml = `
       <div style="
         background-color: ${color};
@@ -39,13 +41,11 @@ export function WorldMap() {
         align-items: center;
         justify-content: center;
         ${isSelected ? 'animation: pulse 2s infinite;' : ''}
+        color: white;
+        font-weight: bold;
+        font-size: ${isSelected ? 16 : 12}px;
       ">
-        <div style="
-          width: ${size * 0.4}px;
-          height: ${size * 0.4}px;
-          background-color: white;
-          border-radius: 50%;
-        "></div>
+        ${index !== undefined ? index : ''}
       </div>
     `;
 
@@ -59,8 +59,35 @@ export function WorldMap() {
 
   const getVisibleTasks = () => {
     if (state.selectedParentId === 'all') return state.tasks;
-     
     return state.tasks.filter(task => task.parentId === state.selectedParentId);
+  };
+
+  const getTaskConnectionLines = () => {
+    if (state.selectedParentId === 'all') return [];
+
+    const visibleTasks = getVisibleTasks();
+    const sortedTasks = [...visibleTasks].sort((a, b) =>
+      a.startDate.getTime() - b.startDate.getTime()
+    );
+
+    const lines = [];
+    for (let i = 0; i < sortedTasks.length - 1; i++) {
+      const currentTask = sortedTasks[i];
+      const nextTask = sortedTasks[i + 1];
+
+      lines.push({
+        id: `${currentTask.id}-${nextTask.id}`,
+        positions: [
+          [currentTask.location.lat, currentTask.location.lon],
+          [nextTask.location.lat, nextTask.location.lon]
+        ],
+        color: getParentColor(currentTask.parentId),
+        weight: 4,
+        opacity: 0.8
+      });
+    }
+
+    return lines;
   };
 
   const getParentColor = (parentId: string | null) => {
@@ -74,8 +101,9 @@ export function WorldMap() {
   };
 
   const handleParentToggle = (parentId: string | null) => {
-    dispatch({ 
-      type: 'SET_SELECTED_PARENT', parentId: state.selectedParentId === parentId ? 'all' : parentId 
+    dispatch({
+      type: 'SET_SELECTED_PARENT',
+      parentId: state.selectedParentId === parentId ? 'all' : parentId
     });
   };
 
@@ -90,12 +118,34 @@ export function WorldMap() {
           map.flyTo([task.location.lat, task.location.lon], 15, { duration: 1 });
         }
 
-        if (state.selectedParentId === 'any') handleParentToggle(state.selectedParentId)
+        if (state.selectedParentId === 'any') handleParentToggle(state.selectedParentId);
       }
     }, [state.selectedTaskId, state.tasks, map]);
 
     return null;
-  } 
+  }
+
+  // Custom PolyLine with cleanup
+  const PolyLine = ({ positions, color, weight, opacity }: any) => {
+    const map = useMap();
+
+    useEffect(() => {
+      if (positions.length < 2) return;
+
+      const polyline = L.polyline(positions, {
+        color,
+        weight,
+        opacity,
+        dashArray: '10, 5'
+      }).addTo(map);
+
+      return () => {
+        map.removeLayer(polyline);
+      };
+    }, [positions, color, weight, opacity, map]);
+
+    return null;
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
@@ -104,34 +154,31 @@ export function WorldMap() {
           <MapIcon className="text-blue-600" size={24} />
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
-        
+
         {/* Filter Controls */}
         <div className="flex gap-2">
-          
-          {/* All Filter Button */}
           <button
             onClick={() => handleParentToggle('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              state.selectedParentId === 'all' 
-                ? 'bg-gray-700 text-white' 
+              state.selectedParentId === 'all'
+                ? 'bg-gray-700 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
-            All 
-          
-          {/* Parent Filter Buttons */}
+            All
           </button>
           {state.parents.map(parent => (
             <button
               key={parent.id}
               onClick={() => handleParentToggle(parent.id)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                state.selectedParentId === parent.id 
-                  ? 'text-white' 
+                state.selectedParentId === parent.id
+                  ? 'text-white'
                   : 'text-gray-700 hover:opacity-80'
               }`}
-              style={{ 
-                backgroundColor: state.selectedParentId === parent.id ? parent.color : `${parent.color}20`,
+              style={{
+                backgroundColor:
+                  state.selectedParentId === parent.id ? parent.color : `${parent.color}20`,
                 borderColor: parent.color,
                 borderWidth: '1px',
                 borderStyle: 'solid'
@@ -140,13 +187,11 @@ export function WorldMap() {
               {parent.name}
             </button>
           ))}
-          
-          {/* Unassigned Filter Button */}
           <button
             onClick={() => handleParentToggle(null)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border border-gray-400 ${
-              state.selectedParentId === null 
-                ? 'bg-gray-600 text-white' 
+              state.selectedParentId === null
+                ? 'bg-gray-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -167,45 +212,99 @@ export function WorldMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapController />
-          
+
           {/* Clear selection when clicking map background */}
           <DeselectOnMapClick onDeselect={() => handleMarkerClick('')} />
 
-          {/* Managed marker visibility an clicking */}
-          {getVisibleTasks().map(task => {
-            const isSelected = state.selectedTaskId === task.id;
-            const parentColor = getParentColor(task.parentId);
-            
-            return (
-              <Marker
-                key={task.id}
-                position={[task.location.lat, task.location.lon]}
-                icon={createCustomIcon(parentColor, isSelected)}
-                eventHandlers={{
-                  click: () => handleMarkerClick(task.id)
-                }}
-              >
-                <Popup>
-                  <div className="p-2">
-                    <h3 className="font-semibold text-gray-800">{task.name}</h3>
-                    <p className="text-sm text-gray-600">
-                      Status: <span className="capitalize font-medium">{task.status}</span>
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Parent: {task.parentId ? 
-                        state.parents.find(p => p.id === task.parentId)?.name || 'Unknown' : 
-                        'Unassigned'
-                      }
-                    </p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                      <MapPin size={12} />
-                      {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
+          {/* Polylines */}
+          {getTaskConnectionLines().map(line => (
+            <PolyLine
+              key={line.id}
+              positions={line.positions}
+              color={line.color}
+              weight={line.weight}
+              opacity={line.opacity}
+            />
+          ))}
+
+          {/* Markers */}
+          {(() => {
+            // ALL view → plain markers
+            if (state.selectedParentId === 'all') {
+              return getVisibleTasks().map(task => {
+                const isSelected = state.selectedTaskId === task.id;
+                const parentColor = getParentColor(task.parentId);
+
+                return (
+                  <Marker
+                    key={task.id}
+                    position={[task.location.lat, task.location.lon]}
+                    icon={createCustomIcon(parentColor, isSelected)} // no index
+                    eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                  >
+                    <Popup>
+                      <div className="p-2">
+                        <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                        <p className="text-sm text-gray-600">
+                          Status:{' '}
+                          <span className="capitalize font-medium">{task.status}</span>
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Parent:{' '}
+                          {task.parentId
+                            ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
+                            : 'Unassigned'}
+                        </p>
+                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                          <MapPin size={12} />
+                          {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                        </div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              });
+            }
+
+            // Filtered view → chronological & numbered
+            const sortedTasks = [...getVisibleTasks()].sort(
+              (a, b) => a.startDate.getTime() - b.startDate.getTime()
             );
-          })}
+
+            return sortedTasks.map((task, index) => {
+              const isSelected = state.selectedTaskId === task.id;
+              const parentColor = getParentColor(task.parentId);
+
+              return (
+                <Marker
+                  key={task.id}
+                  position={[task.location.lat, task.location.lon]}
+                  icon={createCustomIcon(parentColor, isSelected, index + 1)} // numbered
+                  eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                >
+                  <Popup>
+                    <div className="p-2">
+                      <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                      <p className="text-sm text-gray-600">
+                        Status:{' '}
+                        <span className="capitalize font-medium">{task.status}</span>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Parent:{' '}
+                        {task.parentId
+                          ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
+                          : 'Unassigned'}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                        <MapPin size={12} />
+                        {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            });
+          })()}
         </MapContainer>
       </div>
     </div>

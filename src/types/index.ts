@@ -29,6 +29,6 @@ export interface AppState {
   parents: Parent[];
   selectedTaskId: string | null;
   selectedParentId: string | null;
-  dragData: DragData | null;
-  draggingTaskId: string | null;
+  draggingTaskId_unassigned: string | null;
+  draggingTaskId_gantt: string | null;
 }

@@ -8,6 +8,7 @@ export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
+  const [showUnassignedDropZone, setShowUnassignedDropZone] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x: 0, y:0 })
   const ganttRef = useRef<HTMLDivElement>(null);
   
@@ -66,13 +67,8 @@ export function GanttChart() {
       y: 0 
     });
 
-    console.log("Initial:", {
-      clientX: e.clientX,
-      clientY: e.clientY,
-      taskRect,
-      offset,
-      dragPosition
-    });
+    // Set dragging state for global drop zone detection
+    dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: taskId });
 
     const handleMouseMove = (e: MouseEvent) => {
       // Calculate how far the mouse has moved from the start position
@@ -87,8 +83,20 @@ export function GanttChart() {
       const targetParentId = getParentFromMousePosition(e.clientY);
       if (targetParentId && targetParentId !== task.parentId) {
         setDropZone({ parentId: targetParentId });
+        setShowUnassignedDropZone(false);
       } else {
         setDropZone(null);
+        // Check if dragging over unassigned tasks area
+        const unassignedMenu = document.querySelector('.unassigned-tasks-container');
+        if (unassignedMenu) {
+          const unassignedRect = unassignedMenu.getBoundingClientRect();
+          if (e.clientX >= unassignedRect.left && e.clientX <= unassignedRect.right && 
+              e.clientY >= unassignedRect.top && e.clientY <= unassignedRect.bottom) {
+            setShowUnassignedDropZone(true);
+          } else {
+            setShowUnassignedDropZone(false);
+          }
+        }
       }
     };
 
@@ -97,6 +105,9 @@ export function GanttChart() {
         x: e.clientX - offset.x,
         y: e.clientY - offset.y
       };
+
+      // Clear dragging state
+      dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: null });
 
       // Get the current task state (may have been updated during drag)
       const currentTask = state.tasks.find(t => t.id === taskId);
@@ -185,6 +196,7 @@ export function GanttChart() {
       // Clean up
       setDraggedTask(null);
       setDropZone(null);
+      setShowUnassignedDropZone(false);
       setDragPosition({ x: 0, y: 0 });
 
       // Remove global event listeners
@@ -198,7 +210,8 @@ export function GanttChart() {
   };
 
   return (
-    <div ref={ganttRef} className="gantt-chart-container bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
+    <>
+    <div ref={ganttRef} className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24} />
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
@@ -339,6 +352,21 @@ export function GanttChart() {
                 )}
               </div>
             ))}
+
+            {/* Drop Zone Overlay for Unassigned Tasks being dragged to Gantt */}
+            {state.draggingTaskId_unassigned && (
+              <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-green-700 mb-2">
+                    <Calendar size={24} />
+                    <span className="font-semibold text-lg">Drop here to assign to a team</span>
+                  </div>
+                  <div className="text-sm text-green-600">
+                    Drag to specific team rows to assign to that team
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -349,8 +377,10 @@ export function GanttChart() {
           <div>Dragging: {state.tasks.find(t => t.id === draggedTask)?.name}</div>
           <div>Position: {dragPosition.x.toFixed(0)}, {dragPosition.y.toFixed(0)}</div>
           {dropZone && <div>Drop zone: {dropZone.parentId}</div>}
+          {showUnassignedDropZone && <div>Unassigned drop zone active</div>}
         </div>
       )}
     </div>
+    </>
   );
 }
