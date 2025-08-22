@@ -234,6 +234,12 @@ export function GanttChart() {
               }`}
               data-parent-row="true"
               data-parent-id={parent.id}
+              onClick={() => {
+                dispatch({
+                  type: 'SET_SELECTED_PARENT',
+                  parentId: parent.id
+                });
+              }}
             >
               <div className="flex items-center gap-2">
                 <div 
