@@ -7,7 +7,9 @@ type AppAction =
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
   | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date }
   | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
-  | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null };
+  | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
+  | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
+  | { type: 'SET_TIMELINE_START'; startDate: Date };
 
 const initialState: AppState = {
   tasks: [
@@ -19,7 +21,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 0, 18),
       location: { lat: 45.5017, lon: -73.5673 },
       dependencies: [],
-      status: 'completed'
     },
     {
       id: 'task2',
@@ -29,7 +30,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 0, 22),
       location: { lat: 45.5048, lon: -73.5698 },
       dependencies: ['task1'],
-      status: 'in-progress'
     },
     {
       id: 'task3',
@@ -39,7 +39,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 0, 25),
       location: { lat: 45.4995, lon: -73.5635 },
       dependencies: [],
-      status: 'in-progress'
     },
     {
       id: 'task4',
@@ -49,7 +48,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 0, 28),
       location: { lat: 45.5025, lon: -73.5711 },
       dependencies: ['task3'],
-      status: 'pending'
     },
     {
       id: 'task5',
@@ -59,7 +57,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 0, 30),
       location: { lat: 45.4978, lon: -73.5592 },
       dependencies: [],
-      status: 'pending'
     },
     {
       id: 'task6',
@@ -69,7 +66,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 1, 5),
       location: { lat: 45.5089, lon: -73.5744 },
       dependencies: [],
-      status: 'pending'
     },
     {
       id: 'task7',
@@ -79,7 +75,6 @@ const initialState: AppState = {
       endDate: new Date(2025, 1, 10),
       location: { lat: 45.4956, lon: -73.5531 },
       dependencies: ['task6'],
-      status: 'pending'
     }
   ],
   parents: [
@@ -90,7 +85,9 @@ const initialState: AppState = {
   selectedTaskId: null,
   selectedParentId: 'all',
   draggingTaskId_unassigned: null,
-  draggingTaskId_gantt: null
+  draggingTaskId_gantt: null,
+  timeScale: 'weeks',
+  timelineStart: new Date(2025, 0, 1)
 };
 
 const AppContext = createContext<{
@@ -136,6 +133,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_DRAGGING_GANTT_TASK': {
       return { ...state, draggingTaskId_gantt: action.taskId };
     }
+
+    case 'SET_TIME_SCALE':
+      return { ...state, timeScale: action.timeScale };
+    
+    case 'SET_TIMELINE_START':
+      return { ...state, timelineStart: action.startDate };
     
     default:
       return state;

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { format, differenceInDays, addDays } from 'date-fns';
-import { Calendar, AlertTriangle } from 'lucide-react';
+import { format, differenceInDays, addDays, addWeeks, addMonths, addYears, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
+import { Calendar, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 
@@ -9,12 +9,41 @@ export function GanttChart() {
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
   const [showUnassignedDropZone, setShowUnassignedDropZone] = useState(false);
-  const [dragPosition, setDragPosition] = useState({ x: 0, y:0 })
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const ganttRef = useRef<HTMLDivElement>(null);
   
-  const timelineStart = new Date(2025, 0, 1);
-  const timelineEnd = new Date(2025, 2, 31);
-  const totalDays = differenceInDays(timelineEnd, timelineStart);
+  // Calculate timeline based on current scale and start date
+  const getTimelineEnd = () => {
+    switch (state.timeScale) {
+      case 'days':
+        return addDays(state.timelineStart, 30); // 30 days
+      case 'weeks':
+        return addWeeks(state.timelineStart, 12); // 12 weeks
+      case 'months':
+        return addMonths(state.timelineStart, 12); // 12 months
+      case 'years':
+        return addYears(state.timelineStart, 5); // 5 years
+      default:
+        return addWeeks(state.timelineStart, 12);
+    }
+  };
+
+  const timelineEnd = getTimelineEnd();
+  const totalDays = differenceInDays(timelineEnd, state.timelineStart);
+
+  // Get the appropriate time unit for display
+  const getTimeUnit = () => {
+    switch (state.timeScale) {
+      case 'days': return 1; // 1 day per unit
+      case 'weeks': return 7; // 7 days per unit
+      case 'months': return 30; // ~30 days per unit
+      case 'years': return 365; // ~365 days per unit
+      default: return 7;
+    }
+  };
+
+  const timeUnit = getTimeUnit();
+  const totalUnits = Math.ceil(totalDays / timeUnit);
   
   const getTasksByParent = (parentId: string | null) => 
     state.tasks
@@ -22,7 +51,7 @@ export function GanttChart() {
       .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
   const calculateTaskPosition = (task: Task) => {
-    const startOffset = differenceInDays(task.startDate, timelineStart);
+    const startOffset = differenceInDays(task.startDate, state.timelineStart);
     const duration = differenceInDays(task.endDate, task.startDate) + 1;
     const left = (startOffset / totalDays) * 100;
     const width = (duration / totalDays) * 100;
@@ -59,7 +88,7 @@ export function GanttChart() {
 
     // Calculate the intial offset between mouse and task's position    
     setDraggedTask(taskId);
-    const offset = { x: e.clientX, y: e.clientY }
+    const offset = { x: e.clientX, y: e.clientY };
 
     // set initial position aligned with cursor
     setDragPosition({
@@ -77,7 +106,7 @@ export function GanttChart() {
         y: e.clientY - offset.y
       };
 
-      setDragPosition(newDragPosition)
+      setDragPosition(newDragPosition);
 
       // Update drop zone UI immediately
       const targetParentId = getParentFromMousePosition(e.clientY);
@@ -148,7 +177,7 @@ export function GanttChart() {
             const newEndDate = addDays(newStartDate, duration);
 
             // Ensure dates are within bounds
-            if (newStartDate >= timelineStart && newEndDate <= timelineEnd) {
+            if (newStartDate >= state.timelineStart && newEndDate <= timelineEnd) {
               console.log('Updating task dates:', { 
                 taskName: task.name,
                 oldStart: task.startDate,
@@ -179,7 +208,7 @@ export function GanttChart() {
             type: 'UPDATE_TASK_PARENT',
             taskId: taskId,
             newParentId: newParentId
-          })
+          });
           taskUpdated = true;
         }
         }
@@ -190,7 +219,7 @@ export function GanttChart() {
           type: 'SET_SELECTED_TASK',
           taskId: taskId,
           toggle_parent: 'any'
-        })
+        });
       }
 
       // Clean up
@@ -209,17 +238,105 @@ export function GanttChart() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Navigation functions
+  const navigateTimeline = (direction: 'prev' | 'next') => {
+    let newStart: Date;
+    switch (state.timeScale) {
+      case 'days':
+        newStart = direction === 'next' 
+          ? addDays(state.timelineStart, 7) 
+          : addDays(state.timelineStart, -7);
+        break;
+      case 'weeks':
+        newStart = direction === 'next' 
+          ? addWeeks(state.timelineStart, 4) 
+          : addWeeks(state.timelineStart, -4);
+        break;
+      case 'months':
+        newStart = direction === 'next' 
+          ? addMonths(state.timelineStart, 3) 
+          : addMonths(state.timelineStart, -3);
+        break;
+      case 'years':
+        newStart = direction === 'next' 
+          ? addYears(state.timelineStart, 1) 
+          : addYears(state.timelineStart, -1);
+        break;
+      default:
+        newStart = state.timelineStart;
+    }
+    dispatch({ type: 'SET_TIMELINE_START', startDate: newStart });
+  };
+
+  // Format header labels based on time scale
+  const formatHeaderLabel = (unitIndex: number) => {
+    const date = addDays(state.timelineStart, unitIndex * timeUnit);
+    switch (state.timeScale) {
+      case 'days':
+        return format(date, 'MMM dd');
+      case 'weeks':
+        return format(date, 'MMM dd');
+      case 'months':
+        return format(date, 'MMM yyyy');
+      case 'years':
+        return format(date, 'yyyy');
+      default:
+        return format(date, 'MMM dd');
+    }
+  };
+
   return (
-    <>
     <div ref={ganttRef} className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24} />
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
-        <div className="ml-auto text-xs text-gray-500">
-          Drag tasks horizontally to adjust timing, vertically to change teams
+        
+        {/* Time Scale Controls */}
+        <div className="ml-auto flex items-center gap-4">
+          {/* Time Scale Buttons */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {(['days', 'weeks', 'months', 'years'] as const).map((scale) => (
+              <button
+                key={scale}
+                onClick={() => dispatch({ type: 'SET_TIME_SCALE', timeScale: scale })}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  state.timeScale === scale
+                    ? 'bg-white text-green-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                {scale.charAt(0).toUpperCase() + scale.slice(1)}
+              </button>
+            ))}
+          </div>
+          
+          {/* Navigation Controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigateTimeline('prev')}
+              className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm font-medium text-gray-700 min-w-[120px] text-center">
+              {format(state.timelineStart, 'MMM yyyy')} - {format(timelineEnd, 'MMM yyyy')}
+            </span>
+            <button
+              onClick={() => navigateTimeline('next')}
+              className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
+      
+      {/* Instructions */}
+      <div className="mb-4 text-xs text-gray-500 text-center">
+        Drag tasks horizontally to adjust timing, vertically to change teams
+      </div>
 
+      <>
       <div className="flex h-full">
         {/* Timeline Header */}
         <div className="w-48 flex-shrink-0">
@@ -263,18 +380,17 @@ export function GanttChart() {
             
             {/* Timeline Header */}
             <div className="h-12 border-b border-gray-200 relative">
-              {Array.from({ length: Math.ceil(totalDays / 7) }, (_, weekIndex) => {
-                const weekStart = addDays(timelineStart, weekIndex * 7);
+              {Array.from({ length: totalUnits }, (_, unitIndex) => {
                 return (
                   <div 
-                    key={weekIndex}
+                    key={unitIndex}
                     className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100"
                     style={{ 
-                      left: `${(weekIndex * 7 / totalDays) * 100}%`, 
-                      width: `${(7 / totalDays) * 100}%` 
+                      left: `${(unitIndex * timeUnit / totalDays) * 100}%`, 
+                      width: `${(timeUnit / totalDays) * 100}%` 
                     }}
                   >
-                    {format(weekStart, 'MMM dd')}
+                    {formatHeaderLabel(unitIndex)}
                   </div>
                 );
               })}
@@ -291,11 +407,11 @@ export function GanttChart() {
                 data-parent-id={parent.id}
               >
                 {/* Week Grid Lines */}
-                {Array.from({ length: Math.ceil(totalDays / 7) }, (_, weekIndex) => (
+                {Array.from({ length: totalUnits }, (_, unitIndex) => (
                   <div 
-                    key={weekIndex}
+                    key={unitIndex}
                     className="absolute top-0 bottom-0 border-r border-gray-50"
-                    style={{ left: `${((weekIndex + 1) * 7 / totalDays) * 100}%` }}
+                    style={{ left: `${((unitIndex + 1) * timeUnit / totalDays) * 100}%` }}
                   />
                 ))}
                 
@@ -319,16 +435,12 @@ export function GanttChart() {
                   return (
                     <div
                       key={task.id}
-                      className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none ${
-                        isSelected ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
-                      } ${
-                        isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'
-                      } ${
-                        task.status === 'completed' ? 'bg-green-500 text-white' :
-                        task.status === 'in-progress' ? 'bg-blue-500 text-white' :
-                        'bg-gray-500 text-white'
-                      }`}
+                      className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none 
+                        ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
+                        ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
+                        text-white`} 
                       style={{
+                        backgroundColor: parent.color,
                         ...position,
                         ...dragStyle
                       }}
@@ -386,7 +498,7 @@ export function GanttChart() {
           {showUnassignedDropZone && <div>Unassigned drop zone active</div>}
         </div>
       )}
+      </>
     </div>
-    </>
   );
 }

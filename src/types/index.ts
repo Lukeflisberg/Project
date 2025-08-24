@@ -9,7 +9,6 @@ export interface Task {
     lon: number;
   };
   dependencies: string[]; // array of task IDs that must be completed before this task
-  status: 'pending' | 'in-progress' | 'completed';
 }
 
 export interface Parent {
@@ -31,4 +30,6 @@ export interface AppState {
   selectedParentId: string | null;
   draggingTaskId_unassigned: string | null;
   draggingTaskId_gantt: string | null;
+  timeScale: 'days' | 'weeks' | 'months' | 'years';
+  timelineStart: Date;
 }
