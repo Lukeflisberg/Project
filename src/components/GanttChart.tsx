@@ -3,6 +3,7 @@ import { format, differenceInDays, addDays, addWeeks, addMonths, addYears } from
 import { Calendar, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
+import { importTasksFromFile } from '../helper/fileReader';
 
 // --- Helpers ---
 const clampDateRange = (start: Date, end: Date, min: Date, max: Date) => {

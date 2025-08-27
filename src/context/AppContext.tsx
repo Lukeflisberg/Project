@@ -10,6 +10,8 @@ type AppAction =
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
   | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
   | { type: 'SET_TIMELINE_START'; startDate: Date };
+  // Import task
+  // Export task
 
 const initialState: AppState = {
   tasks: [
