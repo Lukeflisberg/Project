@@ -9,6 +9,7 @@ export interface Task {
     lon: number;
   };
   dependencies: string[]; // array of task IDs that must be completed before this task
+  status?: 'not-started' | 'in-progress' | 'completed';
 }
 
 export interface Parent {
