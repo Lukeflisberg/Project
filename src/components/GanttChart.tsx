@@ -69,6 +69,7 @@ export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
+  const [insertionPoint, setInsertionPoint] = useState<{ parentId: string; position: 'before' | 'after'; targetTaskId: string } | null>(null);
   const [showUnassignedDropZone, setShowUnassignedDropZone] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const ganttRef = useRef<HTMLDivElement>(null);
@@ -136,6 +137,46 @@ export function GanttChart() {
     return null;
   };
 
+  const getInsertionPointFromMousePosition = (mouseX: number, mouseY: number): { parentId: string; position: 'before' | 'after'; targetTaskId: string } | null => {
+    if (!ganttRef.current) return null;
+    
+    const parentId = getParentFromMousePosition(mouseY);
+    if (!parentId) return null;
+    
+    // Get all task elements in this parent row
+    const parentRow = ganttRef.current.querySelector(`[data-parent-id="${parentId}"]`);
+    if (!parentRow) return null;
+    
+    const taskElements = parentRow.querySelectorAll('[data-task-id]');
+    const timelineContent = ganttRef.current.querySelector('.timeline-content');
+    const timelineRect = timelineContent?.getBoundingClientRect();
+    
+    if (!timelineRect) return null;
+    
+    // Convert mouse X to relative position within timeline
+    const relativeX = mouseX - timelineRect.left;
+    
+    for (let i = 0; i < taskElements.length; i++) {
+      const taskElement = taskElements[i] as HTMLElement;
+      const taskId = taskElement.getAttribute('data-task-id');
+      const taskRect = taskElement.getBoundingClientRect();
+      
+      if (!taskId || taskId === draggedTask) continue;
+      
+      const taskRelativeLeft = taskRect.left - timelineRect.left;
+      const taskRelativeRight = taskRect.right - timelineRect.left;
+      const taskCenter = (taskRelativeLeft + taskRelativeRight) / 2;
+      
+      // Check if mouse is over this task
+      if (relativeX >= taskRelativeLeft && relativeX <= taskRelativeRight) {
+        // Determine if it's closer to the left or right edge
+        const position = relativeX < taskCenter ? 'before' : 'after';
+        return { parentId, position, targetTaskId: taskId };
+      }
+    }
+    
+    return null;
+  };
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -152,6 +193,10 @@ export function GanttChart() {
     const handleMouseMove = (evt: MouseEvent) => {
       const newDragPosition = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
       setDragPosition(newDragPosition);
+
+      // Check for insertion point
+      const insertion = getInsertionPointFromMousePosition(evt.clientX, evt.clientY);
+      setInsertionPoint(insertion);
 
       const targetParentId = getParentFromMousePosition(evt.clientY);
       if (targetParentId && targetParentId !== originalTask.parentId) {
@@ -181,6 +226,66 @@ export function GanttChart() {
       const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
       if (moveDistance > 5) {
+        // Handle insertion point positioning
+        if (insertionPoint) {
+          const targetTask = state.tasks.find(t => t.id === insertionPoint.targetTaskId);
+          if (targetTask) {
+            const siblings = state.tasks.filter(t => t.parentId === insertionPoint.parentId && t.id !== taskId);
+            const targetIndex = siblings.findIndex(t => t.id === insertionPoint.targetTaskId);
+            
+            // Calculate new start date based on insertion position
+            let newStartDate: Date;
+            const dur = durationDays(currentTask);
+            
+            if (insertionPoint.position === 'before') {
+              // Place before target task
+              newStartDate = new Date(targetTask.startDate.getTime() - (dur + 1) * 24 * 60 * 60 * 1000);
+            } else {
+              // Place after target task
+              newStartDate = new Date(targetTask.endDate.getTime() + 24 * 60 * 60 * 1000);
+            }
+            
+            // Bound check
+            if (newStartDate >= state.timelineStart && addDays(newStartDate, dur) <= getTimelineEnd()) {
+              // Update parent if needed
+              if (currentTask.parentId !== insertionPoint.parentId) {
+                dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: insertionPoint.parentId });
+              }
+              
+              // Build updated siblings list including the moved task
+              const allSiblings = state.tasks
+                .filter(t => t.parentId === insertionPoint.parentId)
+                .map(t => t.id === taskId ? { ...t, parentId: insertionPoint.parentId } : t);
+              
+              // Plan the sequential layout
+              const plan = planSequentialLayout(
+                allSiblings as Task[],
+                taskId,
+                newStartDate,
+                state.timelineStart,
+                getTimelineEnd()
+              );
+              
+              // Apply the planned changes
+              for (const u of plan) {
+                const orig = state.tasks.find(t => t.id === u.id);
+                if (!orig) continue;
+                if (orig.startDate.getTime() !== u.startDate.getTime() || orig.endDate.getTime() !== u.endDate.getTime()) {
+                  dispatch({
+                    type: 'UPDATE_TASK_DATES',
+                    taskId: u.id,
+                    startDate: u.startDate,
+                    endDate: u.endDate
+                  });
+                }
+              }
+              
+              taskUpdated = true;
+            }
+          }
+        }
+        
+        if (!taskUpdated) {
         // 1) Unassign drop
         const unassignedMenu = document.querySelector('.unassigned-tasks-container');
         if (unassignedMenu) {
@@ -278,6 +383,7 @@ export function GanttChart() {
             taskUpdated = true;
           }
         }
+        }
       } else {
         // Click (no real drag)
         dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: 'any' });
@@ -286,6 +392,7 @@ export function GanttChart() {
       // Cleanup
       setDraggedTask(null);
       setDropZone(null);
+      setInsertionPoint(null);
       setShowUnassignedDropZone(false);
       setDragPosition({ x: 0, y: 0 });
 
@@ -443,20 +550,38 @@ export function GanttChart() {
                       : { cursor: 'grab' };
 
                     return (
-                      <div
-                        key={task.id}
-                        className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none 
-                          ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
-                          ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
-                          text-white`}
-                        style={{ backgroundColor: parent.color, ...position, ...dragStyle }}
-                        onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
-                      >
-                        <div className="truncate flex items-center justify-between h-full">
-                          <span>{task.name}</span>
-                          {task.dependencies?.length > 0 && <AlertTriangle size={10} className="ml-1" />}
+                      <React.Fragment key={task.id}>
+                        {/* Drop indicator - Before */}
+                        {draggedTask && draggedTask !== task.id && insertionPoint?.targetTaskId === task.id && insertionPoint?.position === 'before' && (
+                          <div
+                            className="absolute top-0 bottom-0 w-1 bg-blue-500 rounded-full shadow-lg z-50 animate-pulse"
+                            style={{ left: position.left }}
+                          />
+                        )}
+                        
+                        <div
+                          className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none 
+                            ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
+                            ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
+                            text-white`}
+                          style={{ backgroundColor: parent.color, ...position, ...dragStyle }}
+                          onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
+                          data-task-id={task.id}
+                        >
+                          <div className="truncate flex items-center justify-between h-full">
+                            <span>{task.name}</span>
+                            {task.dependencies?.length > 0 && <AlertTriangle size={10} className="ml-1" />}
+                          </div>
                         </div>
-                      </div>
+                        
+                        {/* Drop indicator - After */}
+                        {draggedTask && draggedTask !== task.id && insertionPoint?.targetTaskId === task.id && insertionPoint?.position === 'after' && (
+                          <div
+                            className="absolute top-0 bottom-0 w-1 bg-blue-500 rounded-full shadow-lg z-50 animate-pulse"
+                            style={{ left: `calc(${position.left} + ${position.width})` }}
+                          />
+                        )}
+                      </React.Fragment>
                     );
                   })}
 
@@ -493,6 +618,7 @@ export function GanttChart() {
             <div>Dragging: {state.tasks.find(t => t.id === draggedTask)?.name}</div>
             <div>Position: {dragPosition.x.toFixed(0)}, {dragPosition.y.toFixed(0)}</div>
             {dropZone && <div>Drop zone: {dropZone.parentId}</div>}
+            {insertionPoint && <div>Insert {insertionPoint.position} task: {state.tasks.find(t => t.id === insertionPoint.targetTaskId)?.name}</div>}
             {showUnassignedDropZone && <div>Unassigned drop zone active</div>}
           </div>
         )}
