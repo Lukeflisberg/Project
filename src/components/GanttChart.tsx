@@ -143,35 +143,25 @@ export function GanttChart() {
     const parentId = getParentFromMousePosition(mouseY);
     if (!parentId) return null;
     
-    // Get all task elements in this parent row
-    const parentRow = ganttRef.current.querySelector(`[data-parent-id="${parentId}"]`);
-    if (!parentRow) return null;
-    
-    const taskElements = parentRow.querySelectorAll('[data-task-id]');
+    // Check all drop indicators across all parent rows
+    const dropIndicators = ganttRef.current.querySelectorAll('[data-drop-indicator]');
     const timelineContent = ganttRef.current.querySelector('.timeline-content');
     const timelineRect = timelineContent?.getBoundingClientRect();
     
     if (!timelineRect) return null;
     
-    // Convert mouse X to relative position within timeline
-    const relativeX = mouseX - timelineRect.left;
-    
-    for (let i = 0; i < taskElements.length; i++) {
-      const taskElement = taskElements[i] as HTMLElement;
-      const taskId = taskElement.getAttribute('data-task-id');
-      const taskRect = taskElement.getBoundingClientRect();
+    for (let i = 0; i < dropIndicators.length; i++) {
+      const indicator = dropIndicators[i] as HTMLElement;
+      const taskId = indicator.getAttribute('data-target-task-id');
+      const position = indicator.getAttribute('data-position') as 'before' | 'after';
+      const indicatorParentId = indicator.getAttribute('data-parent-id');
+      const rect = indicator.getBoundingClientRect();
       
-      if (!taskId || taskId === draggedTask) continue;
+      if (!taskId || taskId === draggedTask || indicatorParentId !== parentId) continue;
       
-      const taskRelativeLeft = taskRect.left - timelineRect.left;
-      const taskRelativeRight = taskRect.right - timelineRect.left;
-      const taskCenter = (taskRelativeLeft + taskRelativeRight) / 2;
-      
-      // Check if mouse is over this task
-      if (relativeX >= taskRelativeLeft && relativeX <= taskRelativeRight) {
-        // Determine if it's closer to the left or right edge
-        const position = relativeX < taskCenter ? 'before' : 'after';
-        return { parentId, position, targetTaskId: taskId };
+      // Check if mouse is over this drop indicator
+      if (mouseX >= rect.left && mouseX <= rect.right && mouseY >= rect.top && mouseY <= rect.bottom) {
+        return { parentId: indicatorParentId, position, targetTaskId: taskId };
       }
     }
     
@@ -551,8 +541,97 @@ export function GanttChart() {
 
                     return (
                       <React.Fragment key={task.id}>
-                        {/* Drop indicator - Before */}
-                        {draggedTask && draggedTask !== task.id && insertionPoint?.targetTaskId === task.id && insertionPoint?.position === 'before' && (
+                        {/* Drop indicators - always visible when dragging */}
+                        {draggedTask && draggedTask !== task.id && (
+                          <>
+                            {/* Before indicator */}
+                            <div
+                              className={`absolute top-0 bottom-0 w-2 bg-blue-400 bg-opacity-50 hover:bg-blue-500 hover:bg-opacity-70 transition-all cursor-pointer z-40 ${
+                                insertionPoint?.targetTaskId === task.id && insertionPoint?.position === 'before' 
+                                  ? 'bg-blue-600 bg-opacity-80 animate-pulse shadow-lg' 
+                                  : ''
+                              }`}
+                              style={{ left: `calc(${position.left} - 4px)` }}
+                              data-drop-indicator="true"
+                              data-target-task-id={task.id}
+                              data-position="before"
+                              data-parent-id={parent.id}
+                            />
+                            {/* After indicator */}
+                            <div
+                              className={`absolute top-0 bottom-0 w-2 bg-blue-400 bg-opacity-50 hover:bg-blue-500 hover:bg-opacity-70 transition-all cursor-pointer z-40 ${
+                                insertionPoint?.targetTaskId === task.id && insertionPoint?.position === 'after' 
+                                  ? 'bg-blue-600 bg-opacity-80 animate-pulse shadow-lg' 
+                                  : ''
+                              }`}
+                              style={{ left: `calc(${position.left} + ${position.width})` }}
+                              data-drop-indicator="true"
+                              data-target-task-id={task.id}
+                              data-position="after"
+                              data-parent-id={parent.id}
+                            />
+                          </>
+                        )}
+                        
+                        <div
+                          className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none 
+                            ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
+                            ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
+                            text-white`}
+                          style={{ backgroundColor: parent.color, ...position, ...dragStyle }}
+                          onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
+                          data-task-id={task.id}
+                        >
+                          <div className="truncate flex items-center justify-between h-full">
+                            <span>{task.name}</span>
+                            {task.dependencies?.length > 0 && <AlertTriangle size={10} className="ml-1" />}
+                          </div>
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {/* Visual drop hint */}
+                  {dropZone?.parentId === parent.id && (
+                    <div className="absolute inset-0 bg-blue-200 bg-opacity-30 border-2 border-dashed border-blue-400 rounded flex items-center justify-center pointer-events-none">
+                      <span className="text-blue-700 font-medium text-sm">Drop here to assign</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Global drop hint when dragging from unassigned */}
+              {state.draggingTaskId_unassigned && (
+                <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 text-green-700 mb-2">
+                      <Calendar size={24} />
+                      <span className="font-semibold text-lg">Drop here to assign to a team</span>
+                    </div>
+                    <div className="text-sm text-green-600">
+                      Drag to specific team rows to assign to that team
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Debug HUD */}
+        {draggedTask && (
+          <div className="fixed top-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50">
+            <div>Dragging: {state.tasks.find(t => t.id === draggedTask)?.name}</div>
+            <div>Position: {dragPosition.x.toFixed(0)}, {dragPosition.y.toFixed(0)}</div>
+            {dropZone && <div>Drop zone: {dropZone.parentId}</div>}
+            {insertionPoint && <div>Insert {insertionPoint.position} task: {state.tasks.find(t => t.id === insertionPoint.targetTaskId)?.name}</div>}
+            {showUnassignedDropZone && <div>Unassigned drop zone active</div>}
+          </div>
+        )}
+      </>
+    </div>
+  );
+}
                           <div
                             className="absolute top-0 bottom-0 w-1 bg-blue-500 rounded-full shadow-lg z-50 animate-pulse"
                             style={{ left: position.left }}
