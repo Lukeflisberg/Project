@@ -9,9 +9,8 @@ type AppAction =
   | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
   | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
-  | { type: 'SET_TIMELINE_START'; startDate: Date };
-  // Import task
-  // Export task
+  | { type: 'SET_TIMELINE_START'; startDate: Date }
+  | { type: 'ADD_TASKS'; tasks: Task[] };
 
 const initialState: AppState = {
   tasks: [
@@ -141,6 +140,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SET_TIMELINE_START':
       return { ...state, timelineStart: action.startDate };
+
+    case 'ADD_TASKS':
+      return { ...state, tasks: [...state.tasks, ...action.tasks] };
     
     default:
       return state;

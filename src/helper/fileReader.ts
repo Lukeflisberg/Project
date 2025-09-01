@@ -1,6 +1,6 @@
 import { Task } from "../types";
 
-export async function importTasksFromFile(file: File): Promise<Task[]> {
+export async function importTasksFromFile(file: File, startingId: number): Promise<Task[]> {
     // Read the file text asynchronously
     const text = await file.text();
         
@@ -8,8 +8,8 @@ export async function importTasksFromFile(file: File): Promise<Task[]> {
     const raw = JSON.parse(text);
 
     // Convert raw data into Task[]
-    const tasks: Task[] = raw.map((t: any) => ({
-        id: String(t.id),
+    const tasks: Task[] = raw.map((t: any, index: number) => ({
+        id: String(startingId + index + 1), // Make dynamic
         name: String(t.name),
         parentId: t.parentId ?? null,
         startDate: new Date(t.startDate),

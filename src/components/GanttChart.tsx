@@ -1,21 +1,21 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { format, differenceInDays, addDays, addWeeks, addMonths, addYears } from 'date-fns';
-import { Calendar, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 import { importTasksFromFile } from '../helper/fileReader';
 
 // --- Helpers ---
-const clampDateRange = (start: Date, end: Date, min: Date, max: Date) => {
+export const clampDateRange = (start: Date, end: Date, min: Date, max: Date) => {
   const s = start < min ? min : start;
   const e = end > max ? max : end;
   return { start: s, end: e };
 };
 
-const durationDays = (t: Task) => differenceInDays(t.endDate, t.startDate); // inclusive width handled by +1 elsewhere
+export const durationDays = (t: Task) => differenceInDays(t.endDate, t.startDate); // inclusive width handled by +1 elsewhere
 
 // Returns planned (start,end) for each task so that none overlap, after a move.
-function planSequentialLayout(
+export function planSequentialLayout(
   siblings: Task[],
   movedTaskId: string,
   movedNewStart: Date,
@@ -69,8 +69,10 @@ export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
-  const [showUnassignedDropZone, setShowUnassignedDropZone] = useState(false);
+  const [, setShowUnassignedDropZone] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
+  const [snapTarget, setSnapTarget] = useState<{ parentId: string; taskId: string; side: 'left' | 'right' } | null>(null);
+  const [, setSnapLeftPct] = useState<number | null>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
 
   // Timeline end by scale
@@ -136,6 +138,60 @@ export function GanttChart() {
     return null;
   };
 
+  // Compute snap target at a point (drop-time priority)
+  const getSnapAt = (
+    clientX: number,
+    clientY: number,
+    excludeTaskId: string
+  ): { parentId: string; taskId: string; side: 'left' | 'right' } | null => {
+    const parentId = getParentFromMousePosition(clientY);
+    if (!parentId || !ganttRef.current) return null;
+
+    const timelineContent = ganttRef.current.querySelector('.timeline-content') as HTMLElement | null;
+    const rect = timelineContent?.getBoundingClientRect();
+    if (!rect) return null;
+
+    const zoneWidthPx = 16;
+    const pointerX = clientX;
+
+    const candidates = state.tasks.filter(t => t.parentId === parentId && t.id !== excludeTaskId);
+
+    for (const t of candidates) {
+      const startOffsetDays = differenceInDays(t.startDate, state.timelineStart);
+      const endOffsetDays = differenceInDays(t.endDate, state.timelineStart) + 1;
+      const leftPx = rect.left + (startOffsetDays / totalDays) * rect.width;
+      const rightPx = rect.left + (endOffsetDays / totalDays) * rect.width;
+
+      const inLeftZone = pointerX >= leftPx - zoneWidthPx / 2 && pointerX <= leftPx + zoneWidthPx / 2;
+      const inRightZone = pointerX >= rightPx - zoneWidthPx / 2 && pointerX <= rightPx + zoneWidthPx / 2;
+
+      if (inLeftZone) {
+        // capacity check (left)
+        const moving = state.tasks.find(x => x.id === excludeTaskId);
+        if (!moving) continue;
+        const requiredDays = durationDays(moving) + 1;
+        const preds = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && x.endDate < t.startDate);
+        const predecessor = preds.sort((a,b) => b.endDate.getTime() - a.endDate.getTime())[0];
+        const earliestStart = predecessor ? addDays(predecessor.endDate, 1) : state.timelineStart;
+        const desiredStart = addDays(t.startDate, -requiredDays);
+        if (desiredStart >= earliestStart) return { parentId, taskId: t.id, side: 'left' };
+      }
+      if (inRightZone) {
+        // capacity check (right)
+        const moving = state.tasks.find(x => x.id === excludeTaskId);
+        if (!moving) continue;
+        const succs = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && x.startDate > t.endDate);
+        const successor = succs.sort((a,b) => a.startDate.getTime() - b.startDate.getTime())[0];
+        const desiredStart = addDays(t.endDate, 1);
+        const desiredEnd = addDays(desiredStart, durationDays(moving));
+        const latestEnd = successor ? addDays(successor.startDate, -1) : timelineEnd;
+        if (desiredEnd <= latestEnd) return { parentId, taskId: t.id, side: 'right' };
+      }
+    }
+
+    return null;
+  };
+
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -152,6 +208,68 @@ export function GanttChart() {
     const handleMouseMove = (evt: MouseEvent) => {
       const newDragPosition = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
       setDragPosition(newDragPosition);
+
+      // Snap detection near other task edges
+      setSnapTarget(null);
+      setSnapLeftPct(null);
+      const targetParentIdForSnap = getParentFromMousePosition(evt.clientY);
+      const timelineContent = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
+      const rect = timelineContent?.getBoundingClientRect();
+      if (rect && targetParentIdForSnap) {
+        const pointerX = evt.clientX;
+        const candidates = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== (draggedTask ?? ''));
+        const zoneWidthPx = 16; // visual snap zone width
+        let match: { taskId: string; side: 'left'|'right'; pct: number } | null = null;
+
+        for (const t of candidates) {
+          const startOffsetDays = differenceInDays(t.startDate, state.timelineStart);
+          const endOffsetDays = differenceInDays(t.endDate, state.timelineStart) + 1; // next day boundary
+          const leftPx = rect.left + (startOffsetDays / totalDays) * rect.width;
+          const rightPx = rect.left + (endOffsetDays / totalDays) * rect.width;
+
+          const inLeftZone = pointerX >= leftPx - zoneWidthPx / 2 && pointerX <= leftPx + zoneWidthPx / 2;
+          const inRightZone = pointerX >= rightPx - zoneWidthPx / 2 && pointerX <= rightPx + zoneWidthPx / 2;
+
+          if (inLeftZone) {
+            match = { taskId: t.id, side: 'left', pct: (startOffsetDays / totalDays) * 100 };
+            break;
+          }
+          if (inRightZone) {
+            match = { taskId: t.id, side: 'right', pct: (endOffsetDays / totalDays) * 100 };
+            break;
+          }
+        }
+
+        if (match && draggedTask) {
+          const target = state.tasks.find(t => t.id === match.taskId);
+          const moving = state.tasks.find(t => t.id === draggedTask);
+          if (target && moving) {
+            const requiredDays = durationDays(moving) + 1; // inclusive width needed
+            if (match.side === 'left') {
+              // find predecessor
+              const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && t.endDate < target.startDate);
+              const predecessor = preds.sort((a,b) => b.endDate.getTime() - a.endDate.getTime())[0];
+              const earliestStart = predecessor ? addDays(predecessor.endDate, 1) : state.timelineStart;
+              const desiredStart = addDays(target.startDate, -requiredDays);
+              if (desiredStart >= earliestStart) {
+                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapLeftPct(match.pct);
+              }
+            } else {
+              // right side: ensure space before successor
+              const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && t.startDate > target.endDate);
+              const successor = succs.sort((a,b) => a.startDate.getTime() - b.startDate.getTime())[0];
+              const desiredStart = addDays(target.endDate, 1);
+              const desiredEnd = addDays(desiredStart, durationDays(moving));
+              const latestEnd = successor ? addDays(successor.startDate, -1) : timelineEnd;
+              if (desiredEnd <= latestEnd) {
+                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapLeftPct(match.pct);
+              }
+            }
+          }
+        }
+      }
 
       const targetParentId = getParentFromMousePosition(evt.clientY);
       if (targetParentId && targetParentId !== originalTask.parentId) {
@@ -181,19 +299,154 @@ export function GanttChart() {
       const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
       if (moveDistance > 5) {
-        // 1) Unassign drop
-        const unassignedMenu = document.querySelector('.unassigned-tasks-container');
-        if (unassignedMenu) {
-          const r = unassignedMenu.getBoundingClientRect();
-          if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
-            dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
-            taskUpdated = true;
+        // 1) Snap to neighbor edges (priority at drop)
+        const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
+        if (snapNow) {
+          const target = state.tasks.find(t => t.id === snapNow.taskId);
+          if (target) {
+            const dur = durationDays(currentTask);
+            const desiredStart = snapNow.side === 'left'
+              ? addDays(target.startDate, -(dur + 1))
+              : addDays(target.endDate, 1);
+
+            if (snapNow.parentId === currentTask.parentId) {
+              const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+              const plan = planSequentialLayout(
+                siblings,
+                currentTask.id,
+                desiredStart,
+                state.timelineStart,
+                timelineEnd
+              );
+              for (const u of plan) {
+                const orig = state.tasks.find(t => t.id === u.id);
+                if (!orig) continue;
+                if (orig.startDate.getTime() !== u.startDate.getTime() || orig.endDate.getTime() !== u.endDate.getTime()) {
+                  dispatch({
+                    type: 'UPDATE_TASK_DATES',
+                    taskId: u.id,
+                    startDate: u.startDate,
+                    endDate: u.endDate
+                  });
+                }
+              }
+              taskUpdated = true;
+            } else {
+              // Move to new parent and reflow with desiredStart
+              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: snapNow.parentId });
+              const desiredEnd = addDays(desiredStart, dur);
+              const { start: startClamped, end: endClamped } =
+                clampDateRange(desiredStart, desiredEnd, state.timelineStart, timelineEnd);
+
+              const newParentSiblings = state.tasks
+                .filter(t => t.parentId === snapNow.parentId || t.id === taskId)
+                .map(t => (t.id === taskId ? { ...t, parentId: snapNow.parentId, startDate: startClamped, endDate: endClamped } : t));
+
+              const plan = planSequentialLayout(
+                newParentSiblings as Task[],
+                taskId,
+                startClamped,
+                state.timelineStart,
+                timelineEnd
+              );
+              for (const u of plan) {
+                const orig = state.tasks.find(t => t.id === u.id);
+                if (!orig) continue;
+                if (orig.startDate.getTime() !== u.startDate.getTime() || orig.endDate.getTime() !== u.endDate.getTime()) {
+                  dispatch({
+                    type: 'UPDATE_TASK_DATES',
+                    taskId: u.id,
+                    startDate: u.startDate,
+                    endDate: u.endDate
+                  });
+                }
+              }
+              taskUpdated = true;
+            }
+          }
+        }
+
+        // 2) Unassign drop
+        if (!taskUpdated) {
+          const unassignedMenu = document.querySelector('.unassigned-tasks-container');
+          if (unassignedMenu) {
+            const r = unassignedMenu.getBoundingClientRect();
+            if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
+              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
+              taskUpdated = true;
+            }
           }
         }
 
         if (!taskUpdated) {
-          // 2) Horizontal shift (time)
-          if (Math.abs(finalOffset.x) > 5 && ganttRef.current) {
+          // 2) Snap to neighbor edges
+          if (snapTarget) {
+            const target = state.tasks.find(t => t.id === snapTarget.taskId);
+            if (target) {
+              const dur = durationDays(currentTask);
+              const desiredStart = snapTarget.side === 'left'
+                ? addDays(target.startDate, -(dur + 1))
+                : addDays(target.endDate, 1);
+
+              if (snapTarget.parentId === currentTask.parentId) {
+                const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+                const plan = planSequentialLayout(
+                  siblings,
+                  currentTask.id,
+                  desiredStart,
+                  state.timelineStart,
+                  timelineEnd
+                );
+                for (const u of plan) {
+                  const orig = state.tasks.find(t => t.id === u.id);
+                  if (!orig) continue;
+                  if (orig.startDate.getTime() !== u.startDate.getTime() || orig.endDate.getTime() !== u.endDate.getTime()) {
+                    dispatch({
+                      type: 'UPDATE_TASK_DATES',
+                      taskId: u.id,
+                      startDate: u.startDate,
+                      endDate: u.endDate
+                    });
+                  }
+                }
+                taskUpdated = true;
+              } else {
+                // Move to new parent and reflow with desiredStart
+                dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: snapTarget.parentId });
+                const desiredEnd = addDays(desiredStart, dur);
+                const { start: startClamped, end: endClamped } =
+                  clampDateRange(desiredStart, desiredEnd, state.timelineStart, timelineEnd);
+
+                const newParentSiblings = state.tasks
+                  .filter(t => t.parentId === snapTarget.parentId || t.id === taskId)
+                  .map(t => (t.id === taskId ? { ...t, parentId: snapTarget.parentId, startDate: startClamped, endDate: endClamped } : t));
+
+                const plan = planSequentialLayout(
+                  newParentSiblings as Task[],
+                  taskId,
+                  startClamped,
+                  state.timelineStart,
+                  timelineEnd
+                );
+                for (const u of plan) {
+                  const orig = state.tasks.find(t => t.id === u.id);
+                  if (!orig) continue;
+                  if (orig.startDate.getTime() !== u.startDate.getTime() || orig.endDate.getTime() !== u.endDate.getTime()) {
+                    dispatch({
+                      type: 'UPDATE_TASK_DATES',
+                      taskId: u.id,
+                      startDate: u.startDate,
+                      endDate: u.endDate
+                    });
+                  }
+                }
+                taskUpdated = true;
+              }
+            }
+          }
+
+          // 3) Horizontal shift (time)
+          if (!taskUpdated && Math.abs(finalOffset.x) > 5 && ganttRef.current) {
             const timelineContent = ganttRef.current.querySelector('.timeline-content');
             const rect = timelineContent?.getBoundingClientRect();
 
@@ -236,7 +489,7 @@ export function GanttChart() {
           }
 
           // 3) Vertical shift (parent change)
-          const newParentId = getParentFromMousePosition(evt.clientY);
+          const newParentId = !taskUpdated ? getParentFromMousePosition(evt.clientY) : null;
           if (newParentId && newParentId !== currentTask.parentId) {
             // Move to new parent first
             dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId });
@@ -288,6 +541,8 @@ export function GanttChart() {
       setDropZone(null);
       setShowUnassignedDropZone(false);
       setDragPosition({ x: 0, y: 0 });
+      setSnapTarget(null);
+      setSnapLeftPct(null);
 
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -351,6 +606,42 @@ export function GanttChart() {
             </span>
             <button onClick={() => navigateTimeline('next')} className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-800">
               <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* Import tasks */}
+          <div className="relative">
+            <input
+              id="import-file-input"
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const existingIds = state.tasks.map(t => t.id);
+                  const newTasks = await importTasksFromFile(file, existingIds.length); 
+                  // ensure date instances (in case JSON parser returns strings already handled above)
+                  const normalized = newTasks.map(t => ({
+                    ...t,
+                    startDate: new Date(t.startDate),
+                    endDate: new Date(t.endDate),
+                  }));
+                  dispatch({ type: 'ADD_TASKS', tasks: normalized });
+                } catch (_) {
+                  // silently ignore malformed files
+                } finally {
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById('import-file-input')?.click()}
+              className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700"
+            >
+              <Upload size={14} /> Import
             </button>
           </div>
         </div>
@@ -426,6 +717,52 @@ export function GanttChart() {
                     />
                   ))}
 
+                  {/* Edge guides on all tasks (wider, animated, labeled) */}
+                  {(draggedTask || state.draggingTaskId_unassigned) && getTasksByParent(parent.id).map(t => {
+                    const startPct = (differenceInDays(t.startDate, state.timelineStart) / totalDays) * 100;
+                    const endPct = ((differenceInDays(t.endDate, state.timelineStart) + 1) / totalDays) * 100;
+                    const isLeftActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
+                    const isRightActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'right');
+                    return (
+                      <div key={`${t.id}-guides`}>
+                        {/* Left guide */}
+                        <div
+                          className="absolute top-0 bottom-0 pointer-events-none"
+                          style={{ left: `${startPct}%`, marginLeft: -8, width: 16, zIndex: 20 }}
+                        >
+                          <div
+                            className={`relative h-full rounded-sm ${isLeftActive ? 'bg-emerald-500/50 animate-pulse' : 'bg-emerald-400/20'}`}
+                            style={{ boxShadow: isLeftActive ? '0 0 0 2px rgba(16,185,129,0.6)' : undefined }}
+                          >
+                            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-emerald-700/70"></div>
+                            {isLeftActive && (
+                              <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-600 text-white shadow">
+                                Before
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Right guide */}
+                        <div
+                          className="absolute top-0 bottom-0 pointer-events-none"
+                          style={{ left: `${endPct}%`, marginLeft: -8, width: 16, zIndex: 20 }}
+                        >
+                          <div
+                            className={`relative h-full rounded-sm ${isRightActive ? 'bg-emerald-500/50 animate-pulse' : 'bg-emerald-400/20'}`}
+                            style={{ boxShadow: isRightActive ? '0 0 0 2px rgba(16,185,129,0.6)' : undefined }}
+                          >
+                            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-emerald-700/70"></div>
+                            {isRightActive && (
+                              <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-600 text-white shadow">
+                                After
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {/* Tasks */}
                   {getTasksByParent(parent.id).map(task => {
                     const position = calculateTaskPosition(task);
@@ -487,16 +824,7 @@ export function GanttChart() {
           </div>
         </div>
 
-        {/* Debug HUD */}
-        {draggedTask && (
-          <div className="fixed top-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50">
-            <div>Dragging: {state.tasks.find(t => t.id === draggedTask)?.name}</div>
-            <div>Position: {dragPosition.x.toFixed(0)}, {dragPosition.y.toFixed(0)}</div>
-            {dropZone && <div>Drop zone: {dropZone.parentId}</div>}
-            {showUnassignedDropZone && <div>Unassigned drop zone active</div>}
-          </div>
-        )}
-      </>
+              </>
     </div>
   );
 }
