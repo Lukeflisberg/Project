@@ -6,7 +6,7 @@ export function UnassignedTasks() {
   const { state, dispatch } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0});
+  const [, setDragPosition] = useState({ x: 0, y: 0});
 
   const unassignedTasks = state.tasks.filter(task => task.parentId === null);
 
@@ -81,8 +81,6 @@ export function UnassignedTasks() {
       const currentTask = state.tasks.find(t => t.id === taskId);
       if (!currentTask) return;
 
-      let taskUpdated = false;
-
       // Check for movement (small threshold to avoid accidental updates)
       const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
@@ -92,7 +90,6 @@ export function UnassignedTasks() {
         if (GanttChart) {
           const ganttRect = GanttChart.getBoundingClientRect();
           if (e.clientX >= ganttRect.left && e.clientX <= ganttRect.right && e.clientY >= ganttRect.top && e.clientY <= ganttRect.bottom ) {
-            // Handle time change
 
             // Handle parent change
             const parentRows = GanttChart.querySelectorAll('[data-parent-row]');
@@ -107,7 +104,6 @@ export function UnassignedTasks() {
                     taskId: taskId,
                     newParentId: parentId
                   });
-                  taskUpdated = true;
 
                   break;
                 }

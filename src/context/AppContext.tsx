@@ -11,7 +11,9 @@ type AppAction =
   | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
   | { type: 'SET_TIMELINE_START'; startDate: Date }
   | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'IMPORT_TASKS'; tasks: Task[] };
+  | { type: 'IMPORT_TASKS'; tasks: Task[] }
+  | { type: 'ADD_PARENTS'; parents: Parent[] }
+  | { type: 'IMPORT_TASKS_WITH_CONFLICTS'; tasks: Task[]; conflictedTasks: Task[]; newParents: Parent[] };
 
 const initialState: AppState = {
   tasks: [
@@ -165,6 +167,41 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { 
         ...state, 
         tasks: [...state.tasks, ...newTasks]
+      };
+    }
+
+    case 'ADD_PARENTS':
+      return {
+        ...state,
+        parents: [...state.parents, ...action.parents]
+      };
+
+    case 'IMPORT_TASKS_WITH_CONFLICTS': {
+      // Add new parents first
+      const updatedParents = [...state.parents, ...action.newParents];
+      
+      // Add imported tasks to existing tasks, ensuring unique IDs
+      const existingIds = new Set(state.tasks.map(t => t.id));
+      const allNewTasks = [...action.tasks, ...action.conflictedTasks];
+      
+      const processedTasks = allNewTasks.map((task) => {
+        let newId = task.id;
+        let counter = 1;
+        
+        // Ensure unique ID
+        while (existingIds.has(newId)) {
+          newId = `${task.id}_${counter}`;
+          counter++;
+        }
+        
+        existingIds.add(newId);
+        return { ...task, id: newId };
+      });
+      
+      return { 
+        ...state, 
+        tasks: [...state.tasks, ...processedTasks],
+        parents: updatedParents
       };
     }
     

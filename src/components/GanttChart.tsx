@@ -3,7 +3,7 @@ import { format, differenceInDays, addDays, addWeeks, addMonths, addYears } from
 import { Calendar, AlertTriangle, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
-import { importTasksFromFile } from '../helper/fileReader';
+import { importTasksFromFile, processImportedTasks } from '../helper/fileReader';
 
 // --- Helpers ---
 export const clampDateRange = (start: Date, end: Date, min: Date, max: Date) => {
@@ -620,17 +620,36 @@ export function GanttChart() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 try {
-                  const existingIds = state.tasks.map(t => t.id);
-                  const newTasks = await importTasksFromFile(file, existingIds.length); 
-                  // ensure date instances (in case JSON parser returns strings already handled above)
-                  const normalized = newTasks.map(t => ({
-                    ...t,
-                    startDate: new Date(t.startDate),
-                    endDate: new Date(t.endDate),
-                  }));
-                  dispatch({ type: 'ADD_TASKS', tasks: normalized });
-                } catch (_) {
-                  // silently ignore malformed files
+                  const importedTasks = await importTasksFromFile(file, state.tasks.length); 
+                  
+                  // Process tasks for conflicts and missing parents
+                  const { tasksToAdd, parentsToCreate, conflictedTasks } = processImportedTasks(
+                    importedTasks,
+                    state.tasks,
+                    state.parents
+                  );
+
+                  // Import with conflict handling
+                  dispatch({
+                    type: 'IMPORT_TASKS_WITH_CONFLICTS',
+                    tasks: tasksToAdd,
+                    conflictedTasks: conflictedTasks,
+                    newParents: parentsToCreate
+                  });
+
+                  // Show user feedback about the import
+                  const totalImported = tasksToAdd.length + conflictedTasks.length;
+                  const newParentsCount = parentsToCreate.length;
+                  const conflictsCount = conflictedTasks.length;
+
+                  let message = `Successfully imported ${totalImported} tasks`;
+                  if (newParentsCount > 0) message += `, created ${newParentsCount} new team${newParentsCount > 1 ? 's' : ''}`;
+                  if (conflictsCount > 0) message += `, ${conflictsCount} task${conflictsCount > 1 ? 's' : ''} moved to unassigned due to date conflicts}`;
+
+                  alert(message);
+                } catch (error) {
+                  console.error('Import error:', error);
+                  alert('Error importing tasks. Please check the file format.');
                 } finally {
                   e.currentTarget.value = '';
                 }
@@ -718,7 +737,8 @@ export function GanttChart() {
                   ))}
 
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
-                  {(draggedTask || state.draggingTaskId_unassigned) && getTasksByParent(parent.id).map(t => {
+                  {(draggedTask) && getTasksByParent(parent.id).map(t => {
+                    if (t.id !== state.draggingTaskId_gantt) {
                     const startPct = (differenceInDays(t.startDate, state.timelineStart) / totalDays) * 100;
                     const endPct = ((differenceInDays(t.endDate, state.timelineStart) + 1) / totalDays) * 100;
                     const isLeftActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
@@ -760,7 +780,7 @@ export function GanttChart() {
                           </div>
                         </div>
                       </div>
-                    );
+                    )};
                   })}
 
                   {/* Tasks */}

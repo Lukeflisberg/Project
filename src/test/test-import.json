@@ -1,0 +1,62 @@
+[
+  {
+    "name": "New Site Survey",
+    "parentId": "group1",
+    "startDate": "2025-01-16T00:00:00.000Z",
+    "endDate": "2025-01-20T00:00:00.000Z",
+    "location": {
+      "lat": 45.5100,
+      "lon": -73.5800
+    },
+    "dependencies": [],
+    "status": "not-started"
+  },
+  {
+    "name": "Advanced Equipment Setup",
+    "parentId": "newteam",
+    "startDate": "2025-02-01T00:00:00.000Z",
+    "endDate": "2025-02-05T00:00:00.000Z",
+    "location": {
+      "lat": 45.4950,
+      "lon": -73.5600
+    },
+    "dependencies": [],
+    "status": "not-started"
+  },
+  {
+    "name": "Overlapping Task",
+    "parentId": "group2",
+    "startDate": "2025-01-18T00:00:00.000Z",
+    "endDate": "2025-01-24T00:00:00.000Z",
+    "location": {
+      "lat": 45.5050,
+      "lon": -73.5750
+    },
+    "dependencies": [],
+    "status": "in-progress"
+  },
+  {
+    "name": "Another New Team Task",
+    "parentId": "newteam",
+    "startDate": "2025-02-10T00:00:00.000Z",
+    "endDate": "2025-02-15T00:00:00.000Z",
+    "location": {
+      "lat": 45.4980,
+      "lon": -73.5650
+    },
+    "dependencies": ["import2"],
+    "status": "not-started"
+  },
+  {
+    "name": "Unassigned Import Task",
+    "parentId": null,
+    "startDate": "2025-03-01T00:00:00.000Z",
+    "endDate": "2025-03-05T00:00:00.000Z",
+    "location": {
+      "lat": 45.5120,
+      "lon": -73.5820
+    },
+    "dependencies": [],
+    "status": "not-started"
+  }
+]

@@ -4,19 +4,48 @@ import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { Trees, MapIcon, Calendar, Package, CpuIcon, Upload } from 'lucide-react'; // Icons
-import { importTasksFromFile } from './helper/fileReader';
+import { importTasksFromFile, processImportedTasks } from './helper/fileReader';
 import { useApp } from './context/AppContext';
 
 function AppContent() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
 
   const handleImportTasks = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const importedTasks = await importTasksFromFile(file);
-      dispatch({ type: 'IMPORT_TASKS', tasks: importedTasks });
+      const importedTasks = await importTasksFromFile(file, state.tasks.length);
+      
+      // Process tasks for conflicts and missing parents
+      const { tasksToAdd, parentsToCreate, conflictedTasks } = processImportedTasks(
+        importedTasks,
+        state.tasks,
+        state.parents
+      );
+
+      // Import with conflict handling
+      dispatch({ 
+        type: 'IMPORT_TASKS_WITH_CONFLICTS', 
+        tasks: tasksToAdd,
+        conflictedTasks,
+        newParents: parentsToCreate
+      });
+
+      // Show user feedback about the import
+      const totalImported = tasksToAdd.length + conflictedTasks.length;
+      const newParentsCount = parentsToCreate.length;
+      const conflictsCount = conflictedTasks.length;
+
+      let message = `Successfully imported ${totalImported} tasks`;
+      if (newParentsCount > 0) {
+        message += `, created ${newParentsCount} new team${newParentsCount > 1 ? 's' : ''}`;
+      }
+      if (conflictsCount > 0) {
+        message += `, ${conflictsCount} task${conflictsCount > 1 ? 's' : ''} moved to unassigned due to date conflicts`;
+      }
+      
+      alert(message);
       
       // Reset the input so the same file can be selected again
       event.target.value = '';
@@ -39,24 +68,6 @@ function AppContent() {
               <h1 className="text-2xl font-bold text-gray-800">Forest Stuff</h1>
               <p className="text-gray-600 text-sm">Description & Stuff</p>
             </div>
-          </div>
-
-          {/* Import Button */}
-          <div className="flex items-center gap-2">
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleImportTasks}
-              className="hidden"
-              id="import-tasks"
-            />
-            <label
-              htmlFor="import-tasks"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer transition-colors"
-            >
-              <Upload size={16} />
-              Import Tasks
-            </label>
           </div>
         </div>
         
