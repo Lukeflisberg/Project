@@ -10,7 +10,8 @@ type AppAction =
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
   | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
   | { type: 'SET_TIMELINE_START'; startDate: Date }
-  | { type: 'ADD_TASKS'; tasks: Task[] };
+  | { type: 'ADD_TASKS'; tasks: Task[] }
+  | { type: 'IMPORT_TASKS'; tasks: Task[] };
 
 const initialState: AppState = {
   tasks: [
@@ -143,6 +144,29 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'ADD_TASKS':
       return { ...state, tasks: [...state.tasks, ...action.tasks] };
+    
+    case 'IMPORT_TASKS': {
+      // Add imported tasks to existing tasks, ensuring unique IDs
+      const existingIds = new Set(state.tasks.map(t => t.id));
+      const newTasks = action.tasks.map((task, index) => {
+        let newId = task.id;
+        let counter = 1;
+        
+        // Ensure unique ID
+        while (existingIds.has(newId)) {
+          newId = `${task.id}_${counter}`;
+          counter++;
+        }
+        
+        existingIds.add(newId);
+        return { ...task, id: newId };
+      });
+      
+      return { 
+        ...state, 
+        tasks: [...state.tasks, ...newTasks]
+      };
+    }
     
     default:
       return state;

@@ -18,6 +18,8 @@ export async function importTasksFromFile(file: File, startingId: number): Promi
         lat: Number(t.location.lat),
         lon: Number(t.location.lon),
         },
+        dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
+        status: t.status || 'not-started'
     }));
 
     return tasks;
