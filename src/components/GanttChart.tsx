@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { Calendar, AlertTriangle, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
@@ -8,7 +9,17 @@ import { importTasksFromFile, processImportedTasks } from '../helper/fileReader'
 const DEFAULT_PERIODS = ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'];
 const DEFAULT_PERIOD_LEN = 40; // hours
 
-const endHour = (t: Task) => t.startHour + t.durationHours; // exclusive
+const effectiveDuration = (t: Task, parentId?: string | null) => {
+  const pid = parentId !== undefined ? parentId : t.parentId;
+  const ov = pid ? t.specialTeams?.[pid] : undefined;
+  return typeof ov === 'number' ? Math.max(1, ov) : Math.max(1, t.durationHours);
+};
+const isDisallowed = (t: Task, parentId?: string | null) => {
+  const pid = parentId !== undefined ? parentId : t.parentId;
+  const ov = pid ? t.specialTeams?.[pid] : undefined;
+  return ov === 'x';
+};
+const endHour = (t: Task) => t.startHour + effectiveDuration(t); // exclusive
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 // Setup helpers
@@ -33,12 +44,12 @@ function planSequentialLayoutHours(
   // Apply moved task's new start locally first (no snapping)
   const moved = local.find(t => t.id === movedTaskId);
   if (!moved) return [];
-  const movedDur = Math.max(1, moved.durationHours);
+  const movedDur = effectiveDuration(moved, moved.parentId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
-  // Sort by start hour, but prioritize moved task if equal
+  // Sort by occupied start (includes setup), prioritize moved task if equal
   local.sort((a, b) => {
-    const diff = a.startHour - b.startHour;
+    const diff = occStart(a) - occStart(b);
     if (diff !== 0) return diff;
     if (a.id === movedTaskId) return -1;
     if (b.id === movedTaskId) return 1;
@@ -50,14 +61,14 @@ function planSequentialLayoutHours(
   let nextAvailableStart = 0; // track next occupied end in hours
 
   for (const t of local) {
-    const dur = Math.max(1, t.durationHours);
+    const dur = effectiveDuration(t, t.parentId);
     // Ensure occupied start >= nextAvailableStart
     const desired = Math.max(t.startHour, nextAvailableStart + setupOf(t));
     const start = clamp(desired, 0, Math.max(0, maxHour - dur));
     const end = start + dur;
 
     // Record planned hours
-    updates.push({ id: t.id, startHour: start, durationHours: dur });
+    updates.push({ id: t.id, startHour: start, durationHours: t.durationHours });
     nextAvailableStart = end;
   }
 
@@ -70,18 +81,29 @@ export function GanttChart() {
   const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [snapTarget, setSnapTarget] = useState<{ parentId: string; taskId: string; side: 'left' | 'right' } | null>(null);
-  const [snapLeftPct, setSnapLeftPct] = useState<number | null>(null);
+  const [, setSnapLeftPct] = useState<number | null>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
 
   const periods = state.periods?.length ? state.periods : DEFAULT_PERIODS;
   const periodLen = state.periodLengthHours || DEFAULT_PERIOD_LEN;
-  const totalHours = Math.max(1, periods.length * periodLen);
+  const defaultLen = periodLen;
+  const periodLengthTable = (state as any).period_length as Array<{ period: string; length_hrs: number }> | undefined;
+  const periodLengths = Array.isArray(periodLengthTable) && periodLengthTable.length
+    ? periods.map((name) => {
+        const entry = periodLengthTable.find((e) => e && e.period === name);
+        const num = Number(entry?.length_hrs);
+        return Number.isFinite(num) && num > 0 ? num : defaultLen;
+      })
+    : periods.map(() => defaultLen);
+  let __acc = 0;
+  const periodOffsets: number[] = periodLengths.map((len) => { const off = __acc; __acc += len; return off; });
+  const totalHours = Math.max(1, periodLengths.reduce((a, b) => a + b, 0));
 
   const getTasksByParent = (parentId: string | null) => {
     return state.tasks
       .filter(task => task.parentId === parentId)
       .sort((a, b) => {
-        const diff = a.startHour - b.startHour;
+        const diff = occStart(a) - occStart(b);
         if (diff !== 0) return diff;
 
         // If they start equal, prioritize the currently dragged task
@@ -94,7 +116,7 @@ export function GanttChart() {
 
   const calculateTaskPosition = (task: Task) => {
     const left = (Math.max(0, occStart(task)) / totalHours) * 100;
-    const width = ((setupOf(task) + task.durationHours) / totalHours) * 100;
+    const width = ((setupOf(task) + effectiveDuration(task)) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
   };
 
@@ -145,7 +167,7 @@ export function GanttChart() {
         const preds = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occEnd(x) <= occStart(t));
         const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
         const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
-        const desiredStart = occStart(t) - moving.durationHours;
+        const desiredStart = occStart(t) - effectiveDuration(moving, parentId);
         if ((desiredStart - setupOf(moving)) >= earliestOccStart) return { parentId, taskId: t.id, side: 'left' };
       }
       if (inRightZone) {
@@ -155,7 +177,7 @@ export function GanttChart() {
         const succs = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
         const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
         const desiredStart = occEnd(t) + setupOf(moving);
-        const desiredEnd = desiredStart + moving.durationHours;
+        const desiredEnd = desiredStart + effectiveDuration(moving, parentId);
         const latestOccEnd = successor ? occStart(successor) : totalHours;
         if (desiredEnd <= latestOccEnd) return { parentId, taskId: t.id, side: 'right' };
       }
@@ -217,26 +239,26 @@ export function GanttChart() {
           const moving = state.tasks.find(t => t.id === draggedTask);
           if (target && moving) {
             if (match.side === 'left') {
-              // find predecessor (occupied)
-              const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
-              const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
-              const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
-              const desiredStart = occStart(target) - moving.durationHours;
-              if ((desiredStart - setupOf(moving)) >= earliestOccStart) {
-                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
-                setSnapLeftPct(match.pct);
-              }
+            // find predecessor (occupied)
+            const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
+            const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
+            const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
+            const desiredStart = occStart(target) - effectiveDuration(moving, targetParentIdForSnap);
+            if ((desiredStart - setupOf(moving)) >= earliestOccStart) {
+            setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+            setSnapLeftPct(match.pct);
+            }
             } else {
-              // right side: ensure space before successor (occupied)
-              const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
-              const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
-              const desiredStart = occEnd(target) + setupOf(moving);
-              const desiredEnd = desiredStart + moving.durationHours;
-              const latestOccEnd = successor ? occStart(successor) : totalHours;
-              if (desiredEnd <= latestOccEnd) {
-                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
-                setSnapLeftPct(match.pct);
-              }
+            // right side: ensure space before successor (occupied)
+            const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
+            const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
+            const desiredStart = occEnd(target) + setupOf(moving);
+            const desiredEnd = desiredStart + effectiveDuration(moving, targetParentIdForSnap);
+            const latestOccEnd = successor ? occStart(successor) : totalHours;
+            if (desiredEnd <= latestOccEnd) {
+            setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+            setSnapLeftPct(match.pct);
+            }
             }
           }
         }
@@ -268,7 +290,7 @@ export function GanttChart() {
           const target = state.tasks.find(t => t.id === snapNow.taskId);
           if (target) {
             const desiredStart = snapNow.side === 'left'
-              ? occStart(target) - currentTask.durationHours
+              ? occStart(target) - effectiveDuration(currentTask, snapNow.parentId)
               : occEnd(target) + (currentTask.setup ?? 0);
 
             if (snapNow.parentId === currentTask.parentId) {
@@ -343,7 +365,7 @@ export function GanttChart() {
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
             if (target) {
               const desiredStart = snapTarget.side === 'left'
-                ? occStart(target) - currentTask.durationHours
+                ? occStart(target) - effectiveDuration(currentTask, snapTarget.parentId)
                 : occEnd(target) + (currentTask.setup ?? 0);
 
               if (snapTarget.parentId === currentTask.parentId) {
@@ -400,28 +422,58 @@ export function GanttChart() {
             }
           }
 
-          // 3) Horizontal shift (time)
-          if (!taskUpdated && Math.abs(finalOffset.x) > 5 && ganttRef.current) {
-            const timelineContent = ganttRef.current.querySelector('.timeline-content');
+          // 3) Combined horizontal/vertical shift
+          if (!taskUpdated) {
+            const timelineContent = ganttRef.current?.querySelector('.timeline-content');
             const rect = timelineContent?.getBoundingClientRect();
+            const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
+            const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
+            const proposedStart = currentTask.startHour + (hoursDelta || 0);
 
-            if (rect) {
-              const hoursDelta = (finalOffset.x / rect.width) * totalHours;
-              const newStartHour = currentTask.startHour + hoursDelta;
+            const targetParentId = getParentFromMousePosition(evt.clientY);
+            const isParentChange = !!targetParentId && targetParentId !== currentTask.parentId;
 
-              // Build local siblings snapshot including this task
-              const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+            if (isParentChange && targetParentId) {
+              // Move to new parent and reflow at proposedStart
+              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
 
-              // Plan the full, non-overlapping layout locally first
+              const newParentSiblings = state.tasks
+                .filter(t => t.parentId === targetParentId || t.id === taskId)
+                .map(t => (t.id === taskId ? { ...t, parentId: targetParentId } : t));
+
               const plan = planSequentialLayoutHours(
-                siblings,
-                currentTask.id,
-                newStartHour,
+                newParentSiblings as Task[],
+                taskId,
+                proposedStart,
                 periodLen,
                 totalHours
               );
 
-              // Dispatch only real changes
+              for (const u of plan) {
+                const orig = state.tasks.find(t => t.id === u.id);
+                if (!orig) continue;
+                if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                  dispatch({
+                    type: 'UPDATE_TASK_HOURS',
+                    taskId: u.id,
+                    startHour: u.startHour,
+                    durationHours: u.durationHours
+                  });
+                }
+              }
+              taskUpdated = true;
+            } else if (hasHoriz && ganttRef.current) {
+              // Horizontal only in same parent
+              const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+
+              const plan = planSequentialLayoutHours(
+                siblings,
+                currentTask.id,
+                proposedStart,
+                periodLen,
+                totalHours
+              );
+
               for (const u of plan) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
@@ -436,43 +488,6 @@ export function GanttChart() {
               }
               taskUpdated = true;
             }
-          }
-
-          // 3) Vertical shift (parent change)
-          const newParentId = !taskUpdated ? getParentFromMousePosition(evt.clientY) : null;
-          if (newParentId && newParentId !== currentTask.parentId) {
-            // Move to new parent first
-            dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId });
-
-            // Reflow within the new parent immediately using local plan
-            const keptStart = currentTask.startHour;
-
-            const newParentSiblings = state.tasks
-              .filter(t => t.parentId === newParentId || t.id === taskId)
-              .map(t => (t.id === taskId ? { ...t, parentId: newParentId } : t));
-
-            const plan = planSequentialLayoutHours(
-              newParentSiblings as Task[],
-              taskId,
-              keptStart,
-              periodLen,
-              totalHours
-            );
-
-            for (const u of plan) {
-              const orig = state.tasks.find(t => t.id === u.id);
-              if (!orig) continue;
-              if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                dispatch({
-                  type: 'UPDATE_TASK_HOURS',
-                  taskId: u.id,
-                  startHour: u.startHour,
-                  durationHours: u.durationHours
-                });
-              }
-            }
-
-            taskUpdated = true;
           }
         }
       } else {
@@ -597,8 +612,8 @@ export function GanttChart() {
                     key={p}
                     className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100"
                     style={{
-                      left: `${((idx * periodLen) / totalHours) * 100}%`,
-                      width: `${(periodLen / totalHours) * 100}%`
+                      left: `${(periodOffsets[idx] / totalHours) * 100}%`,
+                      width: `${(periodLengths[idx] / totalHours) * 100}%`
                     }}
                   >
                     {p}
@@ -621,15 +636,15 @@ export function GanttChart() {
                     <div
                       key={`${parent.id}-${p}`}
                       className="absolute top-0 bottom-0 border-r border-gray-50"
-                      style={{ left: `${(((idx + 1) * periodLen) / totalHours) * 100}%` }}
+                      style={{ left: `${(((periodOffsets[idx] + periodLengths[idx]) / totalHours) * 100)}%` }}
                     />
                   ))}
 
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
                   {(draggedTask) && getTasksByParent(parent.id).map(t => {
                     if (t.id !== state.draggingTaskId_gantt) {
-                      const startPct = (t.startHour / totalHours) * 100;
-                      const endPct = (endHour(t) / totalHours) * 100;
+                      const startPct = (occStart(t) / totalHours) * 100;
+                      const endPct = (occEnd(t) / totalHours) * 100;
                       const isLeftActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
                       const isRightActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'right');
                       return (
@@ -688,6 +703,9 @@ export function GanttChart() {
                         }
                       : { cursor: 'grab' };
 
+                    const effDur = effectiveDuration(task);
+                    const disallowed = isDisallowed(task);
+
                     return (
                       <div
                         key={task.id}
@@ -695,41 +713,52 @@ export function GanttChart() {
                           ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                           ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                           text-white`}
-                        style={{ backgroundColor: parent.color, ...position, ...dragStyle, overflow: 'hidden' }}
+                        style={{ backgroundColor: parent.color, ...position, ...dragStyle, overflow: 'hidden' } as CSSProperties }
                         onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
                       >
                         {(task.setup ?? 0) > 0 && (
                           <div
-                            className="absolute inset-y-0 left-0"
+                            className="absolute inset-y-0 left-0 pointer-events-none flex items-center justify-center"
                             title={`Setup: ${task.setup}h`}
                             style={{
-                              width: `${(((task.setup ?? 0) / ((task.setup ?? 0) + task.durationHours)) * 100)}%`,
+                              width: `${(((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`,
                               backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.35) 75%)',
                               backgroundSize: '8px 8px',
                               backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
                               borderRight: '1px dashed rgba(255,255,255,0.8)'
                             }}
-                          />
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-white/90 select-none">setup</span>
+                          </div>
                         )}
                         <div
-                          className="flex items-center justify-between h-full relative"
+                          className="flex items-center justify-center h-full relative"
                           style={{
-                            marginLeft: `${(((task.setup ?? 0) / ((task.setup ?? 0) + task.durationHours)) * 100)}%`,
-                            width: `${100 - (((task.setup ?? 0) / ((task.setup ?? 0) + task.durationHours)) * 100)}%`
+                            marginLeft: `${(((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`,
+                            width: `${100 - (((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`
                           }}
                         >
-                          <span className="truncate">{task.name}</span>
+                          <span className="truncate w-full text-center">{task.name}</span>
                         </div>
+                        {disallowed && (
+                          <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center pointer-events-none">
+                            <span className="text-white font-semibold text-xs drop-shadow">Not allowed</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
 
                   {/* Visual drop hint */}
-                  {dropZone?.parentId === parent.id && (
-                    <div className="absolute inset-0 bg-blue-200 bg-opacity-30 border-2 border-dashed border-blue-400 rounded flex items-center justify-center pointer-events-none">
-                      <span className="text-blue-700 font-medium text-sm">Drop here to assign</span>
-                    </div>
-                  )}
+                  {dropZone?.parentId === parent.id && (() => {
+                    const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
+                    const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
+                    return (
+                      <div className={`absolute inset-0 ${dis ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
+                        <span className={`${dis ? 'text-red-700' : 'text-blue-700'} font-medium text-sm`}>{dis ? 'Not allowed in this team' : 'Drop here to assign'}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
 

@@ -183,7 +183,6 @@ export function UnassignedTasks() {
               {unassignedTasks.map(task => {
                 const isSelected = state.selectedTaskId === task.id;
                 const isDragging = draggedTask === task.id;
-                const hasDependencies = task.dependencies.length > 0;
                 
                 return (
                   <div
@@ -216,12 +215,6 @@ export function UnassignedTasks() {
                             {task.location.lat.toFixed(2)}, {task.location.lon.toFixed(2)}
                           </div>
                         </div>
-                        {hasDependencies && (
-                          <div className="mt-2 flex items-center gap-1 text-xs text-orange-600">
-                            <AlertCircle size={12} />
-                            <span>{task.dependencies.length} dependencies</span>
-                          </div>
-                        )}
                       </div>
                       <div className="flex-shrink-0 text-gray-400">
                         <div className="w-6 h-6 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">

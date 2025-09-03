@@ -10,6 +10,7 @@ type AppAction =
   | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
   | { type: 'SET_PERIOD_CONFIG'; periods: string[]; periodLengthHours: number }
+  | { type: 'SET_PERIOD_LENGTHS'; period_length: Array<{ period: string; length_hrs: number }>}
   | { type: 'ADD_TASKS'; tasks: Task[] }
   | { type: 'IMPORT_TASKS'; tasks: Task[] }
   | { type: 'ADD_PARENTS'; parents: Parent[] }
@@ -19,6 +20,7 @@ const defaultPeriods = [
   'P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'
 ];
 const defaultPeriodLen = 40; 
+const defaultPeriodLengthTable = defaultPeriods.map(p => ({ period: p, length_hrs: defaultPeriodLen }));
 
 const initialState: AppState = {
   tasks: [
@@ -30,17 +32,17 @@ const initialState: AppState = {
       durationHours: 40,
       setup: 20,
       location: { lat: 45.5017, lon: -73.5673 },
+      specialTeams: {'R03': 10, 'R02': 'x'},
       dependencies: [],
     },
     {
       id: 'T02',
       name: 'T02',
       parentId: 'R01',
-      startHour: 80,
+      startHour: 160,
       durationHours: 40,
       setup: 40,
       location: { lat: 45.5048, lon: -73.5698 },
-      dependencies: [],
     },
     {
       id: 'T03',
@@ -50,7 +52,6 @@ const initialState: AppState = {
       durationHours: 120,
       setup: 20,
       location: { lat: 45.4995, lon: -73.5635 },
-      dependencies: [],
     },
     {
       id: 'T04',
@@ -58,8 +59,8 @@ const initialState: AppState = {
       parentId: 'R02',
       startHour: 200,
       durationHours: 40,
+      setup: 0,
       location: { lat: 45.5025, lon: -73.5711 },
-      dependencies: [],
     },
     {
       id: 'T05',
@@ -67,8 +68,8 @@ const initialState: AppState = {
       parentId: 'R03',
       startHour: 80,
       durationHours: 120,
+      setup: 0,
       location: { lat: 45.4978, lon: -73.5592 },
-      dependencies: [],
     },
     {
       id: 'T06',
@@ -76,8 +77,8 @@ const initialState: AppState = {
       parentId: null,
       startHour: 240,
       durationHours: 40,
+      setup: 0,
       location: { lat: 45.5089, lon: -73.5744 },
-      dependencies: [],
     },
     {
       id: 'T07',
@@ -85,8 +86,8 @@ const initialState: AppState = {
       parentId: null,
       startHour: 280,
       durationHours: 40,
+      setup: 0,
       location: { lat: 45.4956, lon: -73.5531 },
-      dependencies: [],
     }
   ],
   parents: [
@@ -100,6 +101,7 @@ const initialState: AppState = {
   draggingTaskId_gantt: null,
   periods: defaultPeriods,
   periodLengthHours: defaultPeriodLen,
+  period_lengths: defaultPeriodLengthTable,
 };
 
 const AppContext = createContext<{
@@ -147,6 +149,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_PERIOD_CONFIG': {
       return { ...state, periods: action.periods, periodLengthHours: action.periodLengthHours };
+    }
+
+    case 'SET_PERIOD_LENGTHS': {
+      return { ...state, period_lengths: action.period_length };
     }
 
     case 'ADD_TASKS':
