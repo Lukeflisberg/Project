@@ -1,62 +1,51 @@
-[
-  {
-    "name": "New Site Survey",
-    "parentId": "group1",
-    "startDate": "2025-01-16T00:00:00.000Z",
-    "endDate": "2025-01-20T00:00:00.000Z",
-    "location": {
-      "lat": 45.5100,
-      "lon": -73.5800
+{
+  "periods": ["P1","P2","P3","P4","P5","P6","P7","P8","P9","P10","P11","P12","P13"],
+  "period_length_hours": 40,
+  "tasks": [
+    {
+      "name": "New Site Survey",
+      "parentId": "group1",
+      "startHour": 80,
+      "durationHours": 40,
+      "location": { "lat": 45.5100, "lon": -73.5800 },
+      "dependencies": [],
+      "status": "not-started"
     },
-    "dependencies": [],
-    "status": "not-started"
-  },
-  {
-    "name": "Advanced Equipment Setup",
-    "parentId": "newteam",
-    "startDate": "2025-02-01T00:00:00.000Z",
-    "endDate": "2025-02-05T00:00:00.000Z",
-    "location": {
-      "lat": 45.4950,
-      "lon": -73.5600
+    {
+      "name": "Advanced Equipment Setup",
+      "parentId": "newteam",
+      "startHour": 120,
+      "durationHours": 40,
+      "location": { "lat": 45.4950, "lon": -73.5600 },
+      "dependencies": [],
+      "status": "not-started"
     },
-    "dependencies": [],
-    "status": "not-started"
-  },
-  {
-    "name": "Overlapping Task",
-    "parentId": "group2",
-    "startDate": "2025-01-18T00:00:00.000Z",
-    "endDate": "2025-01-24T00:00:00.000Z",
-    "location": {
-      "lat": 45.5050,
-      "lon": -73.5750
+    {
+      "name": "Overlapping Task",
+      "parentId": "group2",
+      "startHour": 80,
+      "durationHours": 120,
+      "location": { "lat": 45.5050, "lon": -73.5750 },
+      "dependencies": [],
+      "status": "in-progress"
     },
-    "dependencies": [],
-    "status": "in-progress"
-  },
-  {
-    "name": "Another New Team Task",
-    "parentId": "newteam",
-    "startDate": "2025-02-10T00:00:00.000Z",
-    "endDate": "2025-02-15T00:00:00.000Z",
-    "location": {
-      "lat": 45.4980,
-      "lon": -73.5650
+    {
+      "name": "Another New Team Task",
+      "parentId": "newteam",
+      "startHour": 160,
+      "durationHours": 40,
+      "location": { "lat": 45.4980, "lon": -73.5650 },
+      "dependencies": ["import2"],
+      "status": "not-started"
     },
-    "dependencies": ["import2"],
-    "status": "not-started"
-  },
-  {
-    "name": "Unassigned Import Task",
-    "parentId": null,
-    "startDate": "2025-03-01T00:00:00.000Z",
-    "endDate": "2025-03-05T00:00:00.000Z",
-    "location": {
-      "lat": 45.5120,
-      "lon": -73.5820
-    },
-    "dependencies": [],
-    "status": "not-started"
-  }
-]
+    {
+      "name": "Unassigned Import Task",
+      "parentId": null,
+      "startHour": 200,
+      "durationHours": 40,
+      "location": { "lat": 45.5120, "lon": -73.5820 },
+      "dependencies": [],
+      "status": "not-started"
+    }
+  ]
+}

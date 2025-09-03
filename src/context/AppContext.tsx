@@ -1,97 +1,105 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { AppState, Task, Parent } from '../types';
 
+// Actions for hour-based scheduling
 type AppAction =
   | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
-  | { type: 'UPDATE_TASK_DATES'; taskId: string; startDate: Date; endDate: Date }
+  | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; durationHours: number }
   | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
-  | { type: 'SET_TIME_SCALE'; timeScale: 'days' | 'weeks' | 'months' | 'years' }
-  | { type: 'SET_TIMELINE_START'; startDate: Date }
+  | { type: 'SET_PERIOD_CONFIG'; periods: string[]; periodLengthHours: number }
   | { type: 'ADD_TASKS'; tasks: Task[] }
   | { type: 'IMPORT_TASKS'; tasks: Task[] }
   | { type: 'ADD_PARENTS'; parents: Parent[] }
   | { type: 'IMPORT_TASKS_WITH_CONFLICTS'; tasks: Task[]; conflictedTasks: Task[]; newParents: Parent[] };
 
+const defaultPeriods = [
+  'P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'
+];
+const defaultPeriodLen = 40; 
+
 const initialState: AppState = {
   tasks: [
     {
-      id: 'task1',
-      name: 'Site Survey',
-      parentId: 'group1',
-      startDate: new Date(2025, 0, 15),
-      endDate: new Date(2025, 0, 18),
+      id: 'T01',
+      name: 'T01',
+      parentId: 'R01',
+      startHour: 40,
+      durationHours: 40,
+      setup: 20,
       location: { lat: 45.5017, lon: -73.5673 },
       dependencies: [],
     },
     {
-      id: 'task2',
-      name: 'Equipment Setup',
-      parentId: 'group1',
-      startDate: new Date(2025, 0, 19),
-      endDate: new Date(2025, 0, 22),
+      id: 'T02',
+      name: 'T02',
+      parentId: 'R01',
+      startHour: 80,
+      durationHours: 40,
+      setup: 40,
       location: { lat: 45.5048, lon: -73.5698 },
-      dependencies: ['task1'],
+      dependencies: [],
     },
     {
-      id: 'task3',
-      name: 'Tree Harvesting',
-      parentId: 'group2',
-      startDate: new Date(2025, 0, 16),
-      endDate: new Date(2025, 0, 25),
+      id: 'T03',
+      name: 'T03',
+      parentId: 'R02',
+      startHour: 40,
+      durationHours: 120,
+      setup: 20,
       location: { lat: 45.4995, lon: -73.5635 },
       dependencies: [],
     },
     {
-      id: 'task4',
-      name: 'Transport Logistics',
-      parentId: 'group2',
-      startDate: new Date(2025, 0, 26),
-      endDate: new Date(2025, 0, 28),
+      id: 'T04',
+      name: 'T04',
+      parentId: 'R02',
+      startHour: 200,
+      durationHours: 40,
       location: { lat: 45.5025, lon: -73.5711 },
-      dependencies: ['task3'],
+      dependencies: [],
     },
     {
-      id: 'task5',
-      name: 'Reforestation Planning',
-      parentId: 'group3',
-      startDate: new Date(2025, 0, 20),
-      endDate: new Date(2025, 0, 30),
+      id: 'T05',
+      name: 'T05',
+      parentId: 'R03',
+      startHour: 80,
+      durationHours: 120,
       location: { lat: 45.4978, lon: -73.5592 },
       dependencies: [],
     },
     {
-      id: 'task6',
-      name: 'Environmental Assessment',
+      id: 'T06',
+      name: 'T06',
       parentId: null,
-      startDate: new Date(2025, 1, 1),
-      endDate: new Date(2025, 1, 5),
+      startHour: 240,
+      durationHours: 40,
       location: { lat: 45.5089, lon: -73.5744 },
       dependencies: [],
     },
     {
-      id: 'task7',
-      name: 'Soil Analysis',
+      id: 'T07',
+      name: 'T07',
       parentId: null,
-      startDate: new Date(2025, 1, 6),
-      endDate: new Date(2025, 1, 10),
+      startHour: 280,
+      durationHours: 40,
       location: { lat: 45.4956, lon: -73.5531 },
-      dependencies: ['task6'],
+      dependencies: [],
     }
   ],
   parents: [
-    { id: 'group1', name: 'Site Preparation Team', color: '#10B981' },
-    { id: 'group2', name: 'Harvesting Crew', color: '#3B82F6' },
-    { id: 'group3', name: 'Conservation Unit', color: '#8B5CF6' }
+    { id: 'R01', name: 'R01', color: '#10B981' },
+    { id: 'R02', name: 'R02', color: '#3B82F6' },
+    { id: 'R03', name: 'R03', color: '#8B5CF6' }
   ],
   selectedTaskId: null,
   selectedParentId: 'all',
   draggingTaskId_unassigned: null,
   draggingTaskId_gantt: null,
-  timeScale: 'weeks',
-  timelineStart: new Date(2025, 0, 1)
+  periods: defaultPeriods,
+  periodLengthHours: defaultPeriodLen,
 };
 
 const AppContext = createContext<{
@@ -103,108 +111,82 @@ function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_SELECTED_TASK':
       return { ...state, selectedTaskId: action.taskId, selectedParentId: action.toggle_parent };
-    
+
     case 'SET_SELECTED_PARENT':
       return { ...state, selectedParentId: action.parentId };
-    
+
     case 'UPDATE_TASK_PARENT': {
-      const updatedTasks = state.tasks.map(task => 
-        task.id === action.taskId 
+      const updatedTasks = state.tasks.map(task =>
+        task.id === action.taskId
           ? { ...task, parentId: action.newParentId }
           : task
       );
-      return { 
-        ...state, 
+      return {
+        ...state,
         tasks: updatedTasks,
-        // Clear selection if task was unassigned
         selectedTaskId: action.newParentId === null ? null : state.selectedTaskId
       };
     }
-    
-    case 'UPDATE_TASK_DATES': {
+
+    case 'UPDATE_TASK_HOURS': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.taskId
-          ? { ...task, startDate: action.startDate, endDate: action.endDate }
+          ? { ...task, startHour: action.startHour, durationHours: action.durationHours }
           : task
       );
       return { ...state, tasks: updatedTasks };
     }
 
     case 'SET_DRAGGING_UNASSIGNED_TASK': {
-      return { ...state, draggingTaskId_unassigned:  action.taskId };
+      return { ...state, draggingTaskId_unassigned: action.taskId };
     }
 
     case 'SET_DRAGGING_GANTT_TASK': {
       return { ...state, draggingTaskId_gantt: action.taskId };
     }
 
-    case 'SET_TIME_SCALE':
-      return { ...state, timeScale: action.timeScale };
-    
-    case 'SET_TIMELINE_START':
-      return { ...state, timelineStart: action.startDate };
+    case 'SET_PERIOD_CONFIG': {
+      return { ...state, periods: action.periods, periodLengthHours: action.periodLengthHours };
+    }
 
     case 'ADD_TASKS':
       return { ...state, tasks: [...state.tasks, ...action.tasks] };
-    
+
     case 'IMPORT_TASKS': {
-      // Add imported tasks to existing tasks, ensuring unique IDs
       const existingIds = new Set(state.tasks.map(t => t.id));
-      const newTasks = action.tasks.map((task, index) => {
+      const newTasks = action.tasks.map((task) => {
         let newId = task.id;
         let counter = 1;
-        
-        // Ensure unique ID
         while (existingIds.has(newId)) {
           newId = `${task.id}_${counter}`;
           counter++;
         }
-        
         existingIds.add(newId);
         return { ...task, id: newId };
       });
-      
-      return { 
-        ...state, 
-        tasks: [...state.tasks, ...newTasks]
-      };
+      return { ...state, tasks: [...state.tasks, ...newTasks] };
     }
 
     case 'ADD_PARENTS':
-      return {
-        ...state,
-        parents: [...state.parents, ...action.parents]
-      };
+      return { ...state, parents: [...state.parents, ...action.parents] };
 
     case 'IMPORT_TASKS_WITH_CONFLICTS': {
-      // Add new parents first
       const updatedParents = [...state.parents, ...action.newParents];
-      
-      // Add imported tasks to existing tasks, ensuring unique IDs
       const existingIds = new Set(state.tasks.map(t => t.id));
       const allNewTasks = [...action.tasks, ...action.conflictedTasks];
-      
       const processedTasks = allNewTasks.map((task) => {
         let newId = task.id;
         let counter = 1;
-        
-        // Ensure unique ID
         while (existingIds.has(newId)) {
           newId = `${task.id}_${counter}`;
           counter++;
         }
-        
         existingIds.add(newId);
         return { ...task, id: newId };
       });
-      
-      return { 
-        ...state, 
-        tasks: [...state.tasks, ...processedTasks],
-        parents: updatedParents
-      };
+      return { ...state, tasks: [...state.tasks, ...processedTasks], parents: updatedParents };
     }
-    
+
     default:
       return state;
   }

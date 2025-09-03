@@ -231,7 +231,7 @@ export function UnassignedTasks() {
                     </div>
                     
                     <div className="mt-2 text-xs text-gray-500">
-                      {task.startDate.toLocaleDateString()} - {task.endDate.toLocaleDateString()}
+                      Start: {task.startHour}h • Duration: {task.durationHours}h
                     </div>
                   </div>
                 );

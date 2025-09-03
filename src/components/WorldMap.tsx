@@ -66,9 +66,7 @@ export function WorldMap() {
     if (state.selectedParentId === 'all') return [];
 
     const visibleTasks = getVisibleTasks();
-    const sortedTasks = [...visibleTasks].sort((a, b) =>
-      a.startDate.getTime() - b.startDate.getTime()
-    );
+    const sortedTasks = [...visibleTasks].sort((a, b) => a.startHour - b.startHour);
 
     const lines = [];
     for (let i = 0; i < sortedTasks.length - 1; i++) {
@@ -267,9 +265,7 @@ export function WorldMap() {
             }
 
             // Filtered view → chronological & numbered
-            const sortedTasks = [...getVisibleTasks()].sort(
-              (a, b) => a.startDate.getTime() - b.startDate.getTime()
-            );
+            const sortedTasks = [...getVisibleTasks()].sort((a, b) => a.startHour - b.startHour);
 
             return sortedTasks.map((task, index) => {
               const isSelected = state.selectedTaskId === task.id;

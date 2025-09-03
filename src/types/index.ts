@@ -2,8 +2,11 @@ export interface Task {
   id: string;
   name: string;
   parentId: string | null; // null means unassigned
-  startDate: Date;
-  endDate: Date;
+  startHour: number;       
+  durationHours: number;   
+  setup?: number;           
+  // Per-team duration override or exclusion: key is team/parent id; value is number (duration) or 'x' to disallow
+  specialTeams?: Record<string, number | 'x'>;
   location: {
     lat: number;
     lon: number;
@@ -31,6 +34,8 @@ export interface AppState {
   selectedParentId: string | null;
   draggingTaskId_unassigned: string | null;
   draggingTaskId_gantt: string | null;
-  timeScale: 'days' | 'weeks' | 'months' | 'years';
-  timelineStart: Date;
+
+  // Period metadata
+  periods: string[];           // ordered list of period ids, e.g., ['P1', 'P2', ... 'P13']
+  periodLengthHours: number;   // FIX: fixed length for each period in hours (40)
 }
