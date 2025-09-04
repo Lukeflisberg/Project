@@ -143,6 +143,9 @@ export function GanttChart() {
     const parentId = getParentFromMousePosition(clientY);
     if (!parentId || !ganttRef.current) return null;
 
+    const movingTask = state.tasks.find(x => x.id === excludeTaskId);
+    if (movingTask && isDisallowed(movingTask as Task, parentId)) return null;
+
     const timelineContent = ganttRef.current.querySelector('.timeline-content') as HTMLElement | null;
     const rect = timelineContent?.getBoundingClientRect();
     if (!rect) return null;
@@ -252,7 +255,9 @@ export function GanttChart() {
         if (match && draggedTask) {
           const target = state.tasks.find(t => t.id === match.taskId);
           const moving = state.tasks.find(t => t.id === draggedTask);
-          if (target && moving) {
+          if (moving && isDisallowed(moving as Task, targetParentIdForSnap)) {
+            // skip snap on disallowed row
+          } else if (target && moving) {
             if (match.side === 'left') {
             // find predecessor (occupied)
             const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
@@ -303,7 +308,9 @@ export function GanttChart() {
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
           const target = state.tasks.find(t => t.id === snapNow.taskId);
-          if (target) {
+          if (isDisallowed(currentTask, snapNow.parentId)) {
+            // skip disallowed parent assignment
+          } else if (target) {
             const desiredStart = snapNow.side === 'left'
               ? occStart(target) - effectiveDuration(currentTask, snapNow.parentId)
               : occEnd(target) + (currentTask.setup ?? 0);
@@ -375,7 +382,7 @@ export function GanttChart() {
         }
 
         if (!taskUpdated) {
-          // 2) Direct drop onto task body (choose nearest side)
+          // 2) Direct drop onto task body 
           {
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
@@ -397,15 +404,29 @@ export function GanttChart() {
                 const target = state.tasks.find(t => t.id === bodyMatch.taskId);
                 const moving = currentTask;
                 if (target && moving) {
-                  // Place the dragged task so the cursor stays at the same relative position within the block
-                  const dropHour = Math.max(0, Math.min(totalHours, ((pointerX - rect.left) / rect.width) * totalHours));
                   const movingDur = effectiveDuration(moving, targetParentId);
-                  const desiredOccStart = clamp(dropHour - dragOffsetOcc, 0, Math.max(0, totalHours - movingDur));
-                  const desiredStart = desiredOccStart + setupOf(moving);
+                  // Place moving at visual drop position
+                  const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
+                  const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
+                  const desiredStart = currentTask.startHour + (hoursDelta || 0);
+                  const desiredOccStart = desiredStart - setupOf(moving);
 
+                  // Compute target's new start to be on the chosen side of moved block
+                  const targetNewStart =
+                    bodyMatch.side === 'left'
+                      ? (desiredOccStart + movingDur) + setupOf(target)
+                      : (Math.max(0, desiredOccStart - effectiveDuration(target, targetParentId)) + setupOf(target));
+                  
                   if (targetParentId === moving.parentId) {
                     const sibs = state.tasks.filter(t => t.parentId === moving.parentId);
-                    const plan = planSequentialLayoutHours(sibs, moving.id, desiredStart, periodLen, totalHours);
+                    const sibsAdj = sibs.map(t => t.id === target.id ? { ...t, startHour: targetNewStart } : t);
+                    const plan = planSequentialLayoutHours(
+                      sibsAdj as Task[], 
+                      moving.id, 
+                      desiredStart, 
+                      periodLen, 
+                      totalHours
+                    );
                     for (const u of plan) {
                       const orig = state.tasks.find(t => t.id === u.id);
                       if (!orig) continue;
@@ -415,19 +436,28 @@ export function GanttChart() {
                     }
                     taskUpdated = true;
                   } else {
-                    dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
-                    const newParentSibs = state.tasks
-                      .filter(t => t.parentId === targetParentId || t.id === taskId)
-                      .map(t => (t.id === taskId ? { ...t, parentId: targetParentId } : t));
-                    const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
-                    for (const u of plan) {
-                      const orig = state.tasks.find(t => t.id === u.id);
-                      if (!orig) continue;
-                      if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                        dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                    if (isDisallowed(moving, targetParentId)) {
+                      // skip disallowed assignment
+                      taskUpdated = true;
+                    } else {
+                      dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
+                      const newParentSibs = state.tasks
+                        .filter(t => t.parentId === targetParentId || t.id === taskId)
+                        .map(t => {
+                          if (t.id === taskId) return { ...t, parentId: targetParentId };
+                          if (t.id === target.id) return { ...t, startHour: targetNewStart };
+                          return t;
+                        });
+                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
+                      for (const u of plan) {
+                        const orig = state.tasks.find(t => t.id === u.id);
+                        if (!orig) continue;
+                        if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                          dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                        }
                       }
+                      taskUpdated = true;
                     }
-                    taskUpdated = true;
                   }
                 }
               }
@@ -435,9 +465,11 @@ export function GanttChart() {
           }
 
           // 3) Snap to neighbor edges (deferred)
-          if (snapTarget) {
+          if (snapTarget && !taskUpdated) {
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
-            if (target) {
+            if (isDisallowed(currentTask, snapTarget.parentId)) {
+              // skip disallowed parent assignment
+            } else if (target) {
               const desiredStart = snapTarget.side === 'left'
                 ? occStart(target) - effectiveDuration(currentTask, snapTarget.parentId)
                 : occEnd(target) + (currentTask.setup ?? 0);
@@ -507,7 +539,7 @@ export function GanttChart() {
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const isParentChange = !!targetParentId && targetParentId !== currentTask.parentId;
 
-            if (isParentChange && targetParentId) {
+            if (isParentChange && targetParentId && !isDisallowed(currentTask, targetParentId)) {
               // Move to new parent and reflow at proposedStart
               dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
 
