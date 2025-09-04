@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Calendar, AlertTriangle, Upload } from 'lucide-react';
+import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 import { importTasksFromFile, processImportedTasks } from '../helper/fileReader';
@@ -30,7 +30,7 @@ const setupOf = (t: Task) => {
 const occStart = (t: Task) => t.startHour - setupOf(t);
 const occEnd = (t: Task) => endHour(t);
 
-// Returns planned (startHour,durationHours) for each task so none overlap, after a move.
+// Returns planned (startHour, durationHours) for each task so none overlap, after a move.
 function planSequentialLayoutHours(
   siblings: Task[],
   movedTaskId: string,
@@ -47,20 +47,20 @@ function planSequentialLayoutHours(
   const movedDur = effectiveDuration(moved, moved.parentId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
-  // Sort by occupied start (includes setup), prioritize moved task if equal
-  local.sort((a, b) => {
-    const diff = occStart(a) - occStart(b);
-    if (diff !== 0) return diff;
-    if (a.id === movedTaskId) return -1;
-    if (b.id === movedTaskId) return 1;
-    return 0;
-  });
+  // Partition tasks around the moved task's desired occupied start
+  const movedOccStart = occStart(moved);
+  const before = local.filter(t => t.id !== movedTaskId && occEnd(t) <= movedOccStart)
+                      .sort((a, b) => occStart(a) - occStart(b));
+  const after = local.filter(t => t.id !== movedTaskId && occEnd(t) > movedOccStart)
+                     .sort((a, b) => occStart(a) - occStart(b));
 
-  // Sweep forward ensuring no overlaps
+  const ordered = [...before, moved, ...after];
+
+  // Sweep forward ensuring no overlaps, keeping moved at or as close as possible to its desired position
   const updates: Array<{ id: string; startHour: number; durationHours: number }> = [];
   let nextAvailableStart = 0; // track next occupied end in hours
 
-  for (const t of local) {
+  for (const t of ordered) {
     const dur = effectiveDuration(t, t.parentId);
     // Ensure occupied start >= nextAvailableStart
     const desired = Math.max(t.startHour, nextAvailableStart + setupOf(t));
@@ -82,6 +82,7 @@ export function GanttChart() {
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [snapTarget, setSnapTarget] = useState<{ parentId: string; taskId: string; side: 'left' | 'right' } | null>(null);
   const [, setSnapLeftPct] = useState<number | null>(null);
+  const [dragOffsetOcc, setDragOffsetOcc] = useState(0);
   const ganttRef = useRef<HTMLDivElement>(null);
 
   const periods = state.periods?.length ? state.periods : DEFAULT_PERIODS;
@@ -181,7 +182,8 @@ export function GanttChart() {
         const latestOccEnd = successor ? occStart(successor) : totalHours;
         if (desiredEnd <= latestOccEnd) return { parentId, taskId: t.id, side: 'right' };
       }
-    }
+
+          }
 
     return null;
   };
@@ -198,6 +200,19 @@ export function GanttChart() {
     setDraggedTask(taskId);
     setDragPosition({ x: 0, y: 0 });
     dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: taskId });
+
+    // Capture pointer offset within the task's occupied span (in hours) to preserve alignment on drop
+    const timelineEl = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
+    const rect0 = timelineEl?.getBoundingClientRect();
+    if (rect0) {
+      const pointerHour0 = Math.max(0, Math.min(totalHours, ((e.clientX - rect0.left) / rect0.width) * totalHours));
+      const startOcc0 = occStart(originalTask);
+      const endOcc0 = occEnd(originalTask);
+      const clampedPointer0 = Math.max(startOcc0, Math.min(endOcc0, pointerHour0));
+      setDragOffsetOcc(clampedPointer0 - startOcc0);
+    } else {
+      setDragOffsetOcc(0);
+    }
 
     const handleMouseMove = (evt: MouseEvent) => {
       const newDragPosition = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
@@ -360,7 +375,66 @@ export function GanttChart() {
         }
 
         if (!taskUpdated) {
-          // 2) Snap to neighbor edges (deferred)
+          // 2) Direct drop onto task body (choose nearest side)
+          {
+            const targetParentId = getParentFromMousePosition(evt.clientY);
+            const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
+            const rect = timeline?.getBoundingClientRect();
+            if (rect && targetParentId) {
+              const pointerX = evt.clientX;
+              const siblings = state.tasks.filter(t => t.parentId === targetParentId && t.id !== currentTask.id);
+              let bodyMatch: { taskId: string; side: 'left'|'right' } | null = null;
+              for (const t of siblings) {
+                const leftPx = rect.left + ((occStart(t) / totalHours) * rect.width);
+                const rightPx = rect.left + ((occEnd(t) / totalHours) * rect.width);
+                if (pointerX > leftPx && pointerX < rightPx) {
+                  const side: 'left' | 'right' = pointerX <= (leftPx + rightPx) / 2 ? 'left' : 'right';
+                  bodyMatch = { taskId: t.id, side };
+                  break;
+                }
+              }
+              if (bodyMatch) {
+                const target = state.tasks.find(t => t.id === bodyMatch.taskId);
+                const moving = currentTask;
+                if (target && moving) {
+                  // Place the dragged task so the cursor stays at the same relative position within the block
+                  const dropHour = Math.max(0, Math.min(totalHours, ((pointerX - rect.left) / rect.width) * totalHours));
+                  const movingDur = effectiveDuration(moving, targetParentId);
+                  const desiredOccStart = clamp(dropHour - dragOffsetOcc, 0, Math.max(0, totalHours - movingDur));
+                  const desiredStart = desiredOccStart + setupOf(moving);
+
+                  if (targetParentId === moving.parentId) {
+                    const sibs = state.tasks.filter(t => t.parentId === moving.parentId);
+                    const plan = planSequentialLayoutHours(sibs, moving.id, desiredStart, periodLen, totalHours);
+                    for (const u of plan) {
+                      const orig = state.tasks.find(t => t.id === u.id);
+                      if (!orig) continue;
+                      if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                        dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                      }
+                    }
+                    taskUpdated = true;
+                  } else {
+                    dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
+                    const newParentSibs = state.tasks
+                      .filter(t => t.parentId === targetParentId || t.id === taskId)
+                      .map(t => (t.id === taskId ? { ...t, parentId: targetParentId } : t));
+                    const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
+                    for (const u of plan) {
+                      const orig = state.tasks.find(t => t.id === u.id);
+                      if (!orig) continue;
+                      if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                        dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                      }
+                    }
+                    taskUpdated = true;
+                  }
+                }
+              }
+            }
+          }
+
+          // 3) Snap to neighbor edges (deferred)
           if (snapTarget) {
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
             if (target) {
@@ -501,6 +575,7 @@ export function GanttChart() {
       setDragPosition({ x: 0, y: 0 });
       setSnapTarget(null);
       setSnapLeftPct(null);
+      setDragOffsetOcc(0);
 
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
