@@ -47,29 +47,106 @@ function planSequentialLayoutHours(
   const movedDur = effectiveDuration(moved, moved.parentId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
-  // Partition tasks around the moved task's desired occupied start
-  const movedOccStart = occStart(moved);
-  const before = local.filter(t => t.id !== movedTaskId && occEnd(t) <= movedOccStart)
+  // Get other tasks and sort by their current occupied start positions
+  const others = local.filter(t => t.id !== movedTaskId)
                       .sort((a, b) => occStart(a) - occStart(b));
-  const after = local.filter(t => t.id !== movedTaskId && occEnd(t) > movedOccStart)
-                     .sort((a, b) => occStart(a) - occStart(b));
 
-  const ordered = [...before, moved, ...after];
+  // Find where to insert the moved task based on its new occupied start
+  const movedOccStart = occStart(moved);
+  let insertIndex = 0;
+  while (insertIndex < others.length && occStart(others[insertIndex]) < movedOccStart) {
+    insertIndex++;
+  }
 
-  // Sweep forward ensuring no overlaps, keeping moved at or as close as possible to its desired position
+  // Insert moved task at determined position
+  const orderedTasks = [
+    ...others.slice(0, insertIndex),
+    moved,
+    ...others.slice(insertIndex)
+  ];
+
+  // Sweep both forward and backwards  ensuring no overlaps, keeping moved at or as close as possible to its desired position
   const updates: Array<{ id: string; startHour: number; durationHours: number }> = [];
-  let nextAvailableStart = 0; // track next occupied end in hours
+  
+  // Create working array with current positions
+  const working = orderedTasks.map(t => ({
+    task: t,
+    occStart: occStart(t),
+    occEnd: occEnd(t),
+    duration: effectiveDuration(t, t.parentId),
+    setup: setupOf(t)
+  }));
 
-  for (const t of ordered) {
-    const dur = effectiveDuration(t, t.parentId);
-    // Ensure occupied start >= nextAvailableStart
-    const desired = Math.max(t.startHour, nextAvailableStart + setupOf(t));
-    const start = clamp(desired, 0, Math.max(0, maxHour - dur));
-    const end = start + dur;
+  // Resolve overlaps by pushing tasks in both directions from the insertion point
+  let changed = true;
+  let iterations = 0;
+  const maxIterations = working.length * 2; // Prevent infinite loops
 
-    // Record planned hours
-    updates.push({ id: t.id, startHour: start, durationHours: t.durationHours });
-    nextAvailableStart = end;
+  while (changed && iterations < maxIterations) {
+    changed = false;
+    iterations++;
+
+    // Forward pass: push tasks to the right if they overlap with previous task
+    for (let i = 1; i < working.length; i++) {
+      const prev = working[i - 1];
+      const curr = working[i];
+      
+      if (curr.occStart < prev.occEnd) {
+        // Overlap detected - push current task to the right
+        const newOccStart = prev.occEnd;
+        const newStart = newOccStart + curr.setup;
+        const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
+        
+        if (clampedStart !== curr.task.startHour) {
+          curr.task.startHour = clampedStart;
+          curr.occStart = occStart(curr.task);
+          curr.occEnd = occEnd(curr.task);
+          changed = true;
+        }
+      }
+    }
+
+    // Backward pass: push tasks to the left if they overlap with next task
+    for (let i = working.length - 2; i >= 0; i--) {
+      const curr = working[i];
+      const next = working[i + 1];
+      
+      if (curr.occEnd > next.occStart) {
+        // Overlap detected - push current task to the left
+        const newOccEnd = next.occStart;
+        const newOccStart = newOccEnd - curr.duration;
+        const newStart = newOccStart + curr.setup;
+        const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
+        
+        if (clampedStart !== curr.task.startHour) {
+          curr.task.startHour = clampedStart;
+          curr.occStart = occStart(curr.task);
+          curr.occEnd = occEnd(curr.task);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // If we couldn't resolve all overlaps within max iterations, fall back to forward-only pass
+  if (iterations >= maxIterations) {
+    console.warn('Bidirectional layout hit max iterations, falling back to forward pass');
+    let nextAvailableStart = 0;
+    for (const item of working) {
+      const desired = Math.max(item.task.startHour, nextAvailableStart + item.setup);
+      const start = clamp(desired, 0, Math.max(0, maxHour - item.duration));
+      item.task.startHour = start;
+      nextAvailableStart = start + item.duration;
+    }
+  }
+
+  // Generate updates
+  for (const item of working) {
+    updates.push({
+      id: item.task.id,
+      startHour: item.task.startHour,
+      durationHours: item.task.durationHours
+    });
   }
 
   return updates;
@@ -402,27 +479,25 @@ export function GanttChart() {
               }
               if (bodyMatch) {
                 const target = state.tasks.find(t => t.id === bodyMatch.taskId);
-                const moving = currentTask;
-                if (target && moving) {
-                  const movingDur = effectiveDuration(moving, targetParentId);
+                if (target && currentTask) {
                   // Place moving at visual drop position
                   const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
                   const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-                  const desiredStart = currentTask.startHour + (hoursDelta || 0);
-                  const desiredOccStart = desiredStart - setupOf(moving);
+                  const desiredStart = currentTask.startHour + currentTask.setup + (hoursDelta || 0);
+                  const desiredOccStart = desiredStart - setupOf(currentTask);
 
                   // Compute target's new start to be on the chosen side of moved block
                   const targetNewStart =
                     bodyMatch.side === 'left'
-                      ? (desiredOccStart + movingDur) + setupOf(target)
-                      : (Math.max(0, desiredOccStart - effectiveDuration(target, targetParentId)) + setupOf(target));
-                  
-                  if (targetParentId === moving.parentId) {
-                    const sibs = state.tasks.filter(t => t.parentId === moving.parentId);
+                      ? (desiredOccStart + effectiveDuration(currentTask, targetParentId)) + setupOf(target)
+                      : (desiredOccStart - effectiveDuration(target, targetParentId));
+
+                  if (targetParentId === currentTask.parentId) {
+                    const sibs = state.tasks.filter(t => t.parentId === currentTask.parentId);
                     const sibsAdj = sibs.map(t => t.id === target.id ? { ...t, startHour: targetNewStart } : t);
                     const plan = planSequentialLayoutHours(
                       sibsAdj as Task[], 
-                      moving.id, 
+                      currentTask.id, 
                       desiredStart, 
                       periodLen, 
                       totalHours
@@ -436,7 +511,7 @@ export function GanttChart() {
                     }
                     taskUpdated = true;
                   } else {
-                    if (isDisallowed(moving, targetParentId)) {
+                    if (isDisallowed(currentTask, targetParentId)) {
                       // skip disallowed assignment
                       taskUpdated = true;
                     } else {
