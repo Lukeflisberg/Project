@@ -515,21 +515,30 @@ export function GanttChart() {
                       // skip disallowed assignment
                       taskUpdated = true;
                     } else {
-                      dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
-                      const newParentSibs = state.tasks
-                        .filter(t => t.parentId === targetParentId || t.id === taskId)
-                        .map(t => {
-                          if (t.id === taskId) return { ...t, parentId: targetParentId };
-                          if (t.id === target.id) return { ...t, startHour: targetNewStart };
-                          return t;
-                        });
-                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
-                      for (const u of plan) {
+                      // Use backward sweep for same-parent body drops
+                      const sibs = state.tasks.filter(t => t.parentId === currentTask.parentId);
+                      const result = planBackwardSweepLayout(
+                        sibs,
+                        currentTask.id,
+                        desiredStart,
+                        target.id,
+                        targetNewStart,
+                        periodLen,
+                        totalHours
+                      );
+                      
+                      // Apply updates for valid tasks
+                      for (const u of result.updates) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
                         if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
                           dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
                         }
+                      }
+                      
+                      // Unassign tasks that couldn't fit
+                      for (const taskId of result.unassignedTasks) {
+                        dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
                       }
                       taskUpdated = true;
                     }
@@ -867,21 +876,39 @@ export function GanttChart() {
                           </div>
                         </div>
                       )};
-                  })}
-
-                  {/* Tasks */}
-                  {getTasksByParent(parent.id).map(task => {
-                    const position = calculateTaskPosition(task);
-                    const isSelected = state.selectedTaskId === task.id;
-                    const isBeingDragged = draggedTask === task.id;
-
-                    const dragStyle = isBeingDragged
-                      ? {
-                          transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
-                          zIndex: 1000,
-                          cursor: 'grabbing',
-                          transition: 'none',
-                          pointerEvents: 'none'
+                        // Use backward sweep for cross-parent body drops
+                        dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
+                        
+                        const newParentSibs = state.tasks
+                          .filter(t => t.parentId === targetParentId || t.id === taskId)
+                          .map(t => {
+                            if (t.id === taskId) return { ...t, parentId: targetParentId };
+                            if (t.id === target.id) return { ...t, startHour: targetNewStart };
+                            return t;
+                          });
+                          
+                        const result = planBackwardSweepLayout(
+                          newParentSibs as Task[],
+                          taskId,
+                          desiredStart,
+                          target.id,
+                          targetNewStart,
+                          periodLen,
+                          totalHours
+                        );
+                        
+                        // Apply updates for valid tasks
+                        for (const u of result.updates) {
+                          const orig = state.tasks.find(t => t.id === u.id);
+                          if (!orig) continue;
+                          if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                            dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                          }
+                        }
+                        
+                        // Unassign tasks that couldn't fit
+                        for (const unassignedTaskId of result.unassignedTasks) {
+                          dispatch({ type: 'UPDATE_TASK_PARENT', taskId: unassignedTaskId, newParentId: null });
                         }
                       : { cursor: 'grab' };
 
