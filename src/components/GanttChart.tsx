@@ -875,9 +875,21 @@ export function GanttChart() {
                             </div>
                           </div>
                         </div>
-                      )};
-                      : { cursor: 'grab' };
+                      );
+                    }
+                    return null;
+                  })}
 
+                  {/* Tasks */}
+                  {getTasksByParent(parent.id).map(task => {
+                    const isSelected = state.selectedTaskId === task.id;
+                    const isBeingDragged = draggedTask === task.id;
+                    const position = calculateTaskPosition(task);
+                    const dragStyle = isBeingDragged ? { 
+                      transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
+                      zIndex: 1000,
+                      cursor: 'grabbing'
+                    } : { cursor: 'grab' };
                     const effDur = effectiveDuration(task);
                     const disallowed = isDisallowed(task);
 
