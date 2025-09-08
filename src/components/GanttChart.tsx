@@ -12,14 +12,14 @@ const DEFAULT_PERIOD_LEN = 40; // hours
 const effectiveDuration = (t: Task, parentId?: string | null) => {
   const pid = parentId !== undefined ? parentId : t.parentId;
   const ov = pid ? t.specialTeams?.[pid] : undefined;
-  return typeof ov === 'number' ? Math.max(1, ov) : Math.max(1, t.durationHours);
+  return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.durationHours + setupOf(t));
 };
 const isDisallowed = (t: Task, parentId?: string | null) => {
   const pid = parentId !== undefined ? parentId : t.parentId;
   const ov = pid ? t.specialTeams?.[pid] : undefined;
   return ov === 'x';
 };
-const endHour = (t: Task) => t.startHour + effectiveDuration(t); // exclusive
+const endHour = (t: Task) => t.startHour + effectiveDuration(t);
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 // Setup helpers
@@ -27,7 +27,7 @@ const setupOf = (t: Task) => {
   const n = t.setup ?? 0;
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
-const occStart = (t: Task) => t.startHour - setupOf(t);
+const occStart = (t: Task) => t.startHour;
 const occEnd = (t: Task) => endHour(t);
 
 // Returns planned (startHour, durationHours) for each task so none overlap, after a move.
@@ -74,7 +74,6 @@ function planSequentialLayoutHours(
     occStart: occStart(t),
     occEnd: occEnd(t),
     duration: effectiveDuration(t, t.parentId),
-    setup: setupOf(t)
   }));
 
   // Resolve overlaps by pushing tasks in both directions from the insertion point
@@ -94,7 +93,7 @@ function planSequentialLayoutHours(
       if (curr.occStart < prev.occEnd) {
         // Overlap detected - push current task to the right
         const newOccStart = prev.occEnd;
-        const newStart = newOccStart + curr.setup;
+        const newStart = newOccStart;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
         if (clampedStart !== curr.task.startHour) {
@@ -106,7 +105,7 @@ function planSequentialLayoutHours(
       }
     }
 
-    // Backward pass: push tasks to the left if they overlap with next task
+    // Backward pass: push tasks to the left if they overlap with next task NOT WORKING
     for (let i = working.length - 2; i >= 0; i--) {
       const curr = working[i];
       const next = working[i + 1];
@@ -115,7 +114,7 @@ function planSequentialLayoutHours(
         // Overlap detected - push current task to the left
         const newOccEnd = next.occStart;
         const newOccStart = newOccEnd - curr.duration;
-        const newStart = newOccStart + curr.setup;
+        const newStart = newOccStart;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
         if (clampedStart !== curr.task.startHour) {
@@ -125,18 +124,6 @@ function planSequentialLayoutHours(
           changed = true;
         }
       }
-    }
-  }
-
-  // If we couldn't resolve all overlaps within max iterations, fall back to forward-only pass
-  if (iterations >= maxIterations) {
-    console.warn('Bidirectional layout hit max iterations, falling back to forward pass');
-    let nextAvailableStart = 0;
-    for (const item of working) {
-      const desired = Math.max(item.task.startHour, nextAvailableStart + item.setup);
-      const start = clamp(desired, 0, Math.max(0, maxHour - item.duration));
-      item.task.startHour = start;
-      nextAvailableStart = start + item.duration;
     }
   }
 
@@ -194,7 +181,7 @@ export function GanttChart() {
 
   const calculateTaskPosition = (task: Task) => {
     const left = (Math.max(0, occStart(task)) / totalHours) * 100;
-    const width = ((setupOf(task) + effectiveDuration(task)) / totalHours) * 100;
+    const width = ((effectiveDuration(task)) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
   };
 
@@ -249,7 +236,7 @@ export function GanttChart() {
         const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
         const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
         const desiredStart = occStart(t) - effectiveDuration(moving, parentId);
-        if ((desiredStart - setupOf(moving)) >= earliestOccStart) return { parentId, taskId: t.id, side: 'left' };
+        if ((desiredStart) >= earliestOccStart) return { parentId, taskId: t.id, side: 'left' };
       }
       if (inRightZone) {
         // capacity check (right)
@@ -257,7 +244,7 @@ export function GanttChart() {
         if (!moving) continue;
         const succs = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
         const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
-        const desiredStart = occEnd(t) + setupOf(moving);
+        const desiredStart = occEnd(t);
         const desiredEnd = desiredStart + effectiveDuration(moving, parentId);
         const latestOccEnd = successor ? occStart(successor) : totalHours;
         if (desiredEnd <= latestOccEnd) return { parentId, taskId: t.id, side: 'right' };
@@ -341,7 +328,7 @@ export function GanttChart() {
             const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
             const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
             const desiredStart = occStart(target) - effectiveDuration(moving, targetParentIdForSnap);
-            if ((desiredStart - setupOf(moving)) >= earliestOccStart) {
+            if ((desiredStart) >= earliestOccStart) {
             setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
             setSnapLeftPct(match.pct);
             }
@@ -349,7 +336,7 @@ export function GanttChart() {
             // right side: ensure space before successor (occupied)
             const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
             const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
-            const desiredStart = occEnd(target) + setupOf(moving);
+            const desiredStart = occEnd(target);
             const desiredEnd = desiredStart + effectiveDuration(moving, targetParentIdForSnap);
             const latestOccEnd = successor ? occStart(successor) : totalHours;
             if (desiredEnd <= latestOccEnd) {
@@ -390,7 +377,7 @@ export function GanttChart() {
           } else if (target) {
             const desiredStart = snapNow.side === 'left'
               ? occStart(target) - effectiveDuration(currentTask, snapNow.parentId)
-              : occEnd(target) + (currentTask.setup ?? 0);
+              : occEnd(target);
 
             if (snapNow.parentId === currentTask.parentId) {
               const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
@@ -483,13 +470,13 @@ export function GanttChart() {
                   // Place moving at visual drop position
                   const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
                   const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-                  const desiredStart = currentTask.startHour + currentTask.setup + (hoursDelta || 0);
-                  const desiredOccStart = desiredStart - setupOf(currentTask);
+                  const desiredStart = currentTask.startHour + (hoursDelta || 0);
+                  const desiredOccStart = desiredStart;
 
                   // Compute target's new start to be on the chosen side of moved block
                   const targetNewStart =
                     bodyMatch.side === 'left'
-                      ? (desiredOccStart + effectiveDuration(currentTask, targetParentId)) + setupOf(target)
+                      ? (desiredOccStart + effectiveDuration(currentTask, targetParentId))
                       : (desiredOccStart - effectiveDuration(target, targetParentId));
 
                   if (targetParentId === currentTask.parentId) {
@@ -547,7 +534,7 @@ export function GanttChart() {
             } else if (target) {
               const desiredStart = snapTarget.side === 'left'
                 ? occStart(target) - effectiveDuration(currentTask, snapTarget.parentId)
-                : occEnd(target) + (currentTask.setup ?? 0);
+                : occEnd(target);
 
               if (snapTarget.parentId === currentTask.parentId) {
                 const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
@@ -885,7 +872,7 @@ export function GanttChart() {
                         }
                       : { cursor: 'grab' };
 
-                    const effDur = effectiveDuration(task);
+                    const defaultDuration = task.durationHours;
                     const disallowed = isDisallowed(task);
 
                     return (
@@ -903,7 +890,7 @@ export function GanttChart() {
                             className="absolute inset-y-0 left-0 pointer-events-none flex items-center justify-center"
                             title={`Setup: ${task.setup}h`}
                             style={{
-                              width: `${(((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`,
+                              width: `${(((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`,
                               backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.35) 75%)',
                               backgroundSize: '8px 8px',
                               backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
@@ -916,8 +903,8 @@ export function GanttChart() {
                         <div
                           className="flex items-center justify-center h-full relative"
                           style={{
-                            marginLeft: `${(((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`,
-                            width: `${100 - (((task.setup ?? 0) / ((task.setup ?? 0) + effDur)) * 100)}%`
+                            marginLeft: `${(((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`,
+                            width: `${100 - (((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`
                           }}
                         >
                           <span className="truncate w-full text-center">{task.name}</span>
