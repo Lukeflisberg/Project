@@ -86,15 +86,14 @@ function planSequentialLayoutHours(
     changed = false;
     iterations++;
 
-    // Backward pass: push tasks to the left if they overlap with next task
-    for (let i = working.length - 2; i >= 0; i--) {
+    // Forward pass: push tasks to the right if they overlap with previous task
+    for (let i = 1; i < working.length; i++) {
+      const prev = working[i - 1];
       const curr = working[i];
-      const next = working[i + 1];
       
-      if (curr.occEnd > next.occStart) {
-        // Overlap detected - push current task to the left
-        const newOccEnd = next.occStart;
-        const newOccStart = newOccEnd - curr.duration;
+      if (curr.occStart < prev.occEnd) {
+        // Overlap detected - push current task to the right
+        const newOccStart = prev.occEnd;
         const newStart = newOccStart + curr.setup;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
@@ -107,14 +106,15 @@ function planSequentialLayoutHours(
       }
     }
 
-    // Forward pass: push tasks to the right if they overlap with previous task
-    for (let i = 1; i < working.length; i++) {
-      const prev = working[i - 1];
+    // Backward pass: push tasks to the left if they overlap with next task
+    for (let i = working.length - 2; i >= 0; i--) {
       const curr = working[i];
+      const next = working[i + 1];
       
-      if (curr.occStart < prev.occEnd) {
-        // Overlap detected - push current task to the right
-        const newOccStart = prev.occEnd;
+      if (curr.occEnd > next.occStart) {
+        // Overlap detected - push current task to the left
+        const newOccEnd = next.occStart;
+        const newOccStart = newOccEnd - curr.duration;
         const newStart = newOccStart + curr.setup;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
@@ -515,30 +515,21 @@ export function GanttChart() {
                       // skip disallowed assignment
                       taskUpdated = true;
                     } else {
-                      // Use backward sweep for same-parent body drops
-                      const sibs = state.tasks.filter(t => t.parentId === currentTask.parentId);
-                      const result = planBackwardSweepLayout(
-                        sibs,
-                        currentTask.id,
-                        desiredStart,
-                        target.id,
-                        targetNewStart,
-                        periodLen,
-                        totalHours
-                      );
-                      
-                      // Apply updates for valid tasks
-                      for (const u of result.updates) {
+                      dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
+                      const newParentSibs = state.tasks
+                        .filter(t => t.parentId === targetParentId || t.id === taskId)
+                        .map(t => {
+                          if (t.id === taskId) return { ...t, parentId: targetParentId };
+                          if (t.id === target.id) return { ...t, startHour: targetNewStart };
+                          return t;
+                        });
+                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
+                      for (const u of plan) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
                         if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
                           dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
                         }
-                      }
-                      
-                      // Unassign tasks that couldn't fit
-                      for (const taskId of result.unassignedTasks) {
-                        dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
                       }
                       taskUpdated = true;
                     }
@@ -875,21 +866,25 @@ export function GanttChart() {
                             </div>
                           </div>
                         </div>
-                      );
-                    }
-                    return null;
+                      )};
                   })}
 
                   {/* Tasks */}
                   {getTasksByParent(parent.id).map(task => {
+                    const position = calculateTaskPosition(task);
                     const isSelected = state.selectedTaskId === task.id;
                     const isBeingDragged = draggedTask === task.id;
-                    const position = calculateTaskPosition(task);
-                    const dragStyle = isBeingDragged ? { 
-                      transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
-                      zIndex: 1000,
-                      cursor: 'grabbing'
-                    } : { cursor: 'grab' };
+
+                    const dragStyle = isBeingDragged
+                      ? {
+                          transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
+                          zIndex: 1000,
+                          cursor: 'grabbing',
+                          transition: 'none',
+                          pointerEvents: 'none'
+                        }
+                      : { cursor: 'grab' };
+
                     const effDur = effectiveDuration(task);
                     const disallowed = isDisallowed(task);
 
