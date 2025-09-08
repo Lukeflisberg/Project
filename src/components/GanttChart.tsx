@@ -27,6 +27,21 @@ const setupOf = (t: Task) => {
   const n = t.setup ?? 0;
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
+
+// InvalidPeriod helpers
+function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: string[], periodOffsets: number[], periodLengths: number[]): boolean {
+  if (!task.invalidPeriods || !task.invalidPeriods.length) return false;
+  for (const period of task.invalidPeriods) {
+    const idx = periods.indexOf(period);
+    if (idx === -1) continue;
+    const periodStart = periodOffsets[idx];
+    const periodEnd = periodStart + periodLengths[idx];
+    // If any overlap
+    if (startHour < periodEnd && endHour > periodStart) return true;
+  }
+  return false;
+}
+
 const occStart = (t: Task) => t.startHour;
 const occEnd = (t: Task) => endHour(t);
 
@@ -35,7 +50,6 @@ function planSequentialLayoutHours(
   siblings: Task[],
   movedTaskId: string,
   movedNewStartHour: number,
-  periodLen: number,
   maxHour: number
 ): Array<{ id: string; startHour: number; durationHours: number }> {
   // Local copy
@@ -104,27 +118,6 @@ function planSequentialLayoutHours(
         }
       }
     }
-
-    // Backward pass: push tasks to the left if they overlap with next task NOT WORKING
-    for (let i = working.length - 2; i >= 0; i--) {
-      const curr = working[i];
-      const next = working[i + 1];
-      
-      if (curr.occEnd > next.occStart) {
-        // Overlap detected - push current task to the left
-        const newOccEnd = next.occStart;
-        const newOccStart = newOccEnd - curr.duration;
-        const newStart = newOccStart;
-        const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
-        
-        if (clampedStart !== curr.task.startHour) {
-          curr.task.startHour = clampedStart;
-          curr.occStart = occStart(curr.task);
-          curr.occEnd = occEnd(curr.task);
-          changed = true;
-        }
-      }
-    }
   }
 
   // Generate updates
@@ -146,11 +139,11 @@ export function GanttChart() {
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [snapTarget, setSnapTarget] = useState<{ parentId: string; taskId: string; side: 'left' | 'right' } | null>(null);
   const [, setSnapLeftPct] = useState<number | null>(null);
-  const [dragOffsetOcc, setDragOffsetOcc] = useState(0);
+  const [, setDragOffsetOcc] = useState(0);
   const ganttRef = useRef<HTMLDivElement>(null);
 
   const periods = state.periods?.length ? state.periods : DEFAULT_PERIODS;
-  const periodLen = state.periodLengthHours || DEFAULT_PERIOD_LEN;
+  const periodLen = DEFAULT_PERIOD_LEN;
   const defaultLen = periodLen;
   const periodLengthTable = (state as any).period_length as Array<{ period: string; length_hrs: number }> | undefined;
   const periodLengths = Array.isArray(periodLengthTable) && periodLengthTable.length
@@ -163,6 +156,7 @@ export function GanttChart() {
   let __acc = 0;
   const periodOffsets: number[] = periodLengths.map((len) => { const off = __acc; __acc += len; return off; });
   const totalHours = Math.max(1, periodLengths.reduce((a, b) => a + b, 0));
+  state.totalHours = totalHours;
 
   const getTasksByParent = (parentId: string | null) => {
     return state.tasks
@@ -319,9 +313,7 @@ export function GanttChart() {
         if (match && draggedTask) {
           const target = state.tasks.find(t => t.id === match.taskId);
           const moving = state.tasks.find(t => t.id === draggedTask);
-          if (moving && isDisallowed(moving as Task, targetParentIdForSnap)) {
-            // skip snap on disallowed row
-          } else if (target && moving) {
+          if (target && moving) {
             if (match.side === 'left') {
             // find predecessor (occupied)
             const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
@@ -372,12 +364,25 @@ export function GanttChart() {
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
           const target = state.tasks.find(t => t.id === snapNow.taskId);
-          if (isDisallowed(currentTask, snapNow.parentId)) {
-            // skip disallowed parent assignment
-          } else if (target) {
+          if (target) {
             const desiredStart = snapNow.side === 'left'
               ? occStart(target) - effectiveDuration(currentTask, snapNow.parentId)
               : occEnd(target);
+            const desiredEnd = desiredStart + effectiveDuration(currentTask, snapNow.parentId);
+
+            // Prevent drop in invalid period
+            if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+              alert('Cannot place task in an invalid period.');
+              setDraggedTask(null);
+              setDropZone(null);
+              setDragPosition({ x: 0, y: 0 });
+              setSnapTarget(null);
+              setSnapLeftPct(null);
+              setDragOffsetOcc(0);
+              document.removeEventListener('mousemove', handleMouseMove);
+              document.removeEventListener('mouseup', handleMouseUp);
+              return;
+            }
 
             if (snapNow.parentId === currentTask.parentId) {
               const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
@@ -385,7 +390,6 @@ export function GanttChart() {
                 siblings,
                 currentTask.id,
                 desiredStart,
-                periodLen,
                 totalHours
               );
               for (const u of plan) {
@@ -413,7 +417,6 @@ export function GanttChart() {
                 newParentSiblings as Task[],
                 taskId,
                 desiredStart,
-                periodLen,
                 totalHours
               );
               for (const u of plan) {
@@ -471,13 +474,26 @@ export function GanttChart() {
                   const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
                   const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
                   const desiredStart = currentTask.startHour + (hoursDelta || 0);
-                  const desiredOccStart = desiredStart;
+                  const desiredEnd = desiredStart + effectiveDuration(currentTask);
+                  
+                  if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+                    alert('Cannot place task in an invalid period.');
+                    setDraggedTask(null);
+                    setDropZone(null);
+                    setDragPosition({ x: 0, y: 0 });
+                    setSnapTarget(null);
+                    setSnapLeftPct(null);
+                    setDragOffsetOcc(0);
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    return;
+                  }
 
                   // Compute target's new start to be on the chosen side of moved block
                   const targetNewStart =
                     bodyMatch.side === 'left'
-                      ? (desiredOccStart + effectiveDuration(currentTask, targetParentId))
-                      : (desiredOccStart - effectiveDuration(target, targetParentId));
+                      ? (desiredStart + effectiveDuration(currentTask, targetParentId))
+                      : (desiredStart - effectiveDuration(target, targetParentId));
 
                   if (targetParentId === currentTask.parentId) {
                     const sibs = state.tasks.filter(t => t.parentId === currentTask.parentId);
@@ -486,7 +502,6 @@ export function GanttChart() {
                       sibsAdj as Task[], 
                       currentTask.id, 
                       desiredStart, 
-                      periodLen, 
                       totalHours
                     );
                     for (const u of plan) {
@@ -498,6 +513,19 @@ export function GanttChart() {
                     }
                     taskUpdated = true;
                   } else {
+                    if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+                      alert('Cannot place task in an invalid period.');
+                      setDraggedTask(null);
+                      setDropZone(null);
+                      setDragPosition({ x: 0, y: 0 });
+                      setSnapTarget(null);
+                      setSnapLeftPct(null);
+                      setDragOffsetOcc(0);
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      return;
+                    }
+
                     if (isDisallowed(currentTask, targetParentId)) {
                       // skip disallowed assignment
                       taskUpdated = true;
@@ -510,7 +538,7 @@ export function GanttChart() {
                           if (t.id === target.id) return { ...t, startHour: targetNewStart };
                           return t;
                         });
-                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, periodLen, totalHours);
+                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, totalHours);
                       for (const u of plan) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
@@ -542,7 +570,6 @@ export function GanttChart() {
                   siblings,
                   currentTask.id,
                   desiredStart,
-                  periodLen,
                   totalHours
                 );
                 for (const u of plan) {
@@ -570,7 +597,6 @@ export function GanttChart() {
                   newParentSiblings as Task[],
                   taskId,
                   desiredStart,
-                  periodLen,
                   totalHours
                 );
                 for (const u of plan) {
@@ -597,9 +623,24 @@ export function GanttChart() {
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
             const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
             const proposedStart = currentTask.startHour + (hoursDelta || 0);
+            const proposedEnd = proposedStart + effectiveDuration(currentTask);
 
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const isParentChange = !!targetParentId && targetParentId !== currentTask.parentId;
+
+            // Prevent drop in invalid period for horizontal/vertical moves
+            if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets, periodLengths)) {
+              alert('Cannot place task in an invalid period.');
+              setDraggedTask(null);
+              setDropZone(null);
+              setDragPosition({ x: 0, y: 0 });
+              setSnapTarget(null);
+              setSnapLeftPct(null);
+              setDragOffsetOcc(0);
+              document.removeEventListener('mousemove', handleMouseMove);
+              document.removeEventListener('mouseup', handleMouseUp);
+              return;
+            }
 
             if (isParentChange && targetParentId && !isDisallowed(currentTask, targetParentId)) {
               // Move to new parent and reflow at proposedStart
@@ -613,7 +654,6 @@ export function GanttChart() {
                 newParentSiblings as Task[],
                 taskId,
                 proposedStart,
-                periodLen,
                 totalHours
               );
 
@@ -638,7 +678,6 @@ export function GanttChart() {
                 siblings,
                 currentTask.id,
                 proposedStart,
-                periodLen,
                 totalHours
               );
 
@@ -809,6 +848,41 @@ export function GanttChart() {
                     />
                   ))}
 
+                  {/* Invalid period overlays when task is selected or being dragged */}
+                  {(state.selectedTaskId || draggedTask) && (() => {
+                    const relevantTask = state.selectedTaskId
+                    ? state.tasks.find(t => t.id === state.selectedTaskId)
+                    : draggedTask
+                      ? state.tasks.find(t => t.id === draggedTask)
+                      : null;
+
+                    if (!relevantTask?.invalidPeriods?.length) return null;
+
+                    return relevantTask.invalidPeriods.map(invalidPeriod => {
+                      const periodIdx = periods.indexOf(invalidPeriod);
+                      if (periodIdx === -1) return null;
+
+                      const startPct = (periodOffsets[periodIdx] / totalHours) * 100;
+                      const widthPct = (periodLengths[periodIdx] / totalHours) * 100;
+
+                      return (
+                        <div
+                          key={`${parent.id}-invalid-${invalidPeriod}`}
+                          className="absolute top-0 bottom-0 pointer-events-none z-10"
+                          style={{
+                            left: `${startPct}%`,
+                            width: `${widthPct}%`,
+                            background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.2) 0px, rgba(239, 68, 68, 0.2) 8px, rgba(239, 68, 68, 0.1) 8px, rgba(239, 68, 68, 0.1) 16px)',
+                            border: '1px dashed rgba(239, 68, 68, 0.6)',
+                            borderTop: 'none',
+                            borderBottom: 'none'
+                          }}
+                        >
+                        </div>
+                      );
+                    });
+                  })()}
+
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
                   {(draggedTask) && getTasksByParent(parent.id).map(t => {
                     if (t.id !== state.draggingTaskId_gantt) {
@@ -871,8 +945,8 @@ export function GanttChart() {
                           pointerEvents: 'none'
                         }
                       : { cursor: 'grab' };
-
-                    const defaultDuration = task.durationHours;
+                      
+                    const effDur = effectiveDuration(task);
                     const disallowed = isDisallowed(task);
 
                     return (
@@ -890,7 +964,7 @@ export function GanttChart() {
                             className="absolute inset-y-0 left-0 pointer-events-none flex items-center justify-center"
                             title={`Setup: ${task.setup}h`}
                             style={{
-                              width: `${(((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`,
+                              width: `${((task.setup ?? 0) / effDur) * 100}%`,
                               backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.35) 75%)',
                               backgroundSize: '8px 8px',
                               backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
@@ -903,8 +977,8 @@ export function GanttChart() {
                         <div
                           className="flex items-center justify-center h-full relative"
                           style={{
-                            marginLeft: `${(((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`,
-                            width: `${100 - (((task.setup ?? 0) / ((task.setup ?? 0) + defaultDuration)) * 100)}%`
+                            marginLeft: `${(((task.setup ?? 0) / effDur) * 100)}%`,
+                            width: `${100 - (((task.setup ?? 0) / effDur) * 100)}%`
                           }}
                         >
                           <span className="truncate w-full text-center">{task.name}</span>
@@ -922,9 +996,18 @@ export function GanttChart() {
                   {dropZone?.parentId === parent.id && (() => {
                     const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
                     const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
+                    let invalidPeriod = false;
+                    if (moving && !dis) {
+                      // Predict drop position (use startHour or mouse position if available)
+                      const predictedStart = moving.startHour;
+                      const predictedEnd = predictedStart + effectiveDuration(moving, parent.id);
+                      invalidPeriod = isInInvalidPeriod(moving, predictedStart, predictedEnd, periods, periodOffsets, periodLengths);
+                    }
                     return (
-                      <div className={`absolute inset-0 ${dis ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
-                        <span className={`${dis ? 'text-red-700' : 'text-blue-700'} font-medium text-sm`}>{dis ? 'Not allowed in this team' : 'Drop here to assign'}</span>
+                      <div className={`absolute inset-0 ${dis || invalidPeriod ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
+                        <span className={`${dis || invalidPeriod ? 'text-red-700' : 'text-blue-700'} font-medium text-sm`}>
+                          {dis ? 'Not allowed in this team' : invalidPeriod ? 'Not allowed in this period' : 'Drop here to assign'}
+                        </span>
                       </div>
                     );
                   })()}

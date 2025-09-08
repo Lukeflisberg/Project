@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Package, AlertCircle, MapPin } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 export function UnassignedTasks() {
   const { state, dispatch } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [, setDragPosition] = useState({ x: 0, y: 0});
 
   const unassignedTasks = state.tasks.filter(task => task.parentId === null);
 
@@ -21,15 +20,13 @@ export function UnassignedTasks() {
     const taskElement = e.currentTarget as HTMLElement;
     const taskRect = taskElement.getBoundingClientRect();
 
-    // Calculate the intial offset between mouse and task's position
-    setDraggedTask(taskId);
-    const offset = { x: e.clientX, y: e.clientY }
+    // Calculate the initial offset between mouse and task's top-left corner
+    const offset = { 
+      x: e.clientX - taskRect.left, 
+      y: e.clientY - taskRect.top 
+    };
 
-    // set initial position aligned with cursor
-    setDragPosition({
-      x: 0, 
-      y: 0 
-    });
+    setDraggedTask(taskId);
 
     // Create a drag preview
     const dragPreview = taskElement.cloneNode(true) as HTMLElement;
@@ -37,86 +34,101 @@ export function UnassignedTasks() {
     dragPreview.style.top = `${taskRect.top}px`;
     dragPreview.style.left = `${taskRect.left}px`;
     dragPreview.style.width = `${taskRect.width}px`;
+    dragPreview.style.height = `${taskRect.height}px`;
     dragPreview.style.zIndex = '9999';
-    dragPreview.style.cursor = 'grabbing',
-    dragPreview.style.transition = 'none',
+    dragPreview.style.cursor = 'grabbing';
+    dragPreview.style.transition = 'none';
     dragPreview.style.pointerEvents = 'none';
     dragPreview.style.transform = 'rotate(2deg)';
+    dragPreview.style.opacity = '0.8';
+    dragPreview.id = 'drag-preview'; // Add ID for easier cleanup
     document.body.appendChild(dragPreview);
 
     // Set dragging state for global drop zone detection
     dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: taskId });
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Calculate how far the mouse has moved from the start position
-      const newDragPosition = { 
-        x: e.clientX - offset.x,
-        y: e.clientY - offset.y
-      };
-
-      console.log('moving');
-
-      setDragPosition(newDragPosition)
-
-      dragPreview.style.left = `${taskRect.left + newDragPosition.x}px`;
-      dragPreview.style.top = `${taskRect.top + newDragPosition.y}px`;
+      // Update drag preview position relative to cursor
+      dragPreview.style.left = `${e.clientX - offset.x}px`;
+      dragPreview.style.top = `${e.clientY - offset.y}px`;
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      // Undo the small rotation
-      dragPreview.style.transform = 'rotate(-2deg)';
-
-      const finalOffset = {
-        x: e.clientX - offset.x,
-        y: e.clientY - offset.y
-      };
-
-      // Clean up the drag preview
-      document.body.removeChild(dragPreview);
+      // Clean up the drag preview first
+      const existingPreview = document.getElementById('drag-preview');
+      if (existingPreview) {
+        document.body.removeChild(existingPreview);
+      }
 
       // Clear dragging state
       dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: null });
+      setDraggedTask(null);
 
       // Get the current task state (may have been updated during drag)
       const currentTask = state.tasks.find(t => t.id === taskId);
-      if (!currentTask) return;
+      if (!currentTask) {
+        cleanup();
+        return;
+      }
 
-      // Check for movement (small threshold to avoid accidental updates)
-      const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
-
-      if (moveDistance > 5){
-        // Check if droppped on Gantt chart
-        const GanttChart = document.querySelector('.gantt-chart-container');
-        if (GanttChart) {
-          const ganttRect = GanttChart.getBoundingClientRect();
-          if (e.clientX >= ganttRect.left && e.clientX <= ganttRect.right && e.clientY >= ganttRect.top && e.clientY <= ganttRect.bottom ) {
-
-            // Handle parent change
-            const parentRows = GanttChart.querySelectorAll('[data-parent-row]');
+      // Check if dropped on Gantt chart
+      const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
+      const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
       
-            for (let i = 0; i < parentRows.length; i++) {
-              const rect = parentRows[i].getBoundingClientRect();
-              if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                const parentId = parentRows[i].getAttribute('data-parent-id');
-                if (parentId) {
-                  dispatch({ 
-                    type: 'UPDATE_TASK_PARENT',
-                    taskId: taskId,
-                    newParentId: parentId
-                  });
+      if (ganttChart) {
+        // Find parent row under mouse
+        const parentRow = elementUnderMouse?.closest('[data-parent-row]');
+        
+        if (parentRow) {
+          const parentId = parentRow.getAttribute('data-parent-id');
+          
+          if (parentId) {
+            // Calculate startHour based on mouse X position
+            const timeline = ganttChart.querySelector('.timeline-content');
+            const timelineRect = timeline?.getBoundingClientRect();
+            
+            if (timelineRect) {
+              const totalHours = state.totalHours || 24; // Default fallback
+              const duration = currentTask.durationHours;
+              const mousePct = Math.max(0, Math.min(1, (e.clientX - timelineRect.left) / timelineRect.width));
+              let startHour = Math.round(mousePct * totalHours);
 
-                  break;
-                }
+              // Clamp startHour to valid range
+              startHour = Math.max(0, Math.min(totalHours - duration, startHour));
+
+              // Check for overlap with existing tasks
+              const siblings = state.tasks.filter(t => t.parentId === parentId && t.id !== taskId);
+              const overlaps = siblings.some(t => {
+                const tStart = t.startHour;
+                const tEnd = t.startHour + t.durationHours;
+                return startHour < tEnd && (startHour + duration) > tStart;
+              });
+
+              if (overlaps) {
+                alert('Cannot place task here: overlaps with another task.');
+              } else {
+                // Successfully assign the task
+                dispatch({ 
+                  type: 'UPDATE_TASK_PARENT',
+                  taskId: taskId,
+                  newParentId: parentId
+                });
+                dispatch({
+                  type: 'UPDATE_TASK_HOURS',
+                  taskId: taskId,
+                  startHour: startHour,
+                  durationHours: duration
+                });
               }
             }
           }
         }
       }
 
-      // Clean up
-      setDraggedTask(null);
-      setDragPosition({ x: 0, y: 0 });
+      cleanup();
+    };
 
+    const cleanup = () => {
       // Remove event listeners
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -127,8 +139,12 @@ export function UnassignedTasks() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleTaskClick = (taskId: string) => {
-    dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
+  const handleTaskClick = (e: React.MouseEvent, taskId: string) => {
+    // Only handle click if not dragging
+    if (!draggedTask) {
+      e.stopPropagation();
+      dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
+    }
   };
 
   return (
@@ -195,7 +211,7 @@ export function UnassignedTasks() {
                       isDragging ? 'opacity-50 rotate-2 scale-105' : ''
                     }`}
                     onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
-                    onClick={() => handleTaskClick(task.id)}
+                    onClick={(e) => handleTaskClick(e, task.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
@@ -203,12 +219,8 @@ export function UnassignedTasks() {
                           {task.name}
                         </h4>
                         <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
-                          <span className={`px-2 py-1 rounded-full font-medium ${
-                            task.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            task.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {task.status}
+                          <span className="px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-800">
+                            {/* You might want to add task type or status here */}
                           </span>
                           <div className="flex items-center gap-1">
                             <MapPin size={12} />
