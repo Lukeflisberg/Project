@@ -86,14 +86,15 @@ function planSequentialLayoutHours(
     changed = false;
     iterations++;
 
-    // Forward pass: push tasks to the right if they overlap with previous task
-    for (let i = 1; i < working.length; i++) {
-      const prev = working[i - 1];
+    // Backward pass: push tasks to the left if they overlap with next task
+    for (let i = working.length - 2; i >= 0; i--) {
       const curr = working[i];
+      const next = working[i + 1];
       
-      if (curr.occStart < prev.occEnd) {
-        // Overlap detected - push current task to the right
-        const newOccStart = prev.occEnd;
+      if (curr.occEnd > next.occStart) {
+        // Overlap detected - push current task to the left
+        const newOccEnd = next.occStart;
+        const newOccStart = newOccEnd - curr.duration;
         const newStart = newOccStart + curr.setup;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
@@ -106,15 +107,14 @@ function planSequentialLayoutHours(
       }
     }
 
-    // Backward pass: push tasks to the left if they overlap with next task
-    for (let i = working.length - 2; i >= 0; i--) {
+    // Forward pass: push tasks to the right if they overlap with previous task
+    for (let i = 1; i < working.length; i++) {
+      const prev = working[i - 1];
       const curr = working[i];
-      const next = working[i + 1];
       
-      if (curr.occEnd > next.occStart) {
-        // Overlap detected - push current task to the left
-        const newOccEnd = next.occStart;
-        const newOccStart = newOccEnd - curr.duration;
+      if (curr.occStart < prev.occEnd) {
+        // Overlap detected - push current task to the right
+        const newOccStart = prev.occEnd;
         const newStart = newOccStart + curr.setup;
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
