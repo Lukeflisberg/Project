@@ -5,10 +5,17 @@ import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 import { importTasksFromFile, processImportedTasks } from '../helper/fileReader';
 
-// Period config (fallbacks if not in state)
-const DEFAULT_PERIODS = ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'];
-const DEFAULT_PERIOD_LEN = 40; // hours
+// ----------------------
+// Period Configuration
+// ----------------------
+// Default periods and their lengths used for fallback and initial state.
+const PERIODS_FALLBACK = ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'];
+const PERIOD_LEN_FALLBACK = 40; 
 
+// ----------------------
+// Task Utility Functions
+// ----------------------
+// Calculate effective duration, check for disallowed assignments, and clamp values.
 const effectiveDuration = (t: Task, parentId?: string | null) => {
   const pid = parentId !== undefined ? parentId : t.parentId;
   const ov = pid ? t.specialTeams?.[pid] : undefined;
@@ -28,7 +35,10 @@ const setupOf = (t: Task) => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
-// InvalidPeriod helpers
+// ----------------------
+// Invalid Period Helpers
+// ----------------------
+// Checks if a task's scheduled time overlaps with any invalid period.
 function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: string[], periodOffsets: number[], periodLengths: number[]): boolean {
   if (!task.invalidPeriods || !task.invalidPeriods.length) return false;
   for (const period of task.invalidPeriods) {
@@ -45,6 +55,9 @@ function isInInvalidPeriod(task: Task, startHour: number, endHour: number, perio
 const occStart = (t: Task) => t.startHour;
 const occEnd = (t: Task) => endHour(t);
 
+// ----------------------
+// Sequential Layout Planner
+// ----------------------
 // Returns planned (startHour, durationHours) for each task so none overlap, after a move.
 function planSequentialLayoutHours(
   siblings: Task[],
@@ -52,7 +65,7 @@ function planSequentialLayoutHours(
   movedNewStartHour: number,
   maxHour: number
 ): Array<{ id: string; startHour: number; durationHours: number }> {
-  // Local copy
+  // Local copy of siblings
   const local = siblings.map(t => ({ ...t }));
 
   // Apply moved task's new start locally first (no snapping)
@@ -61,7 +74,7 @@ function planSequentialLayoutHours(
   const movedDur = effectiveDuration(moved, moved.parentId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
-  // Get other tasks and sort by their current occupied start positions
+  // Sort other tasks by their current occupied start positions
   const others = local.filter(t => t.id !== movedTaskId)
                       .sort((a, b) => occStart(a) - occStart(b));
 
@@ -79,7 +92,7 @@ function planSequentialLayoutHours(
     ...others.slice(insertIndex)
   ];
 
-  // Sweep both forward and backwards  ensuring no overlaps, keeping moved at or as close as possible to its desired position
+  // Sweep both forward and backwards ensuring no overlaps, keeping moved at or as close as possible to its desired position
   const updates: Array<{ id: string; startHour: number; durationHours: number }> = [];
   
   // Create working array with current positions
@@ -120,7 +133,7 @@ function planSequentialLayoutHours(
     }
   }
 
-  // Generate updates
+  // Generate updates for all tasks
   for (const item of working) {
     updates.push({
       id: item.task.id,
@@ -132,6 +145,10 @@ function planSequentialLayoutHours(
   return updates;
 }
 
+// ----------------------
+// Main GanttChart Component
+// ----------------------
+// Renders the timeline, team rows, tasks, drag-and-drop logic, and import functionality.
 export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
@@ -142,9 +159,9 @@ export function GanttChart() {
   const [, setDragOffsetOcc] = useState(0);
   const ganttRef = useRef<HTMLDivElement>(null);
 
-  const periods = state.periods?.length ? state.periods : DEFAULT_PERIODS;
-  const periodLen = DEFAULT_PERIOD_LEN;
-  const defaultLen = periodLen;
+  // Calculate periods, offsets, and total hours for the timeline
+  const periods = state.periods?.length ? state.periods : PERIODS_FALLBACK;
+  const defaultLen = PERIOD_LEN_FALLBACK;
   const periodLengthTable = (state as any).period_length as Array<{ period: string; length_hrs: number }> | undefined;
   const periodLengths = Array.isArray(periodLengthTable) && periodLengthTable.length
     ? periods.map((name) => {
@@ -156,8 +173,9 @@ export function GanttChart() {
   let __acc = 0;
   const periodOffsets: number[] = periodLengths.map((len) => { const off = __acc; __acc += len; return off; });
   const totalHours = Math.max(1, periodLengths.reduce((a, b) => a + b, 0));
-  state.totalHours = totalHours;
+  state.totalHours = totalHours; // Store in global state for access elsewhere
 
+  // Get all tasks for a given parent/team, sorted by start time
   const getTasksByParent = (parentId: string | null) => {
     return state.tasks
       .filter(task => task.parentId === parentId)
@@ -173,12 +191,14 @@ export function GanttChart() {
       });
   };
 
+  // Calculate the left position and width of a task block in the timeline
   const calculateTaskPosition = (task: Task) => {
     const left = (Math.max(0, occStart(task)) / totalHours) * 100;
     const width = ((effectiveDuration(task)) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
   };
 
+  // Find which parent/team row the mouse is currently over
   const getParentFromMousePosition = (mouseY: number): string | null => {
     if (!ganttRef.current) return null;
     const parentRows = ganttRef.current.querySelectorAll('[data-parent-row]');
@@ -192,7 +212,7 @@ export function GanttChart() {
     return null;
   };
 
-  // Compute snap target at a point (drop-time priority)
+  // Snap detection: checks if the pointer is near the edge of any task for snapping
   const getSnapAt = (
     clientX: number,
     clientY: number,
@@ -223,7 +243,7 @@ export function GanttChart() {
       const inRightZone = pointerX >= rightPx - zoneWidthPx / 2 && pointerX <= rightPx + zoneWidthPx / 2;
 
       if (inLeftZone) {
-        // capacity check (left)
+        // Check if there is enough space before the target for snapping
         const moving = state.tasks.find(x => x.id === excludeTaskId);
         if (!moving) continue;
         const preds = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occEnd(x) <= occStart(t));
@@ -233,7 +253,7 @@ export function GanttChart() {
         if ((desiredStart) >= earliestOccStart) return { parentId, taskId: t.id, side: 'left' };
       }
       if (inRightZone) {
-        // capacity check (right)
+        // Check if there is enough space after the target for snapping
         const moving = state.tasks.find(x => x.id === excludeTaskId);
         if (!moving) continue;
         const succs = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
@@ -243,12 +263,12 @@ export function GanttChart() {
         const latestOccEnd = successor ? occStart(successor) : totalHours;
         if (desiredEnd <= latestOccEnd) return { parentId, taskId: t.id, side: 'right' };
       }
-
-          }
+    }
 
     return null;
   };
 
+  // Handles mouse down event for dragging a task block
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -275,6 +295,7 @@ export function GanttChart() {
       setDragOffsetOcc(0);
     }
 
+    // Mouse move handler: updates drag position and snap targets
     const handleMouseMove = (evt: MouseEvent) => {
       const newDragPosition = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
       setDragPosition(newDragPosition);
@@ -310,36 +331,38 @@ export function GanttChart() {
           }
         }
 
+        // Set snap target if a valid match is found
         if (match && draggedTask) {
           const target = state.tasks.find(t => t.id === match.taskId);
           const moving = state.tasks.find(t => t.id === draggedTask);
           if (target && moving) {
             if (match.side === 'left') {
-            // find predecessor (occupied)
-            const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
-            const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
-            const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
-            const desiredStart = occStart(target) - effectiveDuration(moving, targetParentIdForSnap);
-            if ((desiredStart) >= earliestOccStart) {
-            setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
-            setSnapLeftPct(match.pct);
-            }
+              // Check predecessor for left snap
+              const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
+              const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
+              const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
+              const desiredStart = occStart(target) - effectiveDuration(moving, targetParentIdForSnap);
+              if ((desiredStart) >= earliestOccStart) {
+                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapLeftPct(match.pct);
+              }
             } else {
-            // right side: ensure space before successor (occupied)
-            const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
-            const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
-            const desiredStart = occEnd(target);
-            const desiredEnd = desiredStart + effectiveDuration(moving, targetParentIdForSnap);
-            const latestOccEnd = successor ? occStart(successor) : totalHours;
-            if (desiredEnd <= latestOccEnd) {
-            setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
-            setSnapLeftPct(match.pct);
-            }
+            // Check successor for right snap
+              const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
+              const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
+              const desiredStart = occEnd(target);
+              const desiredEnd = desiredStart + effectiveDuration(moving, targetParentIdForSnap);
+              const latestOccEnd = successor ? occStart(successor) : totalHours;
+              if (desiredEnd <= latestOccEnd) {
+                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapLeftPct(match.pct);
+              }
             }
           }
         }
       }
 
+      // Highlight drop zone if dragging vertically to a new parent/team
       const targetParentId = getParentFromMousePosition(evt.clientY);
       if (targetParentId && targetParentId !== originalTask.parentId) {
         setDropZone({ parentId: targetParentId });
@@ -348,6 +371,7 @@ export function GanttChart() {
       }
     };
 
+    // Mouse up handler: handles drop logic, updates state, and cleans up
     const handleMouseUp = (evt: MouseEvent) => {
       const finalOffset = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
       dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: null });
@@ -449,7 +473,7 @@ export function GanttChart() {
         }
 
         if (!taskUpdated) {
-          // 2) Direct drop onto task body 
+          // 2) Direct drop onto task body
           {
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
@@ -702,7 +726,7 @@ export function GanttChart() {
         dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: 'any' });
       }
 
-      // Cleanup
+      // Cleanup drag state and listeners
       setDraggedTask(null);
       setDropZone(null);
       setDragPosition({ x: 0, y: 0 });
@@ -714,16 +738,21 @@ export function GanttChart() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
+    // Add global mouse event listeners for drag
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  // ----------------------
+  // Render Gantt Chart UI
+  // ----------------------
   return (
     <div ref={ganttRef} className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
+      {/* Header: Title and Import Button */}
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24}/>
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
-
+        {/* Import tasks button */}
         <div className="ml-auto flex items-center gap-4">
           {/* Import tasks */}
           <div className="relative">
@@ -777,14 +806,15 @@ export function GanttChart() {
           </div>
         </div>
       </div>
-
+      
+      {/* Instructions */}
       <div className="mb-4 text-xs text-gray-500 text-center">
         Drag tasks horizontally to adjust timing, vertically to change teams
       </div>
 
       <>
         <div className="flex h-full">
-          {/* Left: Teams */}
+          {/* Left: Teams List */}
           <div className="w-48 flex-shrink-0">
             <div className="h-12 flex items-center font-medium text-gray-700 border-b border-gray-200">
               Teams
@@ -813,7 +843,7 @@ export function GanttChart() {
           {/* Right: Timeline */}
           <div className="flex-1 overflow-x-auto">
             <div className="timeline-content relative">
-              {/* Header scale by periods */}
+              {/* Timeline header: periods */}
               <div className="h-12 border-b border-gray-200 relative">
                 {periods.map((p, idx) => (
                   <div
@@ -829,7 +859,7 @@ export function GanttChart() {
                 ))}
               </div>
 
-              {/* Rows */}
+              {/* Team rows and tasks */}
               {state.parents.map(parent => (
                 <div
                   key={parent.id}

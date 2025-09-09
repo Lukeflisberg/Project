@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { AppState, Task, Parent } from '../types';
 
-// Actions for hour-based scheduling
+// ----------------------
+// Action Types for State
+// ----------------------
+// These actions cover all interactions with tasks, parents, periods, and drag-and-drop.
 type AppAction =
   | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
@@ -15,13 +18,23 @@ type AppAction =
   | { type: 'ADD_PARENTS'; parents: Parent[] }
   | { type: 'IMPORT_TASKS_WITH_CONFLICTS'; tasks: Task[]; conflictedTasks: Task[]; newParents: Parent[] };
 
+
+// ----------------------
+// Default Data
+// ----------------------
+// Default periods and their lengths for fallback and initial state.
 const defaultPeriods = [
   'P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'
 ];
 const defaultPeriodLengthTable = defaultPeriods.map(p => ({ period: p, length_hrs: 40 }));
 
+// ----------------------
+// Initial Application State
+// ----------------------
+// Contains sample tasks, parents, periods, and drag/drop state.
 const initialState: AppState = {
   tasks: [
+    // Example tasks with various properties
     {
       id: 'T01',
       name: 'T01',
@@ -91,6 +104,7 @@ const initialState: AppState = {
     }
   ],
   parents: [
+    // Example teams/parents
     { id: 'R01', name: 'R01', color: '#10B981' },
     { id: 'R02', name: 'R02', color: '#3B82F6' },
     { id: 'R03', name: 'R03', color: '#8B5CF6' }
@@ -104,11 +118,19 @@ const initialState: AppState = {
   period_lengths: defaultPeriodLengthTable,
 };
 
+// ----------------------
+// Context Setup
+// ----------------------
+// Provides state and dispatch to all components in the app.
 const AppContext = createContext<{
   state: AppState;
   dispatch: React.Dispatch<AppAction>;
 } | null>(null);
 
+// ----------------------
+// Reducer Function
+// ----------------------
+// Handles all state transitions based on dispatched actions.
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_SELECTED_TASK':
@@ -194,6 +216,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
+// ----------------------
+// AppProvider Component
+// ----------------------
+// Wraps the app and provides state/context to all children.
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
@@ -204,6 +230,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// ----------------------
+// useApp Custom Hook
+// ----------------------
+// Allows easy access to app state and dispatch in any component.
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {

@@ -1,7 +1,7 @@
 export interface Task {
   id: string;
   name: string;
-  parentId: string | null; // null means unassigned
+  parentId: string | null; 
   startHour: number;       
   durationHours: number;   
   setup: number;        

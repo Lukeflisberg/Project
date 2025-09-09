@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Package, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
+// UnassignedTasks Component: displays tasks not assigned to any team and handles drag-and-drop assignment
 export function UnassignedTasks() {
   const { state, dispatch } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
 
+  // Filter tasks not assigned too a team
   const unassignedTasks = state.tasks.filter(task => task.parentId === null);
 
+  // Handles mouse down event to start dragging a task
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -16,11 +19,11 @@ export function UnassignedTasks() {
     const task = state.tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    // Create a visual clone of the task for dragging
+    // Get the DOM element and its position/size
     const taskElement = e.currentTarget as HTMLElement;
     const taskRect = taskElement.getBoundingClientRect();
 
-    // Calculate the initial offset between mouse and task's top-left corner
+    // Offset so mouse is at the center of the block during drag
     const offset = { 
       x: e.clientX - taskRect.left, 
       y: e.clientY - taskRect.top 
@@ -28,7 +31,7 @@ export function UnassignedTasks() {
 
     setDraggedTask(taskId);
 
-    // Create a drag preview
+    // Create a visual clone of the task for dragging feedback
     const dragPreview = taskElement.cloneNode(true) as HTMLElement;
     dragPreview.style.position = 'fixed';
     dragPreview.style.top = `${taskRect.top}px`;
@@ -41,20 +44,21 @@ export function UnassignedTasks() {
     dragPreview.style.pointerEvents = 'none';
     dragPreview.style.transform = 'rotate(2deg)';
     dragPreview.style.opacity = '0.8';
-    dragPreview.id = 'drag-preview'; // Add ID for easier cleanup
+    dragPreview.id = 'drag-preview'; 
     document.body.appendChild(dragPreview);
 
-    // Set dragging state for global drop zone detection
+    // Notify global state that a drag is in progress
     dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: taskId });
 
+    // Mouse move handler: update drag preview position so mouse stays centered
     const handleMouseMove = (e: MouseEvent) => {
-      // Update drag preview position relative to cursor
       dragPreview.style.left = `${e.clientX - offset.x}px`;
       dragPreview.style.top = `${e.clientY - offset.y}px`;
     };
 
+    // Mouse up handler: drop logic and cleanup
     const handleMouseUp = (e: MouseEvent) => {
-      // Clean up the drag preview first
+      // Remove drag preview from DOM
       const existingPreview = document.getElementById('drag-preview');
       if (existingPreview) {
         document.body.removeChild(existingPreview);
@@ -64,39 +68,41 @@ export function UnassignedTasks() {
       dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: null });
       setDraggedTask(null);
 
-      // Get the current task state (may have been updated during drag)
+      // Get the latest task state
       const currentTask = state.tasks.find(t => t.id === taskId);
       if (!currentTask) {
         cleanup();
         return;
       }
 
-      // Check if dropped on Gantt chart
+      // Check if dropped on the Gantt chart
       const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
       const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
       
       if (ganttChart) {
-        // Find parent row under mouse
+        // Find which team row the mouse is over
         const parentRow = elementUnderMouse?.closest('[data-parent-row]');
         
         if (parentRow) {
           const parentId = parentRow.getAttribute('data-parent-id');
           
           if (parentId) {
-            // Calculate startHour based on mouse X position
+            // Calculate startHour based on mouse X position in the timeline
             const timeline = ganttChart.querySelector('.timeline-content');
             const timelineRect = timeline?.getBoundingClientRect();
             
             if (timelineRect) {
-              const totalHours = state.totalHours || 24; // Default fallback
+              const totalHours = state.totalHours || 24; // Use state or fallback
               const duration = currentTask.durationHours;
+
+              // Mouse percentage across the timeline
               const mousePct = Math.max(0, Math.min(1, (e.clientX - timelineRect.left) / timelineRect.width));
               let startHour = Math.round(mousePct * totalHours);
 
-              // Clamp startHour to valid range
+              // Clamp startHour so task fits in timeline
               startHour = Math.max(0, Math.min(totalHours - duration, startHour));
 
-              // Check for overlap with existing tasks
+              // Check for overlap with other tasks in the same team
               const siblings = state.tasks.filter(t => t.parentId === parentId && t.id !== taskId);
               const overlaps = siblings.some(t => {
                 const tStart = t.startHour;
@@ -105,9 +111,10 @@ export function UnassignedTasks() {
               });
 
               if (overlaps) {
+                // Block drop if overlapping
                 alert('Cannot place task here: overlaps with another task.');
               } else {
-                // Successfully assign the task
+                // Assign task to team and set start hour
                 dispatch({ 
                   type: 'UPDATE_TASK_PARENT',
                   taskId: taskId,
@@ -128,19 +135,19 @@ export function UnassignedTasks() {
       cleanup();
     };
 
+    // Cleanup function to remove event listeners
     const cleanup = () => {
-      // Remove event listeners
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
-    // Add global mouse event listeners
+    // Add global mouse event listeners for drag
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
   const handleTaskClick = (e: React.MouseEvent, taskId: string) => {
-    // Only handle click if not dragging
+    // Handles click to select a task (if not dragging)
     if (!draggedTask) {
       e.stopPropagation();
       dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
@@ -154,7 +161,7 @@ export function UnassignedTasks() {
         : ''
     }`}>
 
-      {/* Header */}
+      {/* Header: shows title, count, and expand/collapse */}
       <div 
         className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
           draggedTask || state.draggingTaskId_gantt
@@ -173,7 +180,7 @@ export function UnassignedTasks() {
         {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </div>
 
-      {/* Drop Zone Indicator for assigned tasks being dragged from Gantt */}
+      {/* Drop zone indicator when dragging from Gantt */}
       {state.draggingTaskId_gantt && (
         <div className="mx-4 mb-4 p-3 border-2 border-dashed border-orange-400 bg-orange-50 rounded-lg text-center">
           <div className="flex items-center justify-center gap-2 text-orange-700">
@@ -186,7 +193,7 @@ export function UnassignedTasks() {
         </div>
       )}
 
-      {/* Tasks List */}
+      {/* List of unassigned tasks */}
       {isExpanded && (
         <div className="max-h-96 overflow-y-auto">
           {unassignedTasks.length === 0 ? (
@@ -219,9 +226,6 @@ export function UnassignedTasks() {
                           {task.name}
                         </h4>
                         <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
-                          <span className="px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-800">
-                            {/* You might want to add task type or status here */}
-                          </span>
                           <div className="flex items-center gap-1">
                             <MapPin size={12} />
                             {task.location.lat.toFixed(2)}, {task.location.lon.toFixed(2)}
@@ -236,7 +240,7 @@ export function UnassignedTasks() {
                     </div>
                     
                     <div className="mt-2 text-xs text-gray-500">
-                      Start: {task.startHour}h • Duration: {task.durationHours}h
+                      Start: {task.startHour}h • Duration: {task.durationHours}h • Distance: n/a • Cost: n/a 
                     </div>
                   </div>
                 );
@@ -246,7 +250,7 @@ export function UnassignedTasks() {
         </div>
       )}
 
-      {/* Drop Instructions */}
+      {/* Instructions for drag-and-drop */}
       {isExpanded && unassignedTasks.length > 0 && (
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
           <p className="text-xs text-gray-600 text-center">
