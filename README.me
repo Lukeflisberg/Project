@@ -1,15 +1,19 @@
 📌 To-Do List
- > [ ] Decrease size of groups widget
- > [ ] Fix drag drop reordering from right to left
- > [ ] For all reordering, if it pushing a block out of bounds(-startHours), unassign the block
- > [x] ~Implement visual for disallowed hours
- > [ ] ~Fix an issue where overlapping is allowed when dragging a block from unassigned to assigned
- > [ ] Data Entry:
-    > [x] Periods: length of each period, adjust to read per from a list
-    > [x] Durations: The time it takes for team R to execute job T(X means that the team cannot execute the job)
-    > [ ] Production: Quantity of assortment G produced when job T is executed
-    > [ ] Productivity: Productivity factor when job T is done in time period P (X means not possible)
-    > [ ] Demand: Demand of different assortments G in different periods P
-    > [ ] Distances: Distance between two jobs T
-    > [ ] Format: Site;team;Start;Setup;Duration;Distance
-            e.g.  T03;R01;40;0;10;15
+task overlapping on import
+> create each task individualy instead of bulk
+> use current forward sort logic for it,
+  aka push the block forward until its valid, if its out of bound, unassign it, also, involve invalid periods 
+~remove push task too left~
+stop jumping for Zoomin on map and placing tasks
+
+CURRENT:
+send pappa indata
+~no lines and numbers for unassigned~
+~remove unassigned toggle and make it a toggle for each parent~
+drag and drop tasks from the map onto the timeline
+~decrease height of timeline entries~
+~setup is the time taken for the prev. completion to the start of the current task~
+
+FUTURE:
+> setup time is based on the distance between tasks
+> Production volume and demand volume + graph

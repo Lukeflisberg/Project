@@ -12,7 +12,6 @@ export interface Task {
     lon: number;
   };
   
-  //TODO
   distance?: number, 
   dependencies?: string[]; 
 }
@@ -21,6 +20,11 @@ export interface Parent {
   id: string;
   name: string;
   color: string;
+}
+
+export interface PeriodLength {
+  period: string;
+  length_hrs: number;
 }
 
 export interface DragData {
@@ -32,13 +36,13 @@ export interface DragData {
 export interface AppState {
   tasks: Task[];
   parents: Parent[];
-  selectedTaskId: string | null;
-  selectedParentId: string | null;
-  draggingTaskId_unassigned: string | null;
-  draggingTaskId_gantt: string | null;
-  totalHours: number | null;
-
-  // Period metadata
   periods: string[];           
   period_lengths: Array<{ period: string; length_hrs: number }>; 
+
+  selectedTaskId: string | null;
+  selectedParentId: string | null;
+  toggledNull: boolean;
+  draggingTaskId_unassigned: string | null;
+  draggingTaskId_gantt: string | null;
+  totalHours: number | null; 
 }

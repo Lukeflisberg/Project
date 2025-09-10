@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Parent } from '../types';
+import { AppState, Task, Parent, PeriodLength } from '../types';
 
 // ----------------------
 // Action Types for State
@@ -8,114 +8,31 @@ import { AppState, Task, Parent } from '../types';
 type AppAction =
   | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
+  | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; durationHours: number }
   | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
   | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
-  | { type: 'SET_PERIOD_LENGTHS'; period_length: Array<{ period: string; length_hrs: number }>}
+  | { type: 'SET_PERIOD_LENGTHS'; period_lengths: Array<PeriodLength>}
   | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'IMPORT_TASKS'; tasks: Task[] }
   | { type: 'ADD_PARENTS'; parents: Parent[] }
-  | { type: 'IMPORT_TASKS_WITH_CONFLICTS'; tasks: Task[]; conflictedTasks: Task[]; newParents: Parent[] };
-
-
-// ----------------------
-// Default Data
-// ----------------------
-// Default periods and their lengths for fallback and initial state.
-const defaultPeriods = [
-  'P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'
-];
-const defaultPeriodLengthTable = defaultPeriods.map(p => ({ period: p, length_hrs: 40 }));
+  | { type: 'SET_PERIODS'; periods: string[] };
 
 // ----------------------
 // Initial Application State
 // ----------------------
 // Contains sample tasks, parents, periods, and drag/drop state.
 const initialState: AppState = {
-  tasks: [
-    // Example tasks with various properties
-    {
-      id: 'T01',
-      name: 'T01',
-      parentId: 'R01',
-      startHour: 40,
-      durationHours: 80,
-      setup: 20,
-      location: { lat: 45.5017, lon: -73.5673 },
-      specialTeams: {'R03': 40, 'R02': 'x'},
-      invalidPeriods: ['P10', 'P11', 'P12'],
-    },
-    {
-      id: 'T02',
-      name: 'T02',
-      parentId: 'R01',
-      startHour: 160,
-      durationHours: 40,
-      setup: 40,
-      location: { lat: 45.5048, lon: -73.5698 },
-      specialTeams: {'R03': 60}
-    },
-    {
-      id: 'T03',
-      name: 'T03',
-      parentId: 'R02',
-      startHour: 40,
-      durationHours: 120,
-      setup: 20,
-      location: { lat: 45.4995, lon: -73.5635 },
-    },
-    {
-      id: 'T04',
-      name: 'T04',
-      parentId: 'R02',
-      startHour: 200,
-      durationHours: 40,
-      setup: 0,
-      location: { lat: 45.5025, lon: -73.5711 },
-    },
-    {
-      id: 'T05',
-      name: 'T05',
-      parentId: 'R03',
-      startHour: 160,
-      durationHours: 120,
-      setup: 0,
-      location: { lat: 45.4978, lon: -73.5592 },
-      invalidPeriods: ['P1', 'P2', 'P3', 'P4'],
-    },
-    {
-      id: 'T06',
-      name: 'T06',
-      parentId: null,
-      startHour: 240,
-      durationHours: 40,
-      setup: 0,
-      location: { lat: 45.5089, lon: -73.5744 },
-    },
-    {
-      id: 'T07',
-      name: 'T07',
-      parentId: null,
-      startHour: 280,
-      durationHours: 40,
-      setup: 0,
-      location: { lat: 45.4956, lon: -73.5531 },
-    }
-  ],
-  parents: [
-    // Example teams/parents
-    { id: 'R01', name: 'R01', color: '#10B981' },
-    { id: 'R02', name: 'R02', color: '#3B82F6' },
-    { id: 'R03', name: 'R03', color: '#8B5CF6' }
-  ],
+  tasks: [],
+  parents: [],
   totalHours: null,
   selectedTaskId: null,
   selectedParentId: 'all',
+  toggledNull: false,
   draggingTaskId_unassigned: null,
   draggingTaskId_gantt: null,
-  periods: defaultPeriods,
-  period_lengths: defaultPeriodLengthTable,
+  periods: [],
+  period_lengths: [],
 };
 
 // ----------------------
@@ -139,6 +56,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_SELECTED_PARENT':
       return { ...state, selectedParentId: action.parentId };
 
+    case 'TOGGLE_NULL':
+      return { ...state, toggledNull: action.toggledNull };
+
     case 'UPDATE_TASK_PARENT': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.taskId
@@ -150,7 +70,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         tasks: updatedTasks,
         selectedTaskId: action.newParentId === null ? null : state.selectedTaskId
       };
-    }
+    };
 
     case 'UPDATE_TASK_HOURS': {
       const updatedTasks = state.tasks.map(task =>
@@ -159,57 +79,25 @@ function appReducer(state: AppState, action: AppAction): AppState {
           : task
       );
       return { ...state, tasks: updatedTasks };
-    }
+    };
 
-    case 'SET_DRAGGING_UNASSIGNED_TASK': {
+    case 'SET_DRAGGING_UNASSIGNED_TASK': 
       return { ...state, draggingTaskId_unassigned: action.taskId };
-    }
 
-    case 'SET_DRAGGING_GANTT_TASK': {
+    case 'SET_DRAGGING_GANTT_TASK': 
       return { ...state, draggingTaskId_gantt: action.taskId };
-    }
 
-    case 'SET_PERIOD_LENGTHS': {
-      return { ...state, period_lengths: action.period_length };
-    }
+    case 'SET_PERIOD_LENGTHS': 
+      return { ...state, period_lengths: action.period_lengths };
 
     case 'ADD_TASKS':
       return { ...state, tasks: [...state.tasks, ...action.tasks] };
-
-    case 'IMPORT_TASKS': {
-      const existingIds = new Set(state.tasks.map(t => t.id));
-      const newTasks = action.tasks.map((task) => {
-        let newId = task.id;
-        let counter = 1;
-        while (existingIds.has(newId)) {
-          newId = `${task.id}_${counter}`;
-          counter++;
-        }
-        existingIds.add(newId);
-        return { ...task, id: newId };
-      });
-      return { ...state, tasks: [...state.tasks, ...newTasks] };
-    }
-
-    case 'ADD_PARENTS':
+    
+      case 'ADD_PARENTS':
       return { ...state, parents: [...state.parents, ...action.parents] };
 
-    case 'IMPORT_TASKS_WITH_CONFLICTS': {
-      const updatedParents = [...state.parents, ...action.newParents];
-      const existingIds = new Set(state.tasks.map(t => t.id));
-      const allNewTasks = [...action.tasks, ...action.conflictedTasks];
-      const processedTasks = allNewTasks.map((task) => {
-        let newId = task.id;
-        let counter = 1;
-        while (existingIds.has(newId)) {
-          newId = `${task.id}_${counter}`;
-          counter++;
-        }
-        existingIds.add(newId);
-        return { ...task, id: newId };
-      });
-      return { ...state, tasks: [...state.tasks, ...processedTasks], parents: updatedParents };
-    }
+    case 'SET_PERIODS':
+      return { ...state, periods: action.periods };
 
     default:
       return state;

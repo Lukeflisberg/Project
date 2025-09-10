@@ -5,7 +5,10 @@ import { Map as MapIcon, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default markers in react-leaflet
+// ---------------------------------------------
+// Leaflet Marker Icon Fix
+// ---------------------------------------------
+// Ensures that the default Leaflet marker icons are loaded correctly
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -13,6 +16,11 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+// ---------------------------------------------
+// DeselectOnMapClick Component
+// ---------------------------------------------
+// Listens for map click events and calls the provided onDeselect callback.
+// Used to clear the selected task when clicking on the map background.
 function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
     click() {
@@ -22,10 +30,19 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   return null;
 }
 
+// ---------------------------------------------
+// WorldMap Component
+// ---------------------------------------------
+// Displays a map with task markers, popups, and connection lines.
+// Allows filtering by team/parent and selecting tasks by clicking markers.
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
-  // Custom marker with optional number (replaces the white dot)
+  // ---------------------------------------------
+  // createCustomIcon
+  // ---------------------------------------------
+  // Generates a custom circular marker icon with color, selection state, and optional index number.
+  // Used for both plain and numbered markers.
   const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
     const size = isSelected ? 35 : 25;
 
@@ -57,15 +74,36 @@ export function WorldMap() {
     });
   };
 
+  // ---------------------------------------------
+  // getVisibleTasks
+  // ---------------------------------------------
+  // Returns the list of tasks to display based on the current parent/team filter.
+  // If "all" is selected, returns all tasks; otherwise, filters by parentId.
   const getVisibleTasks = () => {
-    if (state.selectedParentId === 'all') return state.tasks;
-    return state.tasks.filter(task => task.parentId === state.selectedParentId);
+    // If "all" is selected, show all assigned tasks and unassigned if toggledNull is true
+    if (state.selectedParentId === 'all') {
+      return state.tasks.filter(task =>
+        (task.parentId !== null) ||
+        (state.toggledNull && task.parentId === null)
+      );
+    }
+    // If a specific team is selected, show its tasks and unassigned if toggledNull is true
+    return state.tasks.filter(task =>
+      (task.parentId === state.selectedParentId) ||
+      (state.toggledNull && task.parentId === null)
+    );
   };
 
+  // ---------------------------------------------
+  // getTaskConnectionLines
+  // ---------------------------------------------
+  // For filtered views (single team), returns an array of line objects connecting tasks in chronological order.
+  // Each line includes positions, color, and style for rendering as a PolyLine.
   const getTaskConnectionLines = () => {
-    if (state.selectedParentId === 'all') return [];
+    if (state.selectedParentId === 'all' || state.selectedParentId === null) return [];
 
-    const visibleTasks = getVisibleTasks();
+    // Only connect assigned tasks
+    const visibleTasks = getVisibleTasks().filter(task => task.parentId === state.selectedParentId);
     const sortedTasks = [...visibleTasks].sort((a, b) => a.startHour - b.startHour);
 
     const lines = [];
@@ -88,16 +126,28 @@ export function WorldMap() {
     return lines;
   };
 
+  // ---------------------------------------------
+  // getParentColor
+  // ---------------------------------------------
+  // Returns the color associated with a parent/team, or gray if unassigned.
   const getParentColor = (parentId: string | null) => {
     if (!parentId) return '#6B7280'; // Gray for unassigned
     const parent = state.parents.find(p => p.id === parentId);
     return parent?.color || '#6B7280';
   };
 
+  // ---------------------------------------------
+  // handleMarkerClick
+  // ---------------------------------------------
+  // Sets the selected task in the global state when a marker is clicked.
   const handleMarkerClick = (taskId: string) => {
     dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
   };
 
+  // ---------------------------------------------
+  // handleParentToggle && handleNullToggle
+  // ---------------------------------------------
+  // Toggles the parent/team/null filter. If already selected, switches to "all".
   const handleParentToggle = (parentId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_PARENT',
@@ -105,6 +155,18 @@ export function WorldMap() {
     });
   };
 
+  const handleNullToggle = () => {
+    dispatch({
+      type: 'TOGGLE_NULL',
+      toggledNull: state.toggledNull ? false : true
+    })
+  }
+
+  // ---------------------------------------------
+  // MapController Component
+  // ---------------------------------------------
+  // Handles map fly-to behavior when a task is selected.
+  // Also toggles parent filter if "any" is selected.
   function MapController() {
     const { state } = useApp();
     const map = useMap();
@@ -123,7 +185,11 @@ export function WorldMap() {
     return null;
   }
 
-  // Custom PolyLine with cleanup
+  // ---------------------------------------------
+  // PolyLine Component
+  // ---------------------------------------------
+  // Renders a dashed line between two task locations.
+  // Cleans up the line when the component unmounts or updates.
   const PolyLine = ({ positions, color, weight, opacity }: any) => {
     const map = useMap();
 
@@ -145,16 +211,23 @@ export function WorldMap() {
     return null;
   };
 
+  // ---------------------------------------------
+  // Render
+  // ---------------------------------------------
+  // Main render block for the WorldMap component.
+  // Includes header, filter controls, map, markers, popups, and connection lines.
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
+      {/* Header and Filter Controls */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <MapIcon className="text-blue-600" size={24} />
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
 
-        {/* Filter Controls */}
+        {/* Team/Parent Filter Buttons */}
         <div className="flex gap-2">
+          {/* All Tasks Button */}
           <button
             onClick={() => handleParentToggle('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -165,6 +238,7 @@ export function WorldMap() {
           >
             All
           </button>
+          {/* Team Buttons */}
           {state.parents.map(parent => (
             <button
               key={parent.id}
@@ -185,10 +259,12 @@ export function WorldMap() {
               {parent.name}
             </button>
           ))}
-          <button
-            onClick={() => handleParentToggle(null)}
+          
+          {/* Unassigned Button */}
+          <button 
+            onClick={() => handleNullToggle()}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border border-gray-400 ${
-              state.selectedParentId === null
+              state.toggledNull === true
                 ? 'bg-gray-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
@@ -198,6 +274,7 @@ export function WorldMap() {
         </div>
       </div>
 
+      {/* Map Display */}
       <div className="flex-1 rounded-lg overflow-hidden">
         <MapContainer
           center={[45.5017, -73.5673]}
@@ -205,16 +282,18 @@ export function WorldMap() {
           style={{ height: '100%', width: '100%' }}
           className="rounded-lg"
         >
+          {/* Map Tiles */}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          {/* Handles fly-to and parent toggling on selection */}
           <MapController />
 
-          {/* Clear selection when clicking map background */}
+          {/* Deselects task when clicking on map background */}
           <DeselectOnMapClick onDeselect={() => handleMarkerClick('')} />
-
-          {/* Polylines */}
+          
+          {/* Connection Lines (PolyLines) for filtered views */}
           {getTaskConnectionLines().map(line => (
             <PolyLine
               key={line.id}
@@ -225,9 +304,9 @@ export function WorldMap() {
             />
           ))}
 
-          {/* Markers */}
+          {/* Markers and Popups */}
           {(() => {
-            // ALL view → plain markers
+            // ALL view: show plain markers for all tasks
             if (state.selectedParentId === 'all') {
               return getVisibleTasks().map(task => {
                 const isSelected = state.selectedTaskId === task.id;
@@ -240,22 +319,34 @@ export function WorldMap() {
                     icon={createCustomIcon(parentColor, isSelected)} // no index
                     eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                   >
+                    {/* Popup with detailed task stats */}
                     <Popup>
-                      <div className="p-2">
+                      <div className="p-2 space-y-1">
                         <h3 className="font-semibold text-gray-800">{task.name}</h3>
-                        <p className="text-sm text-gray-600">
-                          Status:{' '}
-                          <span className="capitalize font-medium">{task.status}</span>
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Parent:{' '}
-                          {task.parentId
-                            ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
-                            : 'Unassigned'}
-                        </p>
-                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                          <MapPin size={12} />
-                          {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                        <div className="text-xs text-gray-700">
+                          <div><span className="font-medium">Task ID:</span> {task.id}</div>
+                          <div><span className="font-medium">Parent:</span> {task.parentId ? (state.parents.find(p => p.id === task.parentId)?.name || task.parentId) : 'Unassigned'}</div>
+                          <div><span className="font-medium">Start Hour:</span> {task.startHour}</div>
+                          <div><span className="font-medium">Default Duration:</span> {task.durationHours}h</div>
+                          <div><span className="font-medium">Active Duration:</span> {
+                              task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
+                                ? task.specialTeams[task.parentId]
+                                : task.durationHours
+                            }h</div>
+                          <div><span className="font-medium">Setup Duration:</span> {task.setup}h</div>
+                          <div><span className="font-medium">Total Duration:</span> {
+                              task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
+                                ? (task.specialTeams[task.parentId] as number) + task.setup
+                                : task.durationHours + task.setup
+                            }h</div>
+                          <div><span className="font-medium">Special Teams:</span> {
+                              task.specialTeams
+                                ? Object.entries(task.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
+                                : 'None'
+                            }</div>
+                          <div><span className="font-medium">Location:</span> {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}</div>
+                          <div><span className="font-medium">Invalid Periods:</span> {task.invalidPeriods?.length ? task.invalidPeriods.join(', ') : 'None'}</div>
+                          <div><span className="font-medium">Dependencies:</span> {task.dependencies?.length ? task.dependencies.join(', ') : 'None'}</div>
                         </div>
                       </div>
                     </Popup>
@@ -264,42 +355,76 @@ export function WorldMap() {
               });
             }
 
-            // Filtered view → chronological & numbered
-            const sortedTasks = [...getVisibleTasks()].sort((a, b) => a.startHour - b.startHour);
+            // Filtered view: show numbered markers and simple popups for tasks in the selected team
+            const assignedTasks = getVisibleTasks()
+              .filter(task => task.parentId === state.selectedParentId)
+              .sort((a, b) => a.startHour - b.startHour);
 
-            return sortedTasks.map((task, index) => {
-              const isSelected = state.selectedTaskId === task.id;
-              const parentColor = getParentColor(task.parentId);
+            const unassignedTasks = state.toggledNull
+              ? getVisibleTasks().filter(task => task.parentId === null)
+              : [];
 
-              return (
-                <Marker
-                  key={task.id}
-                  position={[task.location.lat, task.location.lon]}
-                  icon={createCustomIcon(parentColor, isSelected, index + 1)} // numbered
-                  eventHandlers={{ click: () => handleMarkerClick(task.id) }}
-                >
-                  <Popup>
-                    <div className="p-2">
-                      <h3 className="font-semibold text-gray-800">{task.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        Status:{' '}
-                        <span className="capitalize font-medium">{task.status}</span>
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        Parent:{' '}
-                        {task.parentId
-                          ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
-                          : 'Unassigned'}
-                      </p>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                        <MapPin size={12} />
-                        {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
-                      </div>
-                    </div>
-                  </Popup>
-                </Marker>
-              );
-            });
+            return (
+              <>
+                {/* Assigned tasks: numbered markers */}
+                {assignedTasks.map((task, index) => {
+                  const isSelected = state.selectedTaskId === task.id;
+                  const parentColor = getParentColor(task.parentId);
+                  const markerIndex = index + 1;
+
+                  return (
+                    <Marker
+                      key={task.id}
+                      position={[task.location.lat, task.location.lon]}
+                      icon={createCustomIcon(parentColor, isSelected, markerIndex)}
+                      eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                    >
+                      <Popup>
+                        <div className="p-2">
+                          <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                          <p className="text-sm text-gray-600">
+                            Parent:{' '}
+                            {task.parentId
+                              ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
+                              : 'Unassigned'}
+                          </p>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                            <MapPin size={12} />
+                            {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+
+                {/* Unassigned tasks: plain markers, no numbers */}
+                {unassignedTasks.map(task => {
+                  const isSelected = state.selectedTaskId === task.id;
+                  const parentColor = getParentColor(task.parentId);
+
+                  return (
+                    <Marker
+                      key={task.id}
+                      position={[task.location.lat, task.location.lon]}
+                      icon={createCustomIcon(parentColor, isSelected)}
+                      eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                    >
+                      <Popup>
+                        <div className="p-2">
+                          <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                          <p className="text-sm text-gray-600">Parent: Unassigned</p>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                            <MapPin size={12} />
+                            {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </>
+            );
           })()}
         </MapContainer>
       </div>

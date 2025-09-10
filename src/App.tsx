@@ -4,57 +4,9 @@ import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { Trees, MapIcon, Calendar, Package, CpuIcon, Upload } from 'lucide-react'; // Icons
-import { importTasksFromFile, processImportedTasks } from './helper/fileReader';
 import { useApp } from './context/AppContext';
 
 function AppContent() {
-  const { state, dispatch } = useApp();
-
-  const handleImportTasks = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const importedTasks = await importTasksFromFile(file, state.tasks.length);
-      
-      // Process tasks for conflicts and missing parents
-      const { tasksToAdd, parentsToCreate, conflictedTasks } = processImportedTasks(
-        importedTasks,
-        state.tasks,
-        state.parents
-      );
-
-      // Import with conflict handling
-      dispatch({ 
-        type: 'IMPORT_TASKS_WITH_CONFLICTS', 
-        tasks: tasksToAdd,
-        conflictedTasks,
-        newParents: parentsToCreate
-      });
-
-      // Show user feedback about the import
-      const totalImported = tasksToAdd.length + conflictedTasks.length;
-      const newParentsCount = parentsToCreate.length;
-      const conflictsCount = conflictedTasks.length;
-
-      let message = `Successfully imported ${totalImported} tasks`;
-      if (newParentsCount > 0) {
-        message += `, created ${newParentsCount} new team${newParentsCount > 1 ? 's' : ''}`;
-      }
-      if (conflictsCount > 0) {
-        message += `, ${conflictsCount} task${conflictsCount > 1 ? 's' : ''} moved to unassigned due to date conflicts`;
-      }
-      
-      alert(message);
-      
-      // Reset the input so the same file can be selected again
-      event.target.value = '';
-    } catch (error) {
-      console.error('Error importing tasks:', error);
-      alert('Error importing tasks. Please check the file format.');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       {/* Header */}
