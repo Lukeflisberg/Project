@@ -3,6 +3,7 @@ import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 're
 import L from 'leaflet';
 import { Map as MapIcon, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { Task } from '../types';
 import 'leaflet/dist/leaflet.css';
 
 // ---------------------------------------------
@@ -211,6 +212,62 @@ export function WorldMap() {
     return null;
   };
 
+  function DraggableUnassignedMarker({ task }: { task: Task }) {
+    const map = useMap();
+    const originalPos: [number, number] = [task.location.lat, task.location.lon];
+
+    // Ensure map dragging is re-enabled if the component unmounts or something goes wrong
+    useEffect(() => {
+      const onMapMouseUp = () => {
+        if (map?.dragging?.enable) map.dragging.enable();
+      };
+      map.on('mouseup', onMapMouseUp);
+      map.on('touchend', onMapMouseUp);
+
+      return () => {
+        map.off('mouseup', onMapMouseUp);
+        map.off('touchend', onMapMouseUp);
+        if (map?.dragging?.enable) map.dragging.enable();
+      };
+    }, [map]);
+
+    return (
+      <Marker
+        key={task.id}
+        position={originalPos}
+        draggable
+        icon={createCustomIcon(getParentColor(task.parentId), state.selectedTaskId === task.id)}
+        eventHandlers={{
+          // disable map dragging as soon as user interacts with the marker
+          mousedown: () => { if (map?.dragging?.disable) map.dragging.disable(); },
+          dragstart: () => { if (map?.dragging?.disable) map.dragging.disable(); },
+
+          // snap back to original position and re-enable map dragging on end
+          dragend: (e: any) => {
+            const marker = e.target as L.Marker;
+            marker.setLatLng(originalPos); // snap back
+            // re-enable map dragging (use next tick to avoid race)
+            setTimeout(() => { if (map?.dragging?.enable) map.dragging.enable(); }, 0);
+          },
+          
+          mouseup: () => { map.dragging.enable(); },
+          click: () => handleMarkerClick(task.id)
+        }}
+      >
+        <Popup>
+          <div className="p-2">
+            <h3 className="font-semibold text-gray-800">{task.name}</h3>
+            <p className="text-sm text-gray-600">Parent: Unassigned</p>
+            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+              <MapPin size={12} />
+              {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+            </div>
+          </div>
+        </Popup>
+      </Marker>
+    );
+  }
+
   // ---------------------------------------------
   // Render
   // ---------------------------------------------
@@ -263,10 +320,10 @@ export function WorldMap() {
           {/* Unassigned Button */}
           <button 
             onClick={() => handleNullToggle()}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border border-gray-400 ${
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
               state.toggledNull === true
-                ? 'bg-gray-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
+                : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
             }`}
           >
             Unassigned
@@ -400,28 +457,16 @@ export function WorldMap() {
 
                 {/* Unassigned tasks: plain markers, no numbers */}
                 {unassignedTasks.map(task => {
-                  const isSelected = state.selectedTaskId === task.id;
-                  const parentColor = getParentColor(task.parentId);
+                  <DraggableUnassignedMarker key={task.id} task={task} />
+                          // Get the ganttchart
+                          // Check if mouse is in ganttchart
+                          // > Place
+                          // < Reset marker back to its original position
 
-                  return (
-                    <Marker
-                      key={task.id}
-                      position={[task.location.lat, task.location.lon]}
-                      icon={createCustomIcon(parentColor, isSelected)}
-                      eventHandlers={{ click: () => handleMarkerClick(task.id) }}
-                    >
-                      <Popup>
-                        <div className="p-2">
-                          <h3 className="font-semibold text-gray-800">{task.name}</h3>
-                          <p className="text-sm text-gray-600">Parent: Unassigned</p>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                            <MapPin size={12} />
-                            {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
+                          // Method for dragging
+                          // On mouse down, set id and hide it
+                          // Then mouse move, move along mouse as snapshot
+                          // on mouse up, remove set id
                 })}
               </>
             );
