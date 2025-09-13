@@ -8,89 +8,6 @@ import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
 
 // ----------------------
-// Individual Task Import Helper
-// ----------------------
-// Adds a single task, resolving overlaps by moving it forward or unassigning if out of range
-function addTaskIndividually(
-  existingTasks: Task[],
-  newTask: Task,
-  totalHours: number
-): Task {
-  const taskDuration = effectiveDuration(newTask, newTask.parentId);
-  let proposedStart = newTask.startHour;
-  let proposedEnd = proposedStart + taskDuration;
-
-  // If no parent assigned, return as-is
-  if (!newTask.parentId) {
-    return newTask;
-  }
-
-  // Get siblings in the same parent
-  const siblings = existingTasks.filter(t => t.parentId === newTask.parentId);
-
-  // Keep moving forward until no overlap or out of range
-  let attempts = 0;
-  const maxAttempts = totalHours; // Prevent infinite loops
-
-  while (attempts < maxAttempts) {
-    // Check if current position has any overlaps
-    const hasOverlap = siblings.some(sibling => {
-      const siblingStart = sibling.startHour;
-      const siblingEnd = siblingStart + effectiveDuration(sibling, sibling.parentId);
-      return proposedStart < siblingEnd && proposedEnd > siblingStart;
-    });
-
-    // If no overlap and within range, we found a valid position
-    if (!hasOverlap && proposedEnd <= totalHours) {
-      return {
-        ...newTask,
-        startHour: proposedStart
-      };
-    }
-
-    // If out of range, unassign the task
-    if (proposedEnd > totalHours) {
-      return {
-        ...newTask,
-        parentId: null,
-        startHour: newTask.startHour // Keep original start hour for unassigned
-      };
-    }
-
-    // Move forward by finding the next available slot
-    if (hasOverlap) {
-      // Find the earliest end time of overlapping tasks
-      const overlappingTasks = siblings.filter(sibling => {
-        const siblingStart = sibling.startHour;
-        const siblingEnd = siblingStart + effectiveDuration(sibling, sibling.parentId);
-        return proposedStart < siblingEnd && proposedEnd > siblingStart;
-      });
-
-      if (overlappingTasks.length > 0) {
-        const earliestEndTime = Math.max(...overlappingTasks.map(t => 
-          t.startHour + effectiveDuration(t, t.parentId)
-        ));
-        proposedStart = earliestEndTime;
-        proposedEnd = proposedStart + taskDuration;
-      } else {
-        // Fallback: move forward by 1 hour
-        proposedStart += 1;
-        proposedEnd = proposedStart + taskDuration;
-      }
-    }
-
-    attempts++;
-  }
-
-  // If we couldn't find a spot after max attempts, unassign
-  return {
-    ...newTask,
-    parentId: null,
-    startHour: newTask.startHour
-  };
-}
-
-// ----------------------
 // Period Configuration
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
@@ -835,11 +752,8 @@ export function GanttChart() {
     // Import tasks with dynamic IDs and overlay resolution
     if (result.tasks && Array.isArray(result.tasks)) {
       const existingTaskCount = state.tasks.length;
-      let currentTasks = [...state.tasks]; // Keep track of tasks as we add them
-      
-      // Process each task individually
-      for (let idx = 0; idx < result.tasks.length; idx++) {
-        const t = result.tasks[idx];
+
+      const formattedTasks = result.tasks.map((t: any, idx: number) => { 
         const id = `T${existingTaskCount + idx + 1}`;
         const name = t.name || t['Name'] || id;
         const parentId = t.parentId || t['Parent ID'] || null;
@@ -850,7 +764,7 @@ export function GanttChart() {
         const location = t.location || t['Location'] || { lat: 0, lon: 0 };
         const invalidPeriods = t.invalidPeriods || t['Invalid Periods'] || [];
 
-        // Create the imported task
+        // Calculate effective duration for the imported task
         const importedTask: Task = {
           id,
           name,
@@ -863,20 +777,41 @@ export function GanttChart() {
           invalidPeriods
         };
 
+        return {
+          ...importedTask
+        };
+      });
 
-        // Add task individually with overlap resolution
-        const processedTask = addTaskIndividually(currentTasks, importedTask, totalHours);
-        
-        // Add the processed task to our current tasks list
-        currentTasks.push(processedTask);
-        
-        // Dispatch the individual task addition
-        dispatch({ type: 'ADD_TASKS', tasks: [processedTask] });
-        
-        console.log(`Imported Task ${idx + 1}/${result.tasks.length}: ${processedTask.name} - ${processedTask.parentId ? `Assigned to ${processedTask.parentId}` : 'Unassigned due to overlap/out of range'}`);
+      // Add tasks
+      dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
+      console.log("Imported Tasks: ", formattedTasks);
+
+      // Resolve overlaps
+      for (const task of formattedTasks) {
+        const newParentSiblings = state.tasks
+        .filter(t => t.parentId === task.parentId || t.id === task.id)
+        .map(t => (t.id === task.id ? { ...t, parentId: task.parentId } : t));
+
+        const plan = planSequentialLayoutHours(
+          newParentSiblings as Task[],
+          task.id,
+          task.startHour,
+          totalHours
+        );
+
+        for (const u of plan) {
+          const orig = state.tasks.find(t => t.id === u.id);
+          if (!orig) continue;
+          if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+            dispatch({
+              type: 'UPDATE_TASK_HOURS',
+              taskId: u.id,
+              startHour: u.startHour,
+              durationHours: u.durationHours
+            });
+          }
+        }
       }
-      
-      console.log("All tasks imported individually with overlap resolution");
     }
   };
 
