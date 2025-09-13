@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { Task, Parent, PeriodLength } from '../types';
 import { importProjectFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
-import { effectiveDuration, isDisallowed, clamp, setupOf, endHour } from '../helper/taskUtils';
+import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
 
 // ----------------------
 // Period Configuration
@@ -432,7 +432,7 @@ export function GanttChart() {
           }
         }
 
-        // 2) Unassign drop
+        // 2) Unassign the task
         if (!taskUpdated) {
           const unassignedMenu = document.querySelector('.unassigned-tasks-container');
           if (unassignedMenu) {
@@ -445,7 +445,7 @@ export function GanttChart() {
         }
 
         if (!taskUpdated) {
-          // 2) Direct drop onto task body
+          // 3) Direct drop onto task body
           {
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
@@ -501,7 +501,12 @@ export function GanttChart() {
                       const orig = state.tasks.find(t => t.id === u.id);
                       if (!orig) continue;
                       if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                        dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                        dispatch({ 
+                          type: 'UPDATE_TASK_HOURS', 
+                          taskId: u.id, 
+                          startHour: u.startHour, 
+                          durationHours: u.durationHours 
+                        });
                       }
                     }
                     taskUpdated = true;
@@ -528,7 +533,12 @@ export function GanttChart() {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
                         if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                          dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                          dispatch({ 
+                            type: 'UPDATE_TASK_HOURS', 
+                            taskId: u.id,
+                            startHour: u.startHour, 
+                            durationHours: u.durationHours 
+                          });
                         }
                       }
                       taskUpdated = true;
@@ -539,7 +549,7 @@ export function GanttChart() {
             }
           }
 
-          // 3) Snap to neighbor edges (deferred)
+          // 4) Snap to neighbor edges (deferred)
           if (snapTarget && !taskUpdated) {
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
             if (isDisallowed(currentTask, snapTarget.parentId)) {
@@ -601,13 +611,13 @@ export function GanttChart() {
             }
           }
 
-          // 3) Combined horizontal/vertical shift
+          // 5) Combined horizontal/vertical shift
           if (!taskUpdated) {
             const timelineContent = ganttRef.current?.querySelector('.timeline-content');
             const rect = timelineContent?.getBoundingClientRect();
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
             const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-            const proposedStart = currentTask.startHour + (hoursDelta || 0);
+            const proposedStart = currentTask.startHour + (hoursDelta || 0); // Calculates start hour
             const proposedEnd = proposedStart + effectiveDuration(currentTask);
 
             const targetParentId = getParentFromMousePosition(evt.clientY);
@@ -702,8 +712,8 @@ export function GanttChart() {
       console.log("Imported Periods: ", result.periods);
     }
     // Import period lengths
-    if (Array.isArray(result.period_length) && Array.isArray(result.periods)) {
-      const formattedPeriodLengths = result.period_length.map((pl: any, idx: number) => {
+    if (Array.isArray(result.period_lengths) && Array.isArray(result.periods)) {
+      const formattedPeriodLengths = result.period_lengths.map((pl: any, idx: number) => {
         const period = result.periods[idx];
         if (!period) return null; // skip if no matching period
         
@@ -791,6 +801,9 @@ export function GanttChart() {
 
       dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
       console.log("Imported Tasks: ", formattedTasks);
+
+      // Resolve overlaps
+      
     }
   };
 
@@ -831,7 +844,7 @@ export function GanttChart() {
             </div>
             {state.parents.map(parent => (
               <div
-                key={parent.id} // height
+                key={parent.id} 
                 className={`h-12 flex items-center border-b border-gray-100 px-2 transition-all ${
                   dropZone?.parentId === parent.id ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500' : ''
                 }`}
