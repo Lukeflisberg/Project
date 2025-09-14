@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task, Parent, PeriodLength } from '../types';
-import { importProjectFromFile } from '../helper/fileReader'
+import { importProjectFromFile } from '../helper/fileReader';
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
 
@@ -320,7 +320,7 @@ export function GanttChart() {
       const finalOffset = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
       dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: null });
 
-      // Snapshot current task (don’t trust stale closure vars)
+      // Snapshot current task (don't trust stale closure vars)
       const currentTask = state.tasks.find(t => t.id === taskId);
       if (!currentTask) return;
 
@@ -689,7 +689,7 @@ export function GanttChart() {
       .filter((pl): pl is PeriodLength => pl !== null);
 
       dispatch({ type: 'SET_PERIOD_LENGTHS', period_lengths: formattedPeriodLengths });
-      console.log("Imported Period Lengths: ", formattedPeriodLengths)
+      console.log("Imported Period Lengths: ", formattedPeriodLengths);
     }
     // Import parents with dynamic IDs
     if (result.parents && Array.isArray(result.parents)) {
@@ -705,9 +705,9 @@ export function GanttChart() {
           id,
           name,
           color
-        }
+        };
 
-        return { ...importedParents }
+        return { ...importedParents };
       });
       dispatch({ type: 'ADD_PARENTS', parents: formattedParents });
       console.log("Imported Parents: ", formattedParents);
@@ -739,6 +739,13 @@ export function GanttChart() {
           location,
           specialTeams,
           invalidPeriods
+        };
+
+        return importedTask;
+      });
+
+      // Process each task individually
+      for (const task of formattedTasks) {
         // Add task to state first
         dispatch({ type: 'ADD_TASKS', tasks: [task] });
         
@@ -778,11 +785,11 @@ export function GanttChart() {
             } else {
               console.log(`Task ${task.name} placed at ${task.startHour}h without conflicts`);
             }
-      });
+          }
         } else {
           console.log(`Task ${task.name} imported as unassigned`);
-      
-      // Process each task individually
+        }
+      }
     }
   };
 
@@ -959,7 +966,8 @@ export function GanttChart() {
                             </div>
                           </div>
                         </div>
-                      )};
+                      );
+                    }
                   })}
 
                   {/* Tasks */}
