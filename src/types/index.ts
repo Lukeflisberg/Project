@@ -3,17 +3,14 @@ export interface Task {
   name: string;
   parentId: string | null; 
   startHour: number;       
-  durationHours: number;   
-  setup: number;        
+  defaultDuration: number;   
+  defaultSetup: number;        
   specialTeams?: Record<string, number | 'x'>;
   invalidPeriods?: string[];
   location: {
     lat: number;
     lon: number;
   };
-  
-  distance?: number, 
-  dependencies?: string[]; 
 }
 
 export interface Parent {

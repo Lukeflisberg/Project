@@ -344,7 +344,7 @@ export function WorldMap() {
                       type: 'UPDATE_TASK_HOURS',
                       taskId: task.id,
                       startHour: result,
-                      durationHours: task.durationHours
+                      defaultDuration: task.defaultDuration
                     })
                   }
                 }
@@ -513,17 +513,17 @@ export function WorldMap() {
                           <div><span className="font-medium">Task ID:</span> {task.id}</div>
                           <div><span className="font-medium">Parent:</span> {task.parentId ? (state.parents.find(p => p.id === task.parentId)?.name || task.parentId) : 'Unassigned'}</div>
                           <div><span className="font-medium">Start Hour:</span> {task.startHour}</div>
-                          <div><span className="font-medium">Default Duration:</span> {task.durationHours}h</div>
+                          <div><span className="font-medium">Default Duration:</span> {task.defaultDuration}h</div>
                           <div><span className="font-medium">Active Duration:</span> {
                               task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
                                 ? task.specialTeams[task.parentId]
-                                : task.durationHours
+                                : task.defaultDuration
                             }h</div>
-                          <div><span className="font-medium">Setup Duration:</span> {task.setup}h</div>
+                          <div><span className="font-medium">Setup Duration:</span> {task.defaultSetup}h</div>
                           <div><span className="font-medium">Total Duration:</span> {
                               task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
-                                ? (task.specialTeams[task.parentId] as number) + task.setup
-                                : task.durationHours + task.setup
+                                ? (task.specialTeams[task.parentId] as number) + task.defaultSetup
+                                : task.defaultDuration + task.defaultSetup
                             }h</div>
                           <div><span className="font-medium">Special Teams:</span> {
                               task.specialTeams
@@ -532,7 +532,6 @@ export function WorldMap() {
                             }</div>
                           <div><span className="font-medium">Location:</span> {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}</div>
                           <div><span className="font-medium">Invalid Periods:</span> {task.invalidPeriods?.length ? task.invalidPeriods.join(', ') : 'None'}</div>
-                          <div><span className="font-medium">Dependencies:</span> {task.dependencies?.length ? task.dependencies.join(', ') : 'None'}</div>
                         </div>
                       </div>
                     </Popup>

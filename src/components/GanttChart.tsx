@@ -38,14 +38,14 @@ const occEnd = (t: Task) => endHour(t);
 // ----------------------
 // Sequential Layout Planner
 // ----------------------
-// Returns planned (startHour, durationHours) for each task so none overlap, after a move.
+// Returns planned (startHour, defaultDuration) for each task so none overlap, after a move.
 // Also returns tasks that should be unassigned (pushed beyond maxHour).
 function planSequentialLayoutHours(
   siblings: Task[],
   movedTaskId: string,
   movedNewStartHour: number,
   maxHour: number
-): { updates: Array<{ id: string; startHour: number; durationHours: number }>; unassign: string[] } {
+): { updates: Array<{ id: string; startHour: number; defaultDuration: number }>; unassign: string[] } {
   // Local copy of siblings
   const local = siblings.map(t => ({ ...t }));
 
@@ -74,7 +74,7 @@ function planSequentialLayoutHours(
   ];
 
   // Sweep both forward and backwards ensuring no overlaps, keeping moved at or as close as possible to its desired position
-  const updates: Array<{ id: string; startHour: number; durationHours: number }> = [];
+  const updates: Array<{ id: string; startHour: number; defaultDuration: number }> = [];
   const unassign: string[] = [];
   
   // Create working array with current positions
@@ -132,7 +132,7 @@ function planSequentialLayoutHours(
     updates.push({
       id: item.task.id,
       startHour: item.task.startHour,
-      durationHours: item.task.durationHours
+      defaultDuration: item.task.defaultDuration
     });
   }
 
@@ -406,12 +406,12 @@ export function GanttChart() {
               for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
                     startHour: u.startHour,
-                    durationHours: u.durationHours
+                    defaultDuration: u.defaultDuration
                   });
                   console.log("Success");
                 }
@@ -434,12 +434,12 @@ export function GanttChart() {
               for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
                     startHour: u.startHour,
-                    durationHours: u.durationHours
+                    defaultDuration: u.defaultDuration
                   });
                   console.log("Success");
                 }
@@ -532,12 +532,12 @@ export function GanttChart() {
                     for (const u of plan['updates']) {
                       const orig = state.tasks.find(t => t.id === u.id);
                       if (!orig) continue;
-                      if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                      if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                         dispatch({ 
                           type: 'UPDATE_TASK_HOURS', 
                           taskId: u.id, 
                           startHour: u.startHour, 
-                          durationHours: u.durationHours 
+                          defaultDuration: u.defaultDuration 
                         });
                         console.log("Success");
                       }
@@ -565,12 +565,12 @@ export function GanttChart() {
                       for (const u of plan['updates']) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
-                        if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                        if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                           dispatch({ 
                             type: 'UPDATE_TASK_HOURS', 
                             taskId: u.id,
                             startHour: u.startHour, 
-                            durationHours: u.durationHours 
+                            defaultDuration: u.defaultDuration 
                           });
                           console.log("Success");
                         }
@@ -605,12 +605,12 @@ export function GanttChart() {
                 for (const u of plan['updates']) {
                   const orig = state.tasks.find(t => t.id === u.id);
                   if (!orig) continue;
-                  if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                  if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
                       taskId: u.id,
                       startHour: u.startHour,
-                      durationHours: u.durationHours
+                      defaultDuration: u.defaultDuration
                     });
                     console.log("Success");
                   }
@@ -633,12 +633,12 @@ export function GanttChart() {
                 for (const u of plan['updates']) {
                   const orig = state.tasks.find(t => t.id === u.id);
                   if (!orig) continue;
-                  if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                  if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
                       taskId: u.id,
                       startHour: u.startHour,
-                      durationHours: u.durationHours
+                      defaultDuration: u.defaultDuration
                     });
                     console.log("Success");
                   }
@@ -686,12 +686,12 @@ export function GanttChart() {
               for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
                     startHour: u.startHour,
-                    durationHours: u.durationHours
+                    defaultDuration: u.defaultDuration
                   });
                 }
               }
@@ -720,12 +720,12 @@ export function GanttChart() {
               for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
+                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
                     startHour: u.startHour,
-                    durationHours: u.durationHours
+                    defaultDuration: u.defaultDuration
                   });
                 }
               }
@@ -838,8 +838,8 @@ export function GanttChart() {
         const name = t.name || t['Name'] || id;
         const parentId = t.parentId || t['Parent ID'] || null;
         const startHour = t.startHour ?? t['Start Hour'] ?? 0;
-        const durationHours = t.durationHours ?? t['Default Duration (hrs)'] ?? 40;
-        const setup = t.setup ?? t['Default Setup (hrs)'] ?? 0;
+        const defaultDuration = t.defaultDuration ?? t['Default Duration (hrs)'] ?? 40;
+        const defaultSetup = t.defaultSetup ?? t['Default Setup (hrs)'] ?? 0;
         const specialTeams = t.specialTeams || t['Special Teams'] || {};
         const location = t.location || t['Location'] || { lat: 0, lon: 0 };
         const invalidPeriods = t.invalidPeriods || t['Invalid Periods'] || [];
@@ -850,8 +850,8 @@ export function GanttChart() {
           name,
           parentId,
           startHour,
-          durationHours,
-          setup,
+          defaultDuration,
+          defaultSetup,
           location,
           specialTeams,
           invalidPeriods
@@ -938,7 +938,7 @@ export function GanttChart() {
                 type: 'UPDATE_TASK_HOURS',
                 taskId: curr.id,
                 startHour: newStart,
-                durationHours: curr.durationHours
+                defaultDuration: curr.defaultDuration
               });
 
               // Update local object
@@ -1157,12 +1157,12 @@ export function GanttChart() {
                         style={{ backgroundColor: parent.color, ...position, ...dragStyle, overflow: 'hidden' } as CSSProperties }
                         onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
                       >
-                        {(task.setup ?? 0) > 0 && (
+                        {(task.defaultSetup ?? 0) > 0 && (
                           <div
                             className="absolute inset-y-0 left-0 pointer-events-none flex items-center justify-center"
-                            title={`Setup: ${task.setup}h`}
+                            title={`Setup: ${task.defaultSetup}h`}
                             style={{
-                              width: `${((task.setup ?? 0) / effDur) * 100}%`,
+                              width: `${((task.defaultSetup ?? 0) / effDur) * 100}%`,
                               backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.35) 75%)',
                               backgroundSize: '8px 8px',
                               backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
@@ -1175,8 +1175,8 @@ export function GanttChart() {
                         <div
                           className="flex items-center justify-center h-full relative"
                           style={{
-                            marginLeft: `${(((task.setup ?? 0) / effDur) * 100)}%`,
-                            width: `${100 - (((task.setup ?? 0) / effDur) * 100)}%`
+                            marginLeft: `${(((task.defaultSetup ?? 0) / effDur) * 100)}%`,
+                            width: `${100 - (((task.defaultSetup ?? 0) / effDur) * 100)}%`
                           }}
                         >
                           <span className="truncate w-full text-center">{task.name}</span>

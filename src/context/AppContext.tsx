@@ -17,7 +17,7 @@ type AppAction =
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean}
 
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
-  | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; durationHours: number }
+  | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
 
   | { type: 'ADD_TASKS'; tasks: Task[] }
   | { type: 'ADD_PARENTS'; parents: Parent[] };
@@ -100,7 +100,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'UPDATE_TASK_HOURS': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.taskId
-          ? { ...task, startHour: action.startHour, durationHours: action.durationHours }
+          ? { ...task, startHour: action.startHour, defaultDuration: action.defaultDuration }
           : task
       );
       return { ...state, tasks: updatedTasks };

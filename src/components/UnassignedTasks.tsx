@@ -123,7 +123,7 @@ export function UnassignedTasks() {
                   type: 'UPDATE_TASK_HOURS',
                   taskId: task.id,
                   startHour: result,
-                  durationHours: task.durationHours
+                  defaultDuration: task.defaultDuration
                 })
                 dispatch({
                   type: 'UPDATE_TASK_PARENT',
@@ -244,7 +244,7 @@ export function UnassignedTasks() {
                     </div>
                     
                     <div className="mt-2 text-xs text-gray-500">
-                      Start: {task.startHour}h • Duration: {task.durationHours}h • Distance: n/a • Cost: n/a 
+                      Start: {task.startHour}h • Duration: {task.defaultDuration}h • Distance: n/a • Cost: n/a 
                     </div>
                   </div>
                 );
