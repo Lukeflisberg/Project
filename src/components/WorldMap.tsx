@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Map as MapIcon, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { Task } from '../types';
+import { findEarliestHour } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 
 // ---------------------------------------------
@@ -25,6 +27,7 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
     click() {
       onDeselect();
+      console.log("Diselected");
     }
   });
   return null;
@@ -140,8 +143,13 @@ export function WorldMap() {
   // handleMarkerClick
   // ---------------------------------------------
   // Sets the selected task in the global state when a marker is clicked.
-  const handleMarkerClick = (taskId: string) => {
-    dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
+  const handleMarkerClick = (taskId: string | null) => {
+    dispatch({
+      type: 'SET_SELECTED_TASK',
+      taskId, toggle_parent:
+      state.selectedParentId 
+    });
+    console.log(`Click on marker ${taskId}`);
   };
 
   // ---------------------------------------------
@@ -153,6 +161,7 @@ export function WorldMap() {
       type: 'SET_SELECTED_PARENT',
       parentId: state.selectedParentId === parentId ? 'all' : parentId
     });
+    console.log(`Toggled parent ${state.selectedParentId}`);
   };
 
   const handleNullToggle = () => {
@@ -160,6 +169,7 @@ export function WorldMap() {
       type: 'TOGGLE_NULL',
       toggledNull: state.toggledNull ? false : true
     })
+    console.log("Toggled null");
   }
 
   // ---------------------------------------------
@@ -211,13 +221,181 @@ export function WorldMap() {
     return null;
   };
 
+  function DraggableUnassignedMarker({ task }: { task: Task }) {
+    const map = useMap();
+    const originalPos: [number, number] = [task.location.lat, task.location.lon];
+    const markerRef = useRef<L.Marker>(null);
+    const [, setIsDragging] = useState(false);
+
+    // Ensure map dragging is re-enabled if the component unmounts or something goes wrong
+    useEffect(() => {
+      const marker = markerRef.current;
+      if (!marker) return;
+
+      let isDrag = false;
+      let cloneElement: HTMLElement | null = null;
+
+      const handleMouseDown = (e: L.LeafletMouseEvent) => {
+        e.originalEvent.stopPropagation();
+        e.originalEvent.preventDefault();
+
+        // Set as selected task
+        if (state.selectedTaskId !== task.id) {
+          dispatch({ 
+            type: 'SET_DRAGGING_TO_GANTT', 
+            taskId: task.id
+          });
+        }
+
+        isDrag = false;
+        setIsDragging(true);
+
+        // Disable map dragging immediately
+        if (map?.dragging?.disable) map.dragging.disable();
+
+        // Create clone of the marker
+        const markerElement = marker.getElement();
+        if (markerElement) {
+          cloneElement = markerElement.cloneNode(true) as HTMLElement;
+          cloneElement.style.position = 'fixed';
+          cloneElement.style.zIndex = '9999';
+          cloneElement.style.pointerEvents = 'none';
+          cloneElement.style.opacity = '0.7';
+          cloneElement.style.transform = 'none'; // Remove center transform
+          
+          // Position at initial mouse location
+          cloneElement.style.left = `${e.originalEvent.clientX}px`;
+          cloneElement.style.top = `${e.originalEvent.clientY}px`;
+          
+          document.body.appendChild(cloneElement);
+        }
+
+        const handleMouseMove = (e: MouseEvent) => {
+          isDrag = true;
+
+          // Move the clone with the mouse, maintaining the offset
+          if (cloneElement) {
+            cloneElement.style.left = `${e.clientX}px`;
+            cloneElement.style.top = `${e.clientY}px`;
+          }
+        }
+
+        const handleMouseUp = (e: MouseEvent) => {
+          setIsDragging(false);
+          dispatch({
+            type: 'SET_DRAGGING_TO_GANTT',
+            taskId: null 
+          });
+
+          // Remove the clone
+          if (cloneElement && cloneElement.parentNode) {
+            cloneElement.parentNode.removeChild(cloneElement);
+            cloneElement = null;
+          }
+
+          // Re-enable map dragging
+          setTimeout(() => {
+            if (map?.dragging?.enable) map.dragging.enable();
+          }, 0);
+
+          // Clean up event listeners
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+
+          // Handle click vs drag
+          if (!isDrag) {
+            handleMarkerClick(task.id);
+          }
+
+          // Check if dropped on the Gantt chart
+          const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
+          const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
+          
+          if (ganttChart) {
+            const parentRow = elementUnderMouse?.closest('[data-parent-row]');
+
+            if (parentRow) {
+              const parentId = parentRow.getAttribute('data-parent-id');
+
+              if (parentId) {
+                const timeline = ganttChart.querySelector('.timeline-content');
+                const timelineRect = timeline?.getBoundingClientRect();
+
+                if (timelineRect) {
+                  const totalHours = state.totalHours || 24; // Use state or fallback
+                  const filteredTasks = state.tasks
+                    .filter(t => t.parentId === parentId)
+                    .sort((a, b) => a.startHour - b.startHour)
+
+                  const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
+                  console.log("Total hours: ", totalHours);
+                  console.log("Task stats: ", task);
+                  console.log("Tasks: ", filteredTasks);
+                  console.log("Periods: ", state.periods);
+                  console.log("Calculated earliest: ", result);
+                  
+                  if (result !== null) {
+                    dispatch({
+                      type: 'UPDATE_TASK_PARENT',
+                      taskId: task.id,
+                      newParentId: parentId
+                    });
+                    dispatch({
+                      type: 'UPDATE_TASK_HOURS',
+                      taskId: task.id,
+                      startHour: result,
+                      durationHours: task.durationHours
+                    })
+                  }
+                }
+              }
+            }
+          }
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+      };
+
+      marker.on('mousedown', handleMouseDown);
+
+      return () => {
+        marker.off('mousedown', handleMouseDown);
+        if (map?.dragging?.enable) map.dragging.enable();
+      };
+    }, [map, originalPos, task.id]);
+
+    return (
+      <Marker
+        key={task.id}
+        ref={markerRef}
+        position={originalPos}
+        icon={createCustomIcon(
+          getParentColor(task.parentId), 
+          state.selectedTaskId === task.id
+        )}
+      >
+        <Popup>
+          <div className="p-2">
+            <h3 className="font-semibold text-gray-800">{task.name}</h3>
+            <p className="text-sm text-gray-600">Parent: Unassigned</p>
+            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+              <MapPin size={12} />
+              {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+            </div>
+          </div>
+        </Popup>
+      </Marker>
+    );
+  }
+
   // ---------------------------------------------
   // Render
   // ---------------------------------------------
   // Main render block for the WorldMap component.
   // Includes header, filter controls, map, markers, popups, and connection lines.
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
+    <div className="world-map-container bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
       {/* Header and Filter Controls */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -263,10 +441,10 @@ export function WorldMap() {
           {/* Unassigned Button */}
           <button 
             onClick={() => handleNullToggle()}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border border-gray-400 ${
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
               state.toggledNull === true
-                ? 'bg-gray-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
+                : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
             }`}
           >
             Unassigned
@@ -291,7 +469,7 @@ export function WorldMap() {
           <MapController />
 
           {/* Deselects task when clicking on map background */}
-          <DeselectOnMapClick onDeselect={() => handleMarkerClick('')} />
+          <DeselectOnMapClick onDeselect={() => handleMarkerClick(null)} />
           
           {/* Connection Lines (PolyLines) for filtered views */}
           {getTaskConnectionLines().map(line => (
@@ -308,15 +486,23 @@ export function WorldMap() {
           {(() => {
             // ALL view: show plain markers for all tasks
             if (state.selectedParentId === 'all') {
-              return getVisibleTasks().map(task => {
-                const isSelected = state.selectedTaskId === task.id;
-                const parentColor = getParentColor(task.parentId);
+              const assignedTasks = getVisibleTasks().filter(task => task.parentId !== null);
 
-                return (
+              const unassignedTasks = state.toggledNull
+                ? getVisibleTasks().filter(task => task.parentId === null)
+                : [];
+
+              return (
+                <>
+                {assignedTasks.map((task) => {
+                  const isSelected = state.selectedTaskId === task.id;
+                  const parentColor = getParentColor(task.parentId);
+
+                  return (
                   <Marker
                     key={task.id}
                     position={[task.location.lat, task.location.lon]}
-                    icon={createCustomIcon(parentColor, isSelected)} // no index
+                    icon={createCustomIcon(parentColor, isSelected)} 
                     eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                   >
                     {/* Popup with detailed task stats */}
@@ -351,8 +537,14 @@ export function WorldMap() {
                       </div>
                     </Popup>
                   </Marker>
-                );
-              });
+                  );
+                })};
+
+                {unassignedTasks.map(task => (
+                  <DraggableUnassignedMarker key={task.id} task={task} />
+                ))}
+                </>
+              )
             }
 
             // Filtered view: show numbered markers and simple popups for tasks in the selected team
@@ -398,31 +590,10 @@ export function WorldMap() {
                   );
                 })}
 
-                {/* Unassigned tasks: plain markers, no numbers */}
-                {unassignedTasks.map(task => {
-                  const isSelected = state.selectedTaskId === task.id;
-                  const parentColor = getParentColor(task.parentId);
-
-                  return (
-                    <Marker
-                      key={task.id}
-                      position={[task.location.lat, task.location.lon]}
-                      icon={createCustomIcon(parentColor, isSelected)}
-                      eventHandlers={{ click: () => handleMarkerClick(task.id) }}
-                    >
-                      <Popup>
-                        <div className="p-2">
-                          <h3 className="font-semibold text-gray-800">{task.name}</h3>
-                          <p className="text-sm text-gray-600">Parent: Unassigned</p>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                            <MapPin size={12} />
-                            {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
+                {/* Unassigned tasks: draggable markers, no numbers */}
+                {unassignedTasks.map(task => (
+                  <DraggableUnassignedMarker key={task.id} task={task} />
+                ))}
               </>
             );
           })()}

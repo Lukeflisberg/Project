@@ -2,29 +2,30 @@ import { useState, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Task, Parent, PeriodLength } from '../types';
+import { Task, Parent, Period } from '../types';
 import { importProjectFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
-import { effectiveDuration, isDisallowed, clamp, setupOf, endHour } from '../helper/taskUtils';
+import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
+import { isInValidPeriod } from '../helper/taskUtils';
 
 // ----------------------
 // Period Configuration
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
-const PERIODS_FALLBACK = ['P0'];
-const PERIOD_LEN_FALLBACK = 40; 
+const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_hrs: 1};
 
 // ----------------------
 // Invalid Period Helpers
 // ----------------------
 // Checks if a task's scheduled time overlaps with any invalid period.
-function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: string[], periodOffsets: number[], periodLengths: number[]): boolean {
+function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: Period[], periodOffsets: number[]): boolean {
   if (!task.invalidPeriods || !task.invalidPeriods.length) return false;
-  for (const period of task.invalidPeriods) {
-    const idx = periods.indexOf(period);
+
+  for (const invalidPeriod of task.invalidPeriods) {
+    const idx = periods.findIndex(p => p.id === invalidPeriod)
     if (idx === -1) continue;
     const periodStart = periodOffsets[idx];
-    const periodEnd = periodStart + periodLengths[idx];
+    const periodEnd = periodStart + periods[idx].length_hrs;
     // If any overlap
     if (startHour < periodEnd && endHour > periodStart) return true;
   }
@@ -38,18 +39,19 @@ const occEnd = (t: Task) => endHour(t);
 // Sequential Layout Planner
 // ----------------------
 // Returns planned (startHour, durationHours) for each task so none overlap, after a move.
+// Also returns tasks that should be unassigned (pushed beyond maxHour).
 function planSequentialLayoutHours(
   siblings: Task[],
   movedTaskId: string,
   movedNewStartHour: number,
   maxHour: number
-): Array<{ id: string; startHour: number; durationHours: number }> {
+): { updates: Array<{ id: string; startHour: number; durationHours: number }>; unassign: string[] } {
   // Local copy of siblings
   const local = siblings.map(t => ({ ...t }));
 
   // Apply moved task's new start locally first (no snapping)
   const moved = local.find(t => t.id === movedTaskId);
-  if (!moved) return [];
+  if (!moved) return { updates: [], unassign: [] };
   const movedDur = effectiveDuration(moved, moved.parentId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
@@ -73,6 +75,7 @@ function planSequentialLayoutHours(
 
   // Sweep both forward and backwards ensuring no overlaps, keeping moved at or as close as possible to its desired position
   const updates: Array<{ id: string; startHour: number; durationHours: number }> = [];
+  const unassign: string[] = [];
   
   // Create working array with current positions
   const working = orderedTasks.map(t => ({
@@ -100,6 +103,18 @@ function planSequentialLayoutHours(
         // Overlap detected - push current task to the right
         const newOccStart = prev.occEnd;
         const newStart = newOccStart;
+
+        // Check if this would push the task beyond the boundary
+        if (newStart + curr.duration > maxHour) {
+          // Mark for unassignment
+          unassign.push(curr.task.id);
+          // Remove from working array to prevent further processing
+          working.splice(i, 1);
+          i--; // Adjust index after removal
+          changed = true;
+          continue;
+        }
+
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
         if (clampedStart !== curr.task.startHour) {
@@ -112,7 +127,7 @@ function planSequentialLayoutHours(
     }
   }
 
-  // Generate updates for all tasks
+  // Generate updates for all tasks that weren't unassigned
   for (const item of working) {
     updates.push({
       id: item.task.id,
@@ -121,7 +136,7 @@ function planSequentialLayoutHours(
     });
   }
 
-  return updates;
+  return { updates, unassign };
 }
 
 // ----------------------
@@ -139,9 +154,8 @@ export function GanttChart() {
   const ganttRef = useRef<HTMLDivElement>(null);
 
   // Calculate periods, offsets, and total hours for the timeline
-  const periods = state.periods?.length ? state.periods : PERIODS_FALLBACK;
-  const periodLengthTable = state.period_lengths as Array<{ period: string; length_hrs: number }>;
-  const { periodLengths, periodOffsets, totalHours } = getPeriodData(periods, periodLengthTable, PERIOD_LEN_FALLBACK);
+  const periods = state.periods?.length ? state.periods : [PERIOD_FALLBACK];
+  const { periodOffsets, totalHours } = getPeriodData(periods, PERIOD_FALLBACK.length_hrs);
   
   // Get all tasks for a given parent/team, sorted by start time
   const getTasksByParent = (parentId: string | null) => {
@@ -248,7 +262,7 @@ export function GanttChart() {
     const offset = { x: e.clientX, y: e.clientY };
     setDraggedTask(taskId);
     setDragPosition({ x: 0, y: 0 });
-    dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: taskId });
+    dispatch({ type: 'SET_DRAGGING_FROM_GANTT', taskId: taskId });
 
     // Capture pointer offset within the task's occupied span (in hours) to preserve alignment on drop
     const timelineEl = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
@@ -354,7 +368,7 @@ export function GanttChart() {
       }
 
       const finalOffset = { x: evt.clientX - offset.x, y: evt.clientY - offset.y };
-      dispatch({ type: 'SET_DRAGGING_GANTT_TASK', taskId: null });
+      dispatch({ type: 'SET_DRAGGING_FROM_GANTT', taskId: null });
 
       // Snapshot current task (don’t trust stale closure vars)
       const currentTask = state.tasks.find(t => t.id === taskId);
@@ -367,6 +381,7 @@ export function GanttChart() {
         // 1) Snap to neighbor edges (priority at drop)
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
+          console.log("Attempting to snap to neighbour edges");
           const target = state.tasks.find(t => t.id === snapNow.taskId);
           if (target) {
             const desiredStart = snapNow.side === 'left'
@@ -375,7 +390,7 @@ export function GanttChart() {
             const desiredEnd = desiredStart + effectiveDuration(currentTask, snapNow.parentId);
 
             // Prevent drop in invalid period
-            if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+            if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
               cancelDrag();
               return;
             }
@@ -388,7 +403,7 @@ export function GanttChart() {
                 desiredStart,
                 totalHours
               );
-              for (const u of plan) {
+              for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
                 if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -398,6 +413,7 @@ export function GanttChart() {
                     startHour: u.startHour,
                     durationHours: u.durationHours
                   });
+                  console.log("Success");
                 }
               }
               taskUpdated = true;
@@ -415,7 +431,7 @@ export function GanttChart() {
                 desiredStart,
                 totalHours
               );
-              for (const u of plan) {
+              for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
                 if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -425,6 +441,7 @@ export function GanttChart() {
                     startHour: u.startHour,
                     durationHours: u.durationHours
                   });
+                  console.log("Success");
                 }
               }
               taskUpdated = true;
@@ -432,21 +449,36 @@ export function GanttChart() {
           }
         }
 
-        // 2) Unassign drop
+        // 2) Unassign the task
         if (!taskUpdated) {
           const unassignedMenu = document.querySelector('.unassigned-tasks-container');
+          const worldmap = document.querySelector('.world-map-container');
+          
           if (unassignedMenu) {
+            console.log("Attempting to move task to unassignedMenu");
             const r = unassignedMenu.getBoundingClientRect();
             if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
+              console.log("Success")
               dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
               taskUpdated = true;
-            }
+            } 
+          }
+
+          if (!taskUpdated && worldmap) {
+            console.log("Attempting to move task to worldmap");
+            const r = worldmap.getBoundingClientRect();
+            if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
+              console.log("Success")
+              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
+              taskUpdated = true;
+            } 
           }
         }
 
         if (!taskUpdated) {
-          // 2) Direct drop onto task body
+          // 3) Direct drop onto task body
           {
+            console.log("Attempting to drop task onto other task body");
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
             const rect = timeline?.getBoundingClientRect();
@@ -472,7 +504,7 @@ export function GanttChart() {
                   const desiredStart = currentTask.startHour + (hoursDelta || 0);
                   const desiredEnd = desiredStart + effectiveDuration(currentTask);
                   
-                  if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+                  if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
                     cancelDrag();
                     return;
                   }
@@ -497,16 +529,22 @@ export function GanttChart() {
                       currentNewStart, 
                       totalHours
                     );
-                    for (const u of plan) {
+                    for (const u of plan['updates']) {
                       const orig = state.tasks.find(t => t.id === u.id);
                       if (!orig) continue;
                       if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                        dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                        dispatch({ 
+                          type: 'UPDATE_TASK_HOURS', 
+                          taskId: u.id, 
+                          startHour: u.startHour, 
+                          durationHours: u.durationHours 
+                        });
+                        console.log("Success");
                       }
                     }
                     taskUpdated = true;
                   } else {
-                    if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets, periodLengths)) {
+                    if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
                       cancelDrag();
                       return;
                     }
@@ -524,11 +562,17 @@ export function GanttChart() {
                           return t;
                         });
                       const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, totalHours);
-                      for (const u of plan) {
+                      for (const u of plan['updates']) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
                         if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
-                          dispatch({ type: 'UPDATE_TASK_HOURS', taskId: u.id, startHour: u.startHour, durationHours: u.durationHours });
+                          dispatch({ 
+                            type: 'UPDATE_TASK_HOURS', 
+                            taskId: u.id,
+                            startHour: u.startHour, 
+                            durationHours: u.durationHours 
+                          });
+                          console.log("Success");
                         }
                       }
                       taskUpdated = true;
@@ -539,8 +583,9 @@ export function GanttChart() {
             }
           }
 
-          // 3) Snap to neighbor edges (deferred)
+          // 4) Snap to neighbor edges (deferred)
           if (snapTarget && !taskUpdated) {
+            console.log("Attempting deffered snap to neightbor edges");
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
             if (isDisallowed(currentTask, snapTarget.parentId)) {
               // skip disallowed parent assignment
@@ -557,7 +602,7 @@ export function GanttChart() {
                   desiredStart,
                   totalHours
                 );
-                for (const u of plan) {
+                for (const u of plan['updates']) {
                   const orig = state.tasks.find(t => t.id === u.id);
                   if (!orig) continue;
                   if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -567,6 +612,7 @@ export function GanttChart() {
                       startHour: u.startHour,
                       durationHours: u.durationHours
                     });
+                    console.log("Success");
                   }
                 }
                 taskUpdated = true;
@@ -584,7 +630,7 @@ export function GanttChart() {
                   desiredStart,
                   totalHours
                 );
-                for (const u of plan) {
+                for (const u of plan['updates']) {
                   const orig = state.tasks.find(t => t.id === u.id);
                   if (!orig) continue;
                   if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -594,6 +640,7 @@ export function GanttChart() {
                       startHour: u.startHour,
                       durationHours: u.durationHours
                     });
+                    console.log("Success");
                   }
                 }
                 taskUpdated = true;
@@ -601,20 +648,22 @@ export function GanttChart() {
             }
           }
 
-          // 3) Combined horizontal/vertical shift
+          // 5) Combined horizontal/vertical shift
           if (!taskUpdated) {
+            console.log("Attempting to combine horizontal and vertical shift");
             const timelineContent = ganttRef.current?.querySelector('.timeline-content');
             const rect = timelineContent?.getBoundingClientRect();
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
             const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-            const proposedStart = currentTask.startHour + (hoursDelta || 0);
+            const proposedStart = currentTask.startHour + (hoursDelta || 0); // Calculates start hour
             const proposedEnd = proposedStart + effectiveDuration(currentTask);
 
             const targetParentId = getParentFromMousePosition(evt.clientY);
             const isParentChange = !!targetParentId && targetParentId !== currentTask.parentId;
 
             // Prevent drop in invalid period for horizontal/vertical moves
-            if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets, periodLengths)) {
+            if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
+              console.log("Invalid Period");
               cancelDrag();
               return;
             }
@@ -634,7 +683,7 @@ export function GanttChart() {
                 totalHours
               );
 
-              for (const u of plan) {
+              for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
                 if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -646,7 +695,17 @@ export function GanttChart() {
                   });
                 }
               }
+
+              for (const id of plan['unassign']) {
+                dispatch({
+                  type: 'UPDATE_TASK_PARENT',
+                  taskId: id,
+                  newParentId: null
+                });
+              }
+              console.log("Success");
               taskUpdated = true;
+
             } else if (hasHoriz && ganttRef.current) {
               // Horizontal only in same parent
               const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
@@ -658,7 +717,7 @@ export function GanttChart() {
                 totalHours
               );
 
-              for (const u of plan) {
+              for (const u of plan['updates']) {
                 const orig = state.tasks.find(t => t.id === u.id);
                 if (!orig) continue;
                 if (orig.startHour !== u.startHour || orig.durationHours !== u.durationHours) {
@@ -670,6 +729,15 @@ export function GanttChart() {
                   });
                 }
               }
+
+              for (const id of plan['unassign']) {
+                dispatch({
+                  type: 'UPDATE_TASK_PARENT',
+                  taskId: id,
+                  newParentId: null
+                });
+              }
+              console.log("Success");
               taskUpdated = true;
             }
           }
@@ -697,30 +765,53 @@ export function GanttChart() {
     if (!result) return;
 
     // Import periods
+    let _totalHours: number = 0
+    let _formattedPeriods: Period[] | null = null;
     if (result.periods && Array.isArray(result.periods)) {
-      dispatch({ type: 'SET_PERIODS', periods: result.periods });
-      console.log("Imported Periods: ", result.periods);
-    }
-    // Import period lengths
-    if (Array.isArray(result.period_length) && Array.isArray(result.periods)) {
-      const formattedPeriodLengths = result.period_length.map((pl: any, idx: number) => {
-        const period = result.periods[idx];
-        if (!period) return null; // skip if no matching period
-        
-        return {
-          period,
-          length_hrs: pl.length_h ?? pl.length_hrs ?? PERIOD_LEN_FALLBACK
-        };
-      })
-      .filter((pl): pl is PeriodLength => pl !== null);
+      const formattedPeriods = result.periods.map((p: any) => {
+        // Get length from period_lengths
+        const periodLength = result.period_lengths?.find((pl: any) => pl.id === p.id);
+        const lengthHrs = periodLength?.length_hrs ?? PERIOD_FALLBACK.length_hrs;
+        console.log(`id ${p.id} length ${lengthHrs}`)
 
-      dispatch({ type: 'SET_PERIOD_LENGTHS', period_lengths: formattedPeriodLengths });
-      console.log("Imported Period Lengths: ", formattedPeriodLengths)
+        _totalHours += lengthHrs;
+
+        return {
+          id: p.id,
+          name: p.name,
+          length_hrs: lengthHrs
+        };
+      });
+
+      dispatch({
+        type: 'SET_PERIODS',
+        periods: formattedPeriods
+      });
+      _formattedPeriods = formattedPeriods;
+      console.log("Imported Periods: ", formattedPeriods);
+      console.log("Total hours: ", _totalHours);
+    } 
+
+    if (_formattedPeriods === null) {
+      // Fallback if no periods exist
+      _formattedPeriods = [PERIOD_FALLBACK];
+      _totalHours = _formattedPeriods[0].length_hrs;
+      dispatch({
+        type: 'SET_PERIODS',
+        periods: [PERIOD_FALLBACK]
+      });
     }
+
+    dispatch({
+      type: 'SET_TOTAL_HOURS',
+      totalHours: _totalHours
+    });
+
     // Import parents with dynamic IDs
+    let formattedParents: Parent[] = []
     if (result.parents && Array.isArray(result.parents)) {
       const existingParentCount = state.parents.length;
-      const formattedParents = result.parents.map((p: any, idx: number) => {
+      formattedParents = result.parents.map((p: any, idx: number) => {
         const index = existingParentCount + idx + 1;
 
         const id = index < 10 ? `R0${index}` : `R${index}`;
@@ -742,7 +833,6 @@ export function GanttChart() {
     // Import tasks with dynamic IDs and overlay resolution
     if (result.tasks && Array.isArray(result.tasks)) {
       const existingTaskCount = state.tasks.length;
-      const allTasks = [...state.tasks];
       const formattedTasks = result.tasks.map((t: any, idx: number) => { 
         const id = `T${existingTaskCount + idx + 1}`;
         const name = t.name || t['Name'] || id;
@@ -766,31 +856,97 @@ export function GanttChart() {
           specialTeams,
           invalidPeriods
         };
-        const importedEffDur = effectiveDuration(importedTask, parentId);
-
-        // Overlay resolution: set parentId to null if overlaps with any other period or task (using effectiveDuration)
-        //----------------
-        const overlaps = allTasks.some(et => {
-          const existingEffDur = effectiveDuration(et, et.parentId);
-          const timeOverlap =
-            et.parentId === parentId &&
-            (startHour < et.startHour + existingEffDur && startHour + importedEffDur > et.startHour);
-          const periodOverlap =
-            et.invalidPeriods && invalidPeriods &&
-            et.invalidPeriods.some(p => invalidPeriods.includes(p));
-          return timeOverlap || periodOverlap;
-        });
-        //--------------------
 
         return {
-          ...importedTask,
-          parentId: overlaps ? null : parentId
+          ...importedTask
         };
       });
 
-
       dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
       console.log("Imported Tasks: ", formattedTasks);
+
+      // Resolve overlaps
+      const totalTasks: Task[] = [ ...state.tasks, ...formattedTasks ];
+      const totalParents: Parent[] = [ ...state.parents, ...formattedParents ]; 
+
+      console.log("Resolving overlaps");
+
+      for (const p of totalParents) {
+        const parentSiblings = totalTasks
+          .filter(t => t.parentId === p.id)
+          .sort((a, b) => occStart(a) - occStart(b));
+
+        for (let i = 1; i < parentSiblings.length; i++) {
+          const prev = parentSiblings[i - 1];
+          const curr = parentSiblings[i];
+
+          console.log(`Prev: [${prev.startHour}->${endHour(prev)}]`);
+          console.log(`Curr: [${curr.startHour}->${endHour(curr)}]`);
+
+          // If the current start before prev ends -> overlap
+          if (curr.startHour < endHour(prev)) {
+            let newStart = endHour(prev);
+            console.log(`Overlap detected. Initial newStart: ${newStart}`);
+
+            // Check if newStart is in a valid period for curr
+            while (newStart + effectiveDuration(curr) <= _totalHours) {
+              if (isInValidPeriod(curr, newStart, effectiveDuration(curr), _formattedPeriods)) {
+                // Found a valid position
+                break;
+              }
+
+              // Find the next period boundary after an invalid period
+              let cumulativeHour = 0;
+              let foundNextValid = false;
+
+              for (const { id, length_hrs } of _formattedPeriods) {
+                const periodEnd = cumulativeHour + length_hrs;
+
+                // If newStart is in or before this invalid period, try the next period
+                if (curr.invalidPeriods?.includes(id) && newStart < periodEnd) {
+                  newStart = periodEnd; // Move to start of next period
+                  foundNextValid = true;
+                  break;
+                }
+
+                cumulativeHour += length_hrs;
+              }
+
+              if (!foundNextValid) {
+                // Couldnt find a valid period
+                break;
+              }
+            }
+
+            // If the end is out of range or couldnt find valid period
+            if (newStart + effectiveDuration(curr) > _totalHours || 
+                !isInValidPeriod(curr, newStart, effectiveDuration(curr), _formattedPeriods)) {
+              console.log(`${newStart} is out of range or in invalid period for ${_totalHours}`);
+              dispatch({
+                type: 'UPDATE_TASK_PARENT',
+                taskId: curr.id,
+                newParentId: null
+              });
+
+              // Remove from local array 
+              parentSiblings.splice(i, 1);
+              i--; 
+            } 
+            else {
+              console.log(`Moving curr to ${newStart}`);
+              dispatch({
+                type: 'UPDATE_TASK_HOURS',
+                taskId: curr.id,
+                startHour: newStart,
+                durationHours: curr.durationHours
+              });
+
+              // Update local object
+              curr.startHour = newStart;
+            }
+          }
+        }
+      }
     }
   };
 
@@ -831,7 +987,7 @@ export function GanttChart() {
             </div>
             {state.parents.map(parent => (
               <div
-                key={parent.id} // height
+                key={parent.id} 
                 className={`h-12 flex items-center border-b border-gray-100 px-2 transition-all ${
                   dropZone?.parentId === parent.id ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500' : ''
                 }`}
@@ -857,14 +1013,14 @@ export function GanttChart() {
               <div className="h-10 border-b border-gray-200 relative">
                 {periods.map((p, idx) => (
                   <div
-                    key={p}
+                    key={p.id}
                     className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100"
                     style={{
                       left: `${(periodOffsets[idx] / totalHours) * 100}%`,
-                      width: `${(periodLengths[idx] / totalHours) * 100}%`
+                      width: `${(periods[idx].length_hrs / totalHours) * 100}%`
                     }}
                   >
-                    {p}
+                    {p.name}
                   </div>
                 ))}
               </div>
@@ -882,28 +1038,30 @@ export function GanttChart() {
                   {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div
-                      key={`${parent.id}-${p}`}
+                      key={`${parent.id}-grid-${p.id}`}
                       className="absolute top-0 bottom-0 border-r border-gray-50"
-                      style={{ left: `${(((periodOffsets[idx] + periodLengths[idx]) / totalHours) * 100)}%` }}
+                      style={{ left: `${(((periodOffsets[idx] + periods[idx].length_hrs) / totalHours) * 100)}%` }}
                     />
                   ))}
 
                   {/* Invalid period overlays when task is selected or being dragged */}
-                  {(state.selectedTaskId || draggedTask) && (() => {
-                    const relevantTask = state.selectedTaskId
-                    ? state.tasks.find(t => t.id === state.selectedTaskId)
-                    : draggedTask
-                      ? state.tasks.find(t => t.id === draggedTask)
-                      : null;
+                  {(state.dragging_to_gantt || state.selectedTaskId || draggedTask) && (() => {
+                    const relevantTask = state.dragging_to_gantt
+                    ? state.tasks.find(t => t.id === state.dragging_to_gantt)
+                    : state.selectedTaskId
+                      ? state.tasks.find(t => t.id === state.selectedTaskId)
+                      : draggedTask
+                        ? state.tasks.find(t => t.id === draggedTask)
+                        : null
 
                     if (!relevantTask?.invalidPeriods?.length) return null;
 
                     return relevantTask.invalidPeriods.map(invalidPeriod => {
-                      const periodIdx = periods.indexOf(invalidPeriod);
+                      const periodIdx = periods.findIndex(p => p.id === invalidPeriod);
                       if (periodIdx === -1) return null;
 
                       const startPct = (periodOffsets[periodIdx] / totalHours) * 100;
-                      const widthPct = (periodLengths[periodIdx] / totalHours) * 100;
+                      const widthPct = (periods[periodIdx].length_hrs / totalHours) * 100;
 
                       return (
                         <div
@@ -925,7 +1083,7 @@ export function GanttChart() {
 
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
                   {(draggedTask) && getTasksByParent(parent.id).map(t => {
-                    if (t.id !== state.draggingTaskId_gantt) {
+                    if (t.id !== state.dragging_from_gantt) {
                       const startPct = (occStart(t) / totalHours) * 100;
                       const endPct = (occEnd(t) / totalHours) * 100;
                       const isLeftActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
@@ -1041,7 +1199,7 @@ export function GanttChart() {
                       // Predict drop position (use startHour or mouse position if available)
                       const predictedStart = moving.startHour;
                       const predictedEnd = predictedStart + effectiveDuration(moving, parent.id);
-                      invalidPeriod = isInInvalidPeriod(moving, predictedStart, predictedEnd, periods, periodOffsets, periodLengths);
+                      invalidPeriod = isInInvalidPeriod(moving, predictedStart, predictedEnd, periods, periodOffsets);
                     }
                     return (
                       <div className={`absolute inset-0 ${dis || invalidPeriod ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
@@ -1055,7 +1213,7 @@ export function GanttChart() {
               ))}
 
               {/* Global drop hint when dragging from unassigned */}
-              {state.draggingTaskId_unassigned && (
+              {state.toggledDrop && (
                 <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
                   <div className="text-center">
                     <div className="flex items-center justify-center gap-2 text-green-700 mb-2">

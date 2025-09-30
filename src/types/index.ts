@@ -22,8 +22,9 @@ export interface Parent {
   color: string;
 }
 
-export interface PeriodLength {
-  period: string;
+export interface Period {
+  id: string;
+  name: string;
   length_hrs: number;
 }
 
@@ -34,15 +35,16 @@ export interface DragData {
 }
 
 export interface AppState {
-  tasks: Task[];
-  parents: Parent[];
-  periods: string[];           
-  period_lengths: Array<{ period: string; length_hrs: number }>; 
-
   selectedTaskId: string | null;
   selectedParentId: string | null;
+  dragging_from_gantt: string | null;
+  dragging_to_gantt: string | null; 
+  totalHours: number | null;   
+  
   toggledNull: boolean;
-  draggingTaskId_unassigned: string | null;
-  draggingTaskId_gantt: string | null;
-  totalHours: number | null; 
+  toggledDrop: boolean;
+
+  tasks: Task[];
+  parents: Parent[];
+  periods: Period[];  
 }

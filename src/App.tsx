@@ -23,6 +23,16 @@ function AppContent() {
           </div>
         </div>
         
+        {/* Reset Page */}
+        {import.meta.env.DEV && (
+        <button 
+          onClick={() => window.location.reload()}
+          className="text-blue-500"
+        >
+          Reset Page
+        </button>
+      )}
+        
         {/* Quick Stats */}
         <div className="flex gap-4 mt-4">
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">

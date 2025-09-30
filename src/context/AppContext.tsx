@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Parent, PeriodLength } from '../types';
+import { AppState, Task, Parent, Period } from '../types';
 
 // ----------------------
 // Action Types for State
@@ -8,31 +8,37 @@ import { AppState, Task, Parent, PeriodLength } from '../types';
 type AppAction =
   | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
   | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
+  | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
+  | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
+  | { type: 'SET_PERIODS'; periods: Period[]}
+  | { type: 'SET_TOTAL_HOURS'; totalHours: number | null }
+  
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
+  | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean}
+
   | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; durationHours: number }
-  | { type: 'SET_DRAGGING_UNASSIGNED_TASK'; taskId: string | null }
-  | { type: 'SET_DRAGGING_GANTT_TASK'; taskId: string | null }
-  | { type: 'SET_PERIOD_LENGTHS'; period_lengths: Array<PeriodLength>}
-  | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'ADD_PARENTS'; parents: Parent[] }
-  | { type: 'SET_PERIODS'; periods: string[] };
 
+  | { type: 'ADD_TASKS'; tasks: Task[] }
+  | { type: 'ADD_PARENTS'; parents: Parent[] };
+  
 // ----------------------
 // Initial Application State
 // ----------------------
 // Contains sample tasks, parents, periods, and drag/drop state.
 const initialState: AppState = {
-  tasks: [],
-  parents: [],
-  totalHours: null,
   selectedTaskId: null,
   selectedParentId: 'all',
+  dragging_from_gantt: null,
+  dragging_to_gantt: null,
+  totalHours: null,
+
   toggledNull: false,
-  draggingTaskId_unassigned: null,
-  draggingTaskId_gantt: null,
+  toggledDrop: false,
+
+  tasks: [],
+  parents: [],
   periods: [],
-  period_lengths: [],
 };
 
 // ----------------------
@@ -56,8 +62,27 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_SELECTED_PARENT':
       return { ...state, selectedParentId: action.parentId };
 
+    case 'SET_DRAGGING_FROM_GANTT': 
+      return { ...state, dragging_from_gantt: action.taskId };
+
+    case 'SET_DRAGGING_TO_GANTT': 
+      return { ...state, dragging_to_gantt: action.taskId };    
+
+    case 'SET_TOTAL_HOURS':
+      return { ...state, totalHours: action.totalHours };
+
+    case 'SET_PERIODS':
+      return { ...state, periods: action.periods };
+
+
+
     case 'TOGGLE_NULL':
       return { ...state, toggledNull: action.toggledNull };
+
+    case 'TOGGLE_UNASSIGN_DROP':
+      return { ...state, toggledDrop: action.toggledDrop };
+
+
 
     case 'UPDATE_TASK_PARENT': {
       const updatedTasks = state.tasks.map(task =>
@@ -81,23 +106,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, tasks: updatedTasks };
     };
 
-    case 'SET_DRAGGING_UNASSIGNED_TASK': 
-      return { ...state, draggingTaskId_unassigned: action.taskId };
 
-    case 'SET_DRAGGING_GANTT_TASK': 
-      return { ...state, draggingTaskId_gantt: action.taskId };
-
-    case 'SET_PERIOD_LENGTHS': 
-      return { ...state, period_lengths: action.period_lengths };
-
+    
     case 'ADD_TASKS':
       return { ...state, tasks: [...state.tasks, ...action.tasks] };
     
-      case 'ADD_PARENTS':
+    case 'ADD_PARENTS':
       return { ...state, parents: [...state.parents, ...action.parents] };
-
-    case 'SET_PERIODS':
-      return { ...state, periods: action.periods };
 
     default:
       return state;

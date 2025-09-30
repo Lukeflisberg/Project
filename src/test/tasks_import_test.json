@@ -1,66 +1,102 @@
 {
     "periods": [
-        "P1",
-        "P2",
-        "P3",
-        "P4",
-        "P5",
-        "P6",
-        "P7",
-        "P8",
-        "P9",
-        "P10",
-        "P11",
-        "P12"
+        {
+            "id": "P1",
+            "name": "hi"
+        },
+        {
+            "id": "P2",
+            "name": "test"
+        },
+        {
+            "id": "P3",
+            "name": "test"
+        },
+        {
+            "id": "P4",
+            "name": "test"
+        },
+        {
+            "id": "P5",
+            "name": "test"
+        },
+        {
+            "id": "P6",
+            "name": "test"
+        },
+        {
+            "id": "P7",
+            "name": "Aug 1st"
+        },
+        {
+            "id": "P8",
+            "name": "test"
+        },
+        {
+            "id": "P9",
+            "name": "test123"
+        },
+        {
+            "id": "P10",
+            "name": "test23"
+        },
+        {
+            "id": "P11",
+            "name": "test"
+        },
+        {
+            "id": "P12",
+            "name": "large"
+        }
     ],
-    "period_length": [
+    "period_lengths": [
         {
-            "period": "P1",
-            "length_h": 40
+            "id": "P1",
+            "length_hrs": 40
         },
         {
-            "period": "P2",
-            "length_h": 40
+            "id": "P2",
+            "length_hrs": 40
         },
         {
-            "period": "P3",
-            "length_h": 40
+            "id": "P3",
+            "length_hrs": 40
         },
         {
-            "period": "P4",
-            "length_h": 40
+            "id": "P4",
+            "length_hrs": 40
         },
         {
-            "period": "P5",
-            "length_h": 40
+            "id": "P5",
+            "length_hrs": 40
         },
         {
-            "period": "P6",
-            "length_h": 40
+            "id": "P6",
+            "length_hrs": 40
         },
         {
-            "period": "P7",
-            "length_h": 40
+            "id": "P7",
+            "length_hrs": 40
         },
         {
-            "period": "P8",
-            "length_h": 40
+            "id": "P8",
+            "length_hrs": 40
         },
         {
-            "period": "P9",
-            "length_h": 40
+            "id": "P9",
+            "length_hrs": 40
         },
         {
-            "period": "P10",
-            "length_h": 60
+            "id": "P10",
+            "length_hrs": 60
         },
         {
-            "period": "P11",
-            "length_h": 60
+            "id": "P11",
+            "length_hrs": 60
         },
         {
-            "period": "P12",
-            "length_h": 80
+            "id": "P12",
+            "length_hrs": 80
         }
     ],
     "parents": [

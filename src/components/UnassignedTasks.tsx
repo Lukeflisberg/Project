@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Package, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { findEarliestHour } from '../helper/taskUtils';
 
 // UnassignedTasks Component: displays tasks not assigned to any team and handles drag-and-drop assignment
 export function UnassignedTasks() {
@@ -48,7 +49,14 @@ export function UnassignedTasks() {
     document.body.appendChild(dragPreview);
 
     // Notify global state that a drag is in progress
-    dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: taskId });
+    dispatch({ 
+      type: 'SET_DRAGGING_TO_GANTT', 
+      taskId: taskId 
+    });
+    dispatch({ 
+      type: 'TOGGLE_UNASSIGN_DROP',
+      toggledDrop: true
+    })
 
     // Mouse move handler: update drag preview position so mouse stays centered
     const handleMouseMove = (e: MouseEvent) => {
@@ -65,7 +73,14 @@ export function UnassignedTasks() {
       }
 
       // Clear dragging state
-      dispatch({ type: 'SET_DRAGGING_UNASSIGNED_TASK', taskId: null });
+      dispatch({ 
+        type: 'SET_DRAGGING_TO_GANTT', 
+        taskId: null 
+      });
+      dispatch({ 
+        type: 'TOGGLE_UNASSIGN_DROP', 
+        toggledDrop: false
+      });
       setDraggedTask(null);
 
       // Get the latest task state
@@ -93,38 +108,27 @@ export function UnassignedTasks() {
             
             if (timelineRect) {
               const totalHours = state.totalHours || 24; // Use state or fallback
-              const duration = currentTask.durationHours;
-
-              // Mouse percentage across the timeline
-              const mousePct = Math.max(0, Math.min(1, (e.clientX - timelineRect.left) / timelineRect.width));
-              let startHour = Math.round(mousePct * totalHours);
-
-              // Clamp startHour so task fits in timeline
-              startHour = Math.max(0, Math.min(totalHours - duration, startHour));
-
-              // Check for overlap with other tasks in the same team
-              const siblings = state.tasks.filter(t => t.parentId === parentId && t.id !== taskId);
-              const overlaps = siblings.some(t => {
-                const tStart = t.startHour;
-                const tEnd = t.startHour + t.durationHours;
-                return startHour < tEnd && (startHour + duration) > tStart;
-              });
-
-              if (overlaps) {
-                // Block drop if overlapping
-                alert('Cannot place task here: overlaps with another task.');
-              } else {
-                // Assign task to team and set start hour
-                dispatch({ 
-                  type: 'UPDATE_TASK_PARENT',
-                  taskId: taskId,
-                  newParentId: parentId
-                });
+              const filteredTasks = state.tasks
+                    .filter(t => t.parentId === parentId)
+                    .sort((a, b) => a.startHour - b.startHour)
+              
+              const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
+              console.log("Total hours: ", totalHours);
+              console.log("Task stats: ", task);
+              console.log("Tasks: ", state.tasks);
+              console.log("Calculated earliest: ", result);
+              
+              if (result !== null) {
                 dispatch({
                   type: 'UPDATE_TASK_HOURS',
-                  taskId: taskId,
-                  startHour: startHour,
-                  durationHours: duration
+                  taskId: task.id,
+                  startHour: result,
+                  durationHours: task.durationHours
+                })
+                dispatch({
+                  type: 'UPDATE_TASK_PARENT',
+                  taskId: task.id,
+                  newParentId: parentId
                 });
               }
             }
@@ -156,7 +160,7 @@ export function UnassignedTasks() {
 
   return (
     <div className={`unassigned-tasks-container bg-white rounded-lg shadow-lg overflow-hidden transition-all ${
-      draggedTask || state.draggingTaskId_gantt
+      draggedTask || state.dragging_from_gantt
         ? 'ring-2 ring-orange-400 bg-orange-50' 
         : ''
     }`}>
@@ -164,7 +168,7 @@ export function UnassignedTasks() {
       {/* Header: shows title, count, and expand/collapse */}
       <div 
         className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
-          draggedTask || state.draggingTaskId_gantt
+          draggedTask || state.dragging_from_gantt
             ? 'bg-orange-100 hover:bg-orange-200' 
             : 'bg-gray-50 hover:bg-gray-100'
         }`}
@@ -181,7 +185,7 @@ export function UnassignedTasks() {
       </div>
 
       {/* Drop zone indicator when dragging from Gantt */}
-      {state.draggingTaskId_gantt && (
+      {state.dragging_from_gantt && (
         <div className="mx-4 mb-4 p-3 border-2 border-dashed border-orange-400 bg-orange-50 rounded-lg text-center">
           <div className="flex items-center justify-center gap-2 text-orange-700">
             <Package size={18} />

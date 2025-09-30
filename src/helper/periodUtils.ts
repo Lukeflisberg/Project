@@ -1,15 +1,21 @@
+import { Period } from "../types";
+
 export function getPeriodData(
-  periods: string[],
-  periodLengthTable: Array<{ period: string; length_hrs: number }>,
-  fallbackLen = 40
+  periods: Array<Period>,
+  fallbackLen = 1
 ) {
-  const periodLengths = periods.map((name, idx) => {
-    const entry = periodLengthTable.find((e) => e && e.period === name) ?? periodLengthTable[idx];
-    const num = Number(entry?.length_hrs);
+  const periodLengths = periods.map((period) => {
+    const num = Number(period?.length_hrs);
     return Number.isFinite(num) && num > 0 ? num : fallbackLen;
   });
   let acc = 0;
-  const periodOffsets = periodLengths.map((len) => { const off = acc; acc += len; return off; });
+  const periodOffsets = periodLengths.map((len) => { 
+    const off = acc;
+    acc += len;
+    return off; 
+  });
+
   const totalHours = Math.max(1, periodLengths.reduce((a, b) => a + b, 0));
-  return { periodLengths, periodOffsets, totalHours };
+  
+  return { periodOffsets, totalHours };
 }
