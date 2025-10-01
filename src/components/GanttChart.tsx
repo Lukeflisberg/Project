@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task, Parent, Period } from '../types';
-import { importProjectFromFile } from '../helper/fileReader'
+import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
 import { isInValidPeriod } from '../helper/taskUtils';
@@ -12,7 +12,7 @@ import { isInValidPeriod } from '../helper/taskUtils';
 // Period Configuration
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
-const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_hrs: 1};
+const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
 
 // ----------------------
 // Invalid Period Helpers
@@ -25,7 +25,7 @@ function isInInvalidPeriod(task: Task, startHour: number, endHour: number, perio
     const idx = periods.findIndex(p => p.id === invalidPeriod)
     if (idx === -1) continue;
     const periodStart = periodOffsets[idx];
-    const periodEnd = periodStart + periods[idx].length_hrs;
+    const periodEnd = periodStart + periods[idx].length_h;
     // If any overlap
     if (startHour < periodEnd && endHour > periodStart) return true;
   }
@@ -155,7 +155,7 @@ export function GanttChart() {
 
   // Calculate periods, offsets, and total hours for the timeline
   const periods = state.periods?.length ? state.periods : [PERIOD_FALLBACK];
-  const { periodOffsets, totalHours } = getPeriodData(periods, PERIOD_FALLBACK.length_hrs);
+  const { periodOffsets, totalHours } = getPeriodData(periods, PERIOD_FALLBACK.length_h);
   
   // Get all tasks for a given parent/team, sorted by start time
   const getTasksByParent = (parentId: string | null) => {
@@ -757,29 +757,29 @@ export function GanttChart() {
   };
 
   // Handler for importing everything from one file
-  const handleImportProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const result = await importProjectFromFile(file);
+    const result = await importDataFromFile(file);
     if (!result) return;
 
-    // Import periods
+    // Import periods && period_length
     let _totalHours: number = 0
     let _formattedPeriods: Period[] | null = null;
     if (result.periods && Array.isArray(result.periods)) {
-      const formattedPeriods = result.periods.map((p: any) => {
-        // Get length from period_lengths
-        const periodLength = result.period_lengths?.find((pl: any) => pl.id === p.id);
-        const lengthHrs = periodLength?.length_hrs ?? PERIOD_FALLBACK.length_hrs;
-        console.log(`id ${p.id} length ${lengthHrs}`)
+      const formattedPeriods = result.periods.map((id: string) => {
+        // Get { name, length } from period_length
+        const periodLength = result.period_length.find((p: Period) => p.id === id);
+        const name = periodLength?.name ?? PERIOD_FALLBACK.name;
+        const length_h = periodLength?.length_h ?? PERIOD_FALLBACK.length_h;
 
-        _totalHours += lengthHrs;
+        _totalHours += length_h;
 
         return {
-          id: p.id,
-          name: p.name,
-          length_hrs: lengthHrs
+          id: id,
+          name: name,
+          length_h: length_h
         };
       });
 
@@ -795,79 +795,123 @@ export function GanttChart() {
     if (_formattedPeriods === null) {
       // Fallback if no periods exist
       _formattedPeriods = [PERIOD_FALLBACK];
-      _totalHours = _formattedPeriods[0].length_hrs;
+      _totalHours = _formattedPeriods[0].length_h;
       dispatch({
         type: 'SET_PERIODS',
         periods: [PERIOD_FALLBACK]
       });
     }
 
-    dispatch({
+    dispatch({ // only needed to be called here as its the only time it will ever be changed
       type: 'SET_TOTAL_HOURS',
       totalHours: _totalHours
     });
 
-    // Import parents with dynamic IDs
+    // Import parents 
+    const availableColors: string[] = [
+      "red",
+      "blue",
+      "green",
+      "yellow",
+      "purple",
+      "orange",
+      "pink",
+      "brown",
+      "gray",
+      "black",
+      "navy",
+      "teal",
+      "maroon"
+    ];
     let formattedParents: Parent[] = []
     if (result.parents && Array.isArray(result.parents)) {
-      const existingParentCount = state.parents.length;
       formattedParents = result.parents.map((p: any, idx: number) => {
-        const index = existingParentCount + idx + 1;
+        const id = p.id;
+        const name = p.name;
+        const color = availableColors[idx % availableColors.length];
 
-        const id = index < 10 ? `R0${index}` : `R${index}`;
-        const name = p.name || p['Name'] || id;
-        const color = p.color || p['Color'] || '#888';
-
-        const importedParents: Parent = {
+        return {
           id,
           name,
           color
         }
-
-        return { ...importedParents }
       });
       dispatch({ type: 'ADD_PARENTS', parents: formattedParents });
       console.log("Imported Parents: ", formattedParents);
     }
 
-    // Import tasks with dynamic IDs and overlay resolution
-    if (result.tasks && Array.isArray(result.tasks)) {
-      const existingTaskCount = state.tasks.length;
-      const formattedTasks = result.tasks.map((t: any, idx: number) => { 
-        const id = `T${existingTaskCount + idx + 1}`;
-        const name = t.name || t['Name'] || id;
-        const parentId = t.parentId || t['Parent ID'] || null;
-        const startHour = t.startHour ?? t['Start Hour'] ?? 0;
-        const defaultDuration = t.defaultDuration ?? t['Default Duration (hrs)'] ?? 40;
-        const defaultSetup = t.defaultSetup ?? t['Default Setup (hrs)'] ?? 0;
-        const specialTeams = t.specialTeams || t['Special Teams'] || {};
+    // Import durations
+    if (result.durations && Array.isArray(result.durations)) { 
+      const formattedTasks = result.durations.map((t: any) => { 
+        const id = t.Activity;
+        const parentId = null;
+        const startHour = 0;
+        const defaultSetup = t['Default Setup (hrs)'];
+        const defaultDuration = t['Default Duration (hrs)'];
+        const specialParents = t['Special Parents'];
         const location = t.location || t['Location'] || { lat: 0, lon: 0 };
-        const invalidPeriods = t.invalidPeriods || t['Invalid Periods'] || [];
 
         // Calculate effective duration for the imported task
-        const importedTask: Task = {
+        return {
           id,
-          name,
           parentId,
           startHour,
           defaultDuration,
           defaultSetup,
-          location,
-          specialTeams,
-          invalidPeriods
-        };
-
-        return {
-          ...importedTask
+          specialParents,
+          location
         };
       });
 
       dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
       console.log("Imported Tasks: ", formattedTasks);
+    }
+  };
+
+  const handleImportSolution = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const result = await importSolutionFromFile(file);
+    if (!result) return;
+
+    let _tasks = state.tasks; // Store local copy of state.tasks
+
+    if (result.solution && Array.isArray(result.solution)) {
+      for (const {team, tasks} of result.solution) {
+        for (const {task, start} of tasks) {
+          dispatch({
+            type: 'UPDATE_TASK_PARENT',
+            taskId: task,
+            newParentId: team
+          });
+
+          // Update local copy after dispatch
+          _tasks = _tasks.map(t => 
+            t.id === task ? { ...t, parentId: team } : t
+          );
+
+          const foundTask = state.tasks.find(t => t.id === task);
+          if (foundTask) {
+            dispatch({
+              type: 'UPDATE_TASK_HOURS',
+              taskId: task,
+              startHour: start,
+              defaultDuration: foundTask.defaultDuration
+            }) 
+
+            // Update local copy after dispatch
+            _tasks = _tasks.map(t => 
+              t.id === task ? { ...t, startHour: start } : t
+            );
+          }
+        }
+      }
+    }
 
       // Resolve overlaps
-      const totalTasks: Task[] = [ ...state.tasks, ...formattedTasks ];
-      const totalParents: Parent[] = [ ...state.parents, ...formattedParents ]; 
+      const totalTasks: Task[] = _tasks;
+      const totalParents: Parent[] = state.parents; 
 
       console.log("Resolving overlaps");
 
@@ -889,8 +933,8 @@ export function GanttChart() {
             console.log(`Overlap detected. Initial newStart: ${newStart}`);
 
             // Check if newStart is in a valid period for curr
-            while (newStart + effectiveDuration(curr) <= _totalHours) {
-              if (isInValidPeriod(curr, newStart, effectiveDuration(curr), _formattedPeriods)) {
+            while (newStart + effectiveDuration(curr) <= totalHours) {
+              if (isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
                 // Found a valid position
                 break;
               }
@@ -899,8 +943,8 @@ export function GanttChart() {
               let cumulativeHour = 0;
               let foundNextValid = false;
 
-              for (const { id, length_hrs } of _formattedPeriods) {
-                const periodEnd = cumulativeHour + length_hrs;
+              for (const { id, length_h } of state.periods) {
+                const periodEnd = cumulativeHour + length_h;
 
                 // If newStart is in or before this invalid period, try the next period
                 if (curr.invalidPeriods?.includes(id) && newStart < periodEnd) {
@@ -909,7 +953,7 @@ export function GanttChart() {
                   break;
                 }
 
-                cumulativeHour += length_hrs;
+                cumulativeHour += length_h;
               }
 
               if (!foundNextValid) {
@@ -919,9 +963,9 @@ export function GanttChart() {
             }
 
             // If the end is out of range or couldnt find valid period
-            if (newStart + effectiveDuration(curr) > _totalHours || 
-                !isInValidPeriod(curr, newStart, effectiveDuration(curr), _formattedPeriods)) {
-              console.log(`${newStart} is out of range or in invalid period for ${_totalHours}`);
+            if (newStart + effectiveDuration(curr) > totalHours || 
+                !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
+              console.log(`${newStart} is out of range or in invalid period for ${totalHours}`);
               dispatch({
                 type: 'UPDATE_TASK_PARENT',
                 taskId: curr.id,
@@ -947,8 +991,7 @@ export function GanttChart() {
           }
         }
       }
-    }
-  };
+    }  
 
   // ----------------------
   // Render Gantt Chart UI
@@ -959,15 +1002,27 @@ export function GanttChart() {
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24}/>
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
-        {/* Import tasks button */}
+        {/* Import data button */}
         <div className="ml-auto flex items-center gap-4">
           <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700">
-            <Upload size={18} /> Import
+            <Upload size={18} /> Import Data
             <input
               type="file"
               accept=".json"
               style={{ display: 'none' }}
-              onChange={handleImportProject}
+              onChange={handleImportData}
+            />
+          </label>
+        </div>
+        {/* Import solution button */}
+        <div className="ml-auto flex items-center gap-4">
+          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700">
+            <Upload size={18} /> Import solution
+            <input
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleImportSolution}
             />
           </label>
         </div>
@@ -985,62 +1040,141 @@ export function GanttChart() {
             <div className={`h-10 flex items-center font-medium text-gray-700 border-b border-gray-200`}>
               Teams
             </div>
-            {state.parents.map(parent => (
-              <div
-                key={parent.id} 
-                className={`h-12 flex items-center border-b border-gray-100 px-2 transition-all ${
-                  dropZone?.parentId === parent.id ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500' : ''
-                }`}
-                data-parent-row="true"
-                data-parent-id={parent.id}
-                onClick={() => dispatch({ type: 'SET_SELECTED_PARENT', parentId: parent.id })}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-6 rounded-full" style={{ backgroundColor: parent.color }} />
-                  <span className="text-sm font-medium text-gray-700">{parent.name}</span>
+            
+            {state.parents.map(parent => {
+              // Calculate relevantTask once for this parent row
+              const relevantTask = state.dragging_to_gantt 
+                ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
+                : state.selectedTaskId 
+                ? state.tasks.find(t => t.id === state.selectedTaskId) 
+                : draggedTask 
+                ? state.tasks.find(t => t.id === draggedTask) 
+                : null;
+              
+              const dis = relevantTask ? isDisallowed(relevantTask, parent.id) : false;
+              
+              return (
+                <div
+                  key={parent.id}
+                  className={`h-12 flex items-center border-b px-2 relative transition-all ${
+                    dis 
+                      ? 'border-l-4 border-l-red-500'
+                      : dropZone?.parentId === parent.id
+                        ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500'
+                        : 'border-gray-100'
+                  }`}
+                  data-parent-row="true"
+                  data-parent-id={parent.id}
+                  onClick={() => dispatch({ type: 'SET_SELECTED_PARENT', parentId: parent.id })}
+                >
+                  {/* Disallowed team overlay */}
+                  {dis && (
+                    <div className="absolute inset-0 pointer-events-none z-5"
+                      style={{
+                        background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
+                        border: '2px dashed rgba(239, 68, 68, 0.4)',
+                        borderLeft: 'none',
+                        borderRight: 'none'
+                      }}
+                    />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-6 rounded-full" style={{ backgroundColor: parent.color }} />
+                    <span className="text-sm font-medium text-gray-700">{parent.name}</span>
+                  </div>
+
+                  {/* Teams drop/cant drop text */}
+                  {dis && (
+                    <div className="ml-auto text-xs font-medium text-red-600">
+                      Can't drop here
+                    </div>
+                  )}
+
+                  {dropZone?.parentId === parent.id && !dis && (
+                    <div className='ml-auto text-xs font-medium text-blue-600'>
+                      Drop here
+                    </div>
+                  )}
                 </div>
-                {dropZone?.parentId === parent.id && (
-                  <div className="ml-auto text-blue-600 text-xs font-medium">Drop here</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Right: Timeline */}
           <div className="flex-1 overflow-x-auto">
+            {/* Timeline header: periods */}
             <div className="timeline-content relative">
-              {/* Timeline header: periods */}
-              <div className="h-10 border-b border-gray-200 relative">
-                {periods.map((p, idx) => (
-                  <div
+              {/* Start period boundary */}
+              <div className="absolute top-0 bottom-0 left-0 border-r border-gray-100" /> 
+
+              {/* Bottom grid line */}
+              <div className="h-10 border-b border-gray-200 relative"> 
+
+                {/* Grid lines at period boundaries */}
+                {periods.map((p, idx) => ( 
+                  <div 
                     key={p.id}
-                    className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100"
+                    className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100" 
                     style={{
                       left: `${(periodOffsets[idx] / totalHours) * 100}%`,
-                      width: `${(periods[idx].length_hrs / totalHours) * 100}%`
-                    }}
-                  >
+                      width: `${(periods[idx].length_h / totalHours) * 100}%`
+                    }} 
+                  > 
                     {p.name}
                   </div>
                 ))}
               </div>
 
               {/* Team rows and tasks */}
-              {state.parents.map(parent => (
-                <div
-                  key={parent.id} // height
-                  className={`h-12 border-b border-gray-100 relative transition-all ${
-                    dropZone?.parentId === parent.id ? 'bg-blue-50' : ''
-                  }`}
-                  data-parent-row="true"
-                  data-parent-id={parent.id}
-                >
+              {/* Bottom grid line */}
+              {state.parents.map(parent => {
+                // Check if this team is disallowed for the current dragging task
+                const relevantTask = state.dragging_to_gantt
+                  ? state.tasks.find(t => t.id === state.dragging_to_gantt)
+                  : state.selectedTaskId
+                    ? state.tasks.find(t => t.id === state.selectedTaskId)
+                    : draggedTask
+                      ? state.tasks.find(t => t.id === draggedTask)
+                      : null;
+                
+                const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, parent.id) : false;
+
+                return (
+                  <div
+                    key={parent.id} 
+                    className={`h-12 border-b border-gray-100 relative transition-all`}
+                    data-parent-row="true"
+                    data-parent-id={parent.id}
+                  >
+                    {/* Disallowed team overlay */}
+                    {isTeamDisallowed && (
+                      <div className="absolute inset-0 pointer-events-none z-5"
+                        style={{
+                          background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
+                          border: '2px dashed rgba(239, 68, 68, 0.4)',
+                          borderLeft: 'none',
+                          borderRight: 'none'
+                        }}
+                      >
+                        <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
+                          Not allowed
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Start grid line */}
+                  <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" />
+
                   {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div
                       key={`${parent.id}-grid-${p.id}`}
                       className="absolute top-0 bottom-0 border-r border-gray-50"
-                      style={{ left: `${(((periodOffsets[idx] + periods[idx].length_hrs) / totalHours) * 100)}%` }}
+                      style={{
+                        left: `${(periodOffsets[idx] / totalHours) * 100}%`,
+                        width: `${(periods[idx].length_h / totalHours) * 100}%`
+                      }} 
                     />
                   ))}
 
@@ -1061,7 +1195,7 @@ export function GanttChart() {
                       if (periodIdx === -1) return null;
 
                       const startPct = (periodOffsets[periodIdx] / totalHours) * 100;
-                      const widthPct = (periods[periodIdx].length_hrs / totalHours) * 100;
+                      const widthPct = (periods[periodIdx].length_h / totalHours) * 100;
 
                       return (
                         <div
@@ -1179,7 +1313,7 @@ export function GanttChart() {
                             width: `${100 - (((task.defaultSetup ?? 0) / effDur) * 100)}%`
                           }}
                         >
-                          <span className="truncate w-full text-center">{task.name}</span>
+                          <span className="truncate w-full text-center">{task.id}</span>
                         </div>
                         {disallowed && (
                           <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center pointer-events-none">
@@ -1190,27 +1324,24 @@ export function GanttChart() {
                     );
                   })}
 
-                  {/* Visual drop hint */}
+                  {/* Drop zone */}
                   {dropZone?.parentId === parent.id && (() => {
                     const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
                     const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
-                    let invalidPeriod = false;
-                    if (moving && !dis) {
-                      // Predict drop position (use startHour or mouse position if available)
-                      const predictedStart = moving.startHour;
-                      const predictedEnd = predictedStart + effectiveDuration(moving, parent.id);
-                      invalidPeriod = isInInvalidPeriod(moving, predictedStart, predictedEnd, periods, periodOffsets);
-                    }
-                    return (
-                      <div className={`absolute inset-0 ${dis || invalidPeriod ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
-                        <span className={`${dis || invalidPeriod ? 'text-red-700' : 'text-blue-700'} font-medium text-sm`}>
-                          {dis ? 'Not allowed in this team' : invalidPeriod ? 'Not allowed in this period' : 'Drop here to assign'}
+
+                    if (!dis) {
+                      return (
+                      <div className='absolute inset-0 bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed rounded flex items-center justify-center pointer-events-none'>
+                        <span className='text-blue-700 font-medium text-sm'>
+                          Drop here to assign
                         </span>
                       </div>
-                    );
-                  })()}
+                      );
+                    }
+                    }
+                  )()}
                 </div>
-              ))}
+              )})}
 
               {/* Global drop hint when dragging from unassigned */}
               {state.toggledDrop && (

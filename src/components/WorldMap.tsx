@@ -322,7 +322,7 @@ export function WorldMap() {
                 const timelineRect = timeline?.getBoundingClientRect();
 
                 if (timelineRect) {
-                  const totalHours = state.totalHours || 24; // Use state or fallback
+                  const totalHours = state.totalHours; 
                   const filteredTasks = state.tasks
                     .filter(t => t.parentId === parentId)
                     .sort((a, b) => a.startHour - b.startHour)
@@ -377,7 +377,7 @@ export function WorldMap() {
       >
         <Popup>
           <div className="p-2">
-            <h3 className="font-semibold text-gray-800">{task.name}</h3>
+            <h3 className="font-semibold text-gray-800">{task.id}</h3>
             <p className="text-sm text-gray-600">Parent: Unassigned</p>
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <MapPin size={12} />
@@ -508,26 +508,26 @@ export function WorldMap() {
                     {/* Popup with detailed task stats */}
                     <Popup>
                       <div className="p-2 space-y-1">
-                        <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                        <h3 className="font-semibold text-gray-800">{task.id}</h3>
                         <div className="text-xs text-gray-700">
                           <div><span className="font-medium">Task ID:</span> {task.id}</div>
                           <div><span className="font-medium">Parent:</span> {task.parentId ? (state.parents.find(p => p.id === task.parentId)?.name || task.parentId) : 'Unassigned'}</div>
                           <div><span className="font-medium">Start Hour:</span> {task.startHour}</div>
                           <div><span className="font-medium">Default Duration:</span> {task.defaultDuration}h</div>
                           <div><span className="font-medium">Active Duration:</span> {
-                              task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
-                                ? task.specialTeams[task.parentId]
+                              task.parentId && typeof task.specialParents?.[task.parentId] === 'number'
+                                ? task.specialParents[task.parentId]
                                 : task.defaultDuration
                             }h</div>
                           <div><span className="font-medium">Setup Duration:</span> {task.defaultSetup}h</div>
                           <div><span className="font-medium">Total Duration:</span> {
-                              task.parentId && typeof task.specialTeams?.[task.parentId] === 'number'
-                                ? (task.specialTeams[task.parentId] as number) + task.defaultSetup
+                              task.parentId && typeof task.specialParents?.[task.parentId] === 'number'
+                                ? (task.specialParents[task.parentId] as number) + task.defaultSetup
                                 : task.defaultDuration + task.defaultSetup
                             }h</div>
                           <div><span className="font-medium">Special Teams:</span> {
-                              task.specialTeams
-                                ? Object.entries(task.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
+                              task.specialParents
+                                ? Object.entries(task.specialParents).map(([team, val]) => `${team}: ${val}`).join(', ')
                                 : 'None'
                             }</div>
                           <div><span className="font-medium">Location:</span> {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}</div>
@@ -572,7 +572,7 @@ export function WorldMap() {
                     >
                       <Popup>
                         <div className="p-2">
-                          <h3 className="font-semibold text-gray-800">{task.name}</h3>
+                          <h3 className="font-semibold text-gray-800">{task.id}</h3>
                           <p className="text-sm text-gray-600">
                             Parent:{' '}
                             {task.parentId

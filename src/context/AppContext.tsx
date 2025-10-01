@@ -11,7 +11,7 @@ type AppAction =
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
   | { type: 'SET_PERIODS'; periods: Period[]}
-  | { type: 'SET_TOTAL_HOURS'; totalHours: number | null }
+  | { type: 'SET_TOTAL_HOURS'; totalHours: number }
   
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean}
@@ -31,7 +31,7 @@ const initialState: AppState = {
   selectedParentId: 'all',
   dragging_from_gantt: null,
   dragging_to_gantt: null,
-  totalHours: null,
+  totalHours: 0,
 
   toggledNull: false,
   toggledDrop: false,

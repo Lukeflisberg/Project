@@ -1,11 +1,10 @@
 export interface Task {
   id: string;
-  name: string;
   parentId: string | null; 
-  startHour: number;       
+  startHour: number;    
+  defaultSetup: number;    
   defaultDuration: number;   
-  defaultSetup: number;        
-  specialTeams?: Record<string, number | 'x'>;
+  specialParents: Record<string, number | 'X'>;
   invalidPeriods?: string[];
   location: {
     lat: number;
@@ -22,7 +21,7 @@ export interface Parent {
 export interface Period {
   id: string;
   name: string;
-  length_hrs: number;
+  length_h: number;
 }
 
 export interface DragData {
@@ -36,7 +35,7 @@ export interface AppState {
   selectedParentId: string | null;
   dragging_from_gantt: string | null;
   dragging_to_gantt: string | null; 
-  totalHours: number | null;   
+  totalHours: number;   
   
   toggledNull: boolean;
   toggledDrop: boolean;

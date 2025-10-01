@@ -9,14 +9,14 @@ export const setupOf = (t: Task) => {
 
 export const effectiveDuration = (t: Task, parentId?: string | null) => {
   const pid = parentId !== undefined ? parentId : t.parentId;
-  const ov = pid ? t.specialTeams?.[pid] : undefined;
+  const ov = pid ? t.specialParents?.[pid] : undefined;
   return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.defaultDuration + setupOf(t));
 };
 
 export const isDisallowed = (t: Task, parentId?: string | null) => {
   const pid = parentId !== undefined ? parentId : t.parentId;
-  const ov = pid ? t.specialTeams?.[pid] : undefined;
-  return ov === 'x';
+  const ov = pid ? t.specialParents?.[pid] : undefined;
+  return ov === 'X';
 };
 
 export const endHour = (t: Task) => t.startHour + effectiveDuration(t);
@@ -37,13 +37,13 @@ export const findEarliestHour = (
 
     // Try to find the first valid period
     let cumulativeHour = 0;
-    for (const { id, length_hrs } of periods) {
+    for (const { id, length_h } of periods) {
       if (!t.invalidPeriods?.includes(id)) {
-        if (effectiveDuration(t) <= length_hrs && cumulativeHour + effectiveDuration(t) <= totalHour) {
+        if (effectiveDuration(t) <= length_h && cumulativeHour + effectiveDuration(t) <= totalHour) {
           return cumulativeHour;
         }
       }
-      cumulativeHour += length_hrs;
+      cumulativeHour += length_h;
     }
 
     return null;
@@ -96,9 +96,9 @@ const endHour = startHour + duration;
 let cumulativeHour = 0;
 
 // Build a map for period boundaries
-for (const { id, length_hrs } of periods) {
+for (const { id, length_h } of periods) {
   const periodStart = cumulativeHour;
-  const periodEnd = cumulativeHour + length_hrs;
+  const periodEnd = cumulativeHour + length_h;
 
   // Check if this is an invalid period for the task
   if (t.invalidPeriods.includes(id)) {
@@ -108,7 +108,7 @@ for (const { id, length_hrs } of periods) {
     }
   }
 
-  cumulativeHour += length_hrs;
+  cumulativeHour += length_h;
 }
 
 return true; // DOesnt overlap with any invalid periods

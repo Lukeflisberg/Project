@@ -107,7 +107,7 @@ export function UnassignedTasks() {
             const timelineRect = timeline?.getBoundingClientRect();
             
             if (timelineRect) {
-              const totalHours = state.totalHours || 24; // Use state or fallback
+              const totalHours = state.totalHours; 
               const filteredTasks = state.tasks
                     .filter(t => t.parentId === parentId)
                     .sort((a, b) => a.startHour - b.startHour)
@@ -227,7 +227,7 @@ export function UnassignedTasks() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-gray-800 truncate">
-                          {task.name}
+                          {task.id}
                         </h4>
                         <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
                           <div className="flex items-center gap-1">
