@@ -421,14 +421,16 @@ export function WorldMap() {
             <button
               key={team.id}
               onClick={() => handleTeamToggle(team.id)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              className={`relative px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 state.selectedTeamId === team.id
                   ? 'text-white'
                   : 'text-gray-700 hover:opacity-80'
               }`}
               style={{
-                backgroundColor:
-                  state.selectedTeamId === team.id ? team.color : `${team.color}20`,
+                backgroundColor: 
+                  state.selectedTeamId === team.id
+                  ? team.color
+                  : `color-mix(in srgb, ${team.color} 20%, transparent)`,
                 borderColor: team.color,
                 borderWidth: '1px',
                 borderStyle: 'solid'

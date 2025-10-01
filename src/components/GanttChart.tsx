@@ -903,93 +903,110 @@ export function GanttChart() {
               t.id === task ? { ...t, startHour: start } : t
             );
           }
+
         }
       }
     }
 
-      // Resolve overlaps
-      const totalTasks: Task[] = _tasks;
-      const totalTeams: Team[] = state.teams; 
+    console.log("Updated tasks: ", _tasks);
 
-      console.log("Resolving overlaps");
+    // Resolve overlaps
+    const totalTasks: Task[] = _tasks;
+    const totalTeams: Team[] = state.teams; 
 
-      for (const p of totalTeams) {
-        const teamSiblings = totalTasks
-          .filter(t => t.teamId === p.id)
-          .sort((a, b) => occStart(a) - occStart(b));
+    console.log("Resolving overlaps");
 
-        for (let i = 1; i < teamSiblings.length; i++) {
-          const prev = teamSiblings[i - 1];
-          const curr = teamSiblings[i];
+    console.log("Total Tasks: ", totalTasks);
+    console.log("Total Teams: ", totalTeams);
 
-          console.log(`Prev: [${prev.startHour}->${endHour(prev)}]`);
-          console.log(`Curr: [${curr.startHour}->${endHour(curr)}]`);
+    for (const p of totalTeams) {
+      const teamSiblings = totalTasks
+        .filter(t => t.teamId === p.id)
+        .sort((a, b) => occStart(a) - occStart(b));
 
-          // If the current start before prev ends -> overlap
-          if (curr.startHour < endHour(prev)) {
-            let newStart = endHour(prev);
-            console.log(`Overlap detected. Initial newStart: ${newStart}`);
+      for (let i = 1; i < teamSiblings.length; i++) {
+        const prev = teamSiblings[i - 1];
+        const curr = teamSiblings[i];
 
-            // Check if newStart is in a valid period for curr
-            while (newStart + effectiveDuration(curr) <= totalHours) {
-              if (isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
-                // Found a valid position
+        console.log('');
+        console.log(`Prev: [${prev.startHour}->${endHour(prev)}]`);
+        console.log(`Curr: [${curr.startHour}->${endHour(curr)}]`);
+
+        // If the current start before prev ends -> overlap
+        if (curr.startHour < endHour(prev)) {
+          let newStart = endHour(prev);
+          console.log(`Overlap detected. Initial newStart: ${newStart}`);
+
+          // Check if newStart is in a valid period for curr
+          while (newStart + effectiveDuration(curr) <= totalHours) {
+            if (isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
+              // Found a valid position
+              break;
+            }
+
+            // Find the next period boundary after an invalid period
+            let cumulativeHour = 0;
+            let foundNextValid = false;
+
+            for (const { id, length_h } of state.periods) {
+              const periodEnd = cumulativeHour + length_h;
+
+              // If newStart is in or before this invalid period, try the next period
+              if (curr.invalidPeriods?.includes(id) && newStart < periodEnd) {
+                newStart = periodEnd; // Move to start of next period
+                foundNextValid = true;
                 break;
               }
 
-              // Find the next period boundary after an invalid period
-              let cumulativeHour = 0;
-              let foundNextValid = false;
-
-              for (const { id, length_h } of state.periods) {
-                const periodEnd = cumulativeHour + length_h;
-
-                // If newStart is in or before this invalid period, try the next period
-                if (curr.invalidPeriods?.includes(id) && newStart < periodEnd) {
-                  newStart = periodEnd; // Move to start of next period
-                  foundNextValid = true;
-                  break;
-                }
-
-                cumulativeHour += length_h;
-              }
-
-              if (!foundNextValid) {
-                // Couldnt find a valid period
-                break;
-              }
+              cumulativeHour += length_h;
             }
 
-            // If the end is out of range or couldnt find valid period
-            if (newStart + effectiveDuration(curr) > totalHours || 
-                !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
-              console.log(`${newStart} is out of range or in invalid period for ${totalHours}`);
-              dispatch({
-                type: 'UPDATE_TASK_TEAM',
-                taskId: curr.id,
-                newTeamId: null
-              });
-
-              // Remove from local array 
-              teamSiblings.splice(i, 1);
-              i--; 
-            } 
-            else {
-              console.log(`Moving curr to ${newStart}`);
-              dispatch({
-                type: 'UPDATE_TASK_HOURS',
-                taskId: curr.id,
-                startHour: newStart,
-                defaultDuration: curr.defaultDuration
-              });
-
-              // Update local object
-              curr.startHour = newStart;
+            if (!foundNextValid) {
+              // Couldnt find a valid period
+              break;
             }
+          }
+
+          // If the end is out of range or couldnt find valid period
+          if (newStart + effectiveDuration(curr) > totalHours || 
+              !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
+            console.log(`${newStart} will be out of range or in invalid period for ${totalHours}`);
+            dispatch({
+              type: 'UPDATE_TASK_TEAM',
+              taskId: curr.id,
+              newTeamId: null
+            });
+
+            // Remove from local array 
+            teamSiblings.splice(i, 1);
+            i--; 
+          } 
+          else {
+            console.log(`Moving curr to ${newStart}`);
+            dispatch({
+              type: 'UPDATE_TASK_HOURS',
+              taskId: curr.id,
+              startHour: newStart,
+              defaultDuration: curr.defaultDuration
+            });
+
+            // Update local object
+            curr.startHour = newStart;
+          }
+        } else {
+          // Ensure it doesn't overflow
+          if (curr.startHour + effectiveDuration(curr) > totalHours) {
+            console.log(`Curr is overflowing. Curr ends at ${curr.startHour + effectiveDuration(curr)} but totalHours is only ${totalHours}`);
+            dispatch({
+              type: 'UPDATE_TASK_TEAM',
+              taskId: curr.id,
+              newTeamId: null
+            });
           }
         }
       }
-    }  
+    }
+  }  
 
   // ----------------------
   // Render Gantt Chart UI

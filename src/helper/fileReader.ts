@@ -22,7 +22,7 @@ export async function importDataFromFile(
         let periods: string[] = [];
         let period_length: Period[] = [];
         let teams: string[] = [];
-        let durations: any[] = [];
+        let durations: Array<{Activity: string, "Fixed cost": number, "Cost/hrs": number, "Default Setup (hrs)": number, "Default Duration (hrs)": number, "Special Teams": Record<string, string | number>}> = [];
 
         if (Array.isArray(json)) {
           if (json.length > 0) {

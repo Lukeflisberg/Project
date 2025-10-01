@@ -3,7 +3,7 @@ import { AppProvider } from './context/AppContext';
 import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
-import { Trees, Users, CheckCircle2, Circle } from 'lucide-react'; 
+import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
 import { useApp } from './context/AppContext';
 
 function AppContent() {
@@ -45,7 +45,7 @@ function AppContent() {
             <span className="text-sm font-medium text-gray-700"> {`Active: ${state.tasks.filter(t => t.teamId !== null).length ? state.tasks.filter(t => t.teamId !== null).length : 'n/a'}`} </span>
           </div>
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
-            <Circle size={16} className="text-slate-600" />
+            <AlertCircle size={16} className="text-slate-600" />
             <span className="text-sm font-medium text-gray-700"> {`Unassigned: ${state.tasks.filter(t => t.teamId === null).length ? state.tasks.filter(t => t.teamId === null).length : 'n/a'}`} </span>
           </div>
         </div>
