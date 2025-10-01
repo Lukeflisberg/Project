@@ -10,7 +10,7 @@ export function UnassignedTasks() {
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
 
   // Filter tasks not assigned too a team
-  const unassignedTasks = state.tasks.filter(task => task.parentId === null);
+  const unassignedTasks = state.tasks.filter(task => task.teamId === null);
 
   // Handles mouse down event to start dragging a task
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
@@ -96,12 +96,12 @@ export function UnassignedTasks() {
       
       if (ganttChart) {
         // Find which team row the mouse is over
-        const parentRow = elementUnderMouse?.closest('[data-parent-row]');
+        const teamRow = elementUnderMouse?.closest('[data-team-row]');
         
-        if (parentRow) {
-          const parentId = parentRow.getAttribute('data-parent-id');
+        if (teamRow) {
+          const teamId = teamRow.getAttribute('data-team-id');
           
-          if (parentId) {
+          if (teamId) {
             // Calculate startHour based on mouse X position in the timeline
             const timeline = ganttChart.querySelector('.timeline-content');
             const timelineRect = timeline?.getBoundingClientRect();
@@ -109,7 +109,7 @@ export function UnassignedTasks() {
             if (timelineRect) {
               const totalHours = state.totalHours; 
               const filteredTasks = state.tasks
-                    .filter(t => t.parentId === parentId)
+                    .filter(t => t.teamId === teamId)
                     .sort((a, b) => a.startHour - b.startHour)
               
               const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
@@ -126,9 +126,9 @@ export function UnassignedTasks() {
                   defaultDuration: task.defaultDuration
                 })
                 dispatch({
-                  type: 'UPDATE_TASK_PARENT',
+                  type: 'UPDATE_TASK_TEAM',
                   taskId: task.id,
-                  newParentId: parentId
+                  newTeamId: teamId
                 });
               }
             }
@@ -154,7 +154,7 @@ export function UnassignedTasks() {
     // Handles click to select a task (if not dragging)
     if (!draggedTask) {
       e.stopPropagation();
-      dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: state.selectedParentId });
+      dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: state.selectedTeamId });
     }
   };
 

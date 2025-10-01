@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Task, Parent, Period } from '../types';
+import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
@@ -52,7 +52,7 @@ function planSequentialLayoutHours(
   // Apply moved task's new start locally first (no snapping)
   const moved = local.find(t => t.id === movedTaskId);
   if (!moved) return { updates: [], unassign: [] };
-  const movedDur = effectiveDuration(moved, moved.parentId);
+  const movedDur = effectiveDuration(moved, moved.teamId);
   moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
   // Sort other tasks by their current occupied start positions
@@ -82,7 +82,7 @@ function planSequentialLayoutHours(
     task: t,
     occStart: occStart(t),
     occEnd: occEnd(t),
-    duration: effectiveDuration(t, t.parentId),
+    duration: effectiveDuration(t, t.teamId),
   }));
 
   // Resolve overlaps by pushing tasks to the right from the insertion point
@@ -146,9 +146,9 @@ function planSequentialLayoutHours(
 export function GanttChart() {
   const { state, dispatch } = useApp();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [dropZone, setDropZone] = useState<{ parentId: string } | null>(null);
+  const [dropZone, setDropZone] = useState<{ teamId: string } | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
-  const [snapTarget, setSnapTarget] = useState<{ parentId: string; taskId: string; side: 'left' | 'right' } | null>(null);
+  const [snapTarget, setSnapTarget] = useState<{ teamId: string; taskId: string; side: 'left' | 'right' } | null>(null);
   const [, setSnapLeftPct] = useState<number | null>(null);
   const [, setDragOffsetOcc] = useState(0);
   const ganttRef = useRef<HTMLDivElement>(null);
@@ -157,10 +157,10 @@ export function GanttChart() {
   const periods = state.periods?.length ? state.periods : [PERIOD_FALLBACK];
   const { periodOffsets, totalHours } = getPeriodData(periods, PERIOD_FALLBACK.length_h);
   
-  // Get all tasks for a given parent/team, sorted by start time
-  const getTasksByParent = (parentId: string | null) => {
+  // Get all tasks for a given team/team, sorted by start time
+  const getTasksByTeam = (teamId: string | null) => {
     return state.tasks
-      .filter(task => task.parentId === parentId)
+      .filter(task => task.teamId === teamId)
       .sort((a, b) => {
         const diff = occStart(a) - occStart(b);
         if (diff !== 0) return diff;
@@ -180,15 +180,15 @@ export function GanttChart() {
     return { left: `${left}%`, width: `${width}%` };
   };
 
-  // Find which parent/team row the mouse is currently over
-  const getParentFromMousePosition = (mouseY: number): string | null => {
+  // Find which team/team row the mouse is currently over
+  const getTeamFromMousePosition = (mouseY: number): string | null => {
     if (!ganttRef.current) return null;
-    const parentRows = ganttRef.current.querySelectorAll('[data-parent-row]');
-    for (let i = 0; i < parentRows.length; i++) {
-      const rect = (parentRows[i] as HTMLElement).getBoundingClientRect();
+    const teamRows = ganttRef.current.querySelectorAll('[data-team-row]');
+    for (let i = 0; i < teamRows.length; i++) {
+      const rect = (teamRows[i] as HTMLElement).getBoundingClientRect();
       if (mouseY >= rect.top && mouseY <= rect.bottom) {
-        const parentId = parentRows[i].getAttribute('data-parent-id');
-        return parentId;
+        const teamId = teamRows[i].getAttribute('data-team-id');
+        return teamId;
       }
     }
     return null;
@@ -199,12 +199,12 @@ export function GanttChart() {
     clientX: number,
     clientY: number,
     excludeTaskId: string
-  ): { parentId: string; taskId: string; side: 'left' | 'right' } | null => {
-    const parentId = getParentFromMousePosition(clientY);
-    if (!parentId || !ganttRef.current) return null;
+  ): { teamId: string; taskId: string; side: 'left' | 'right' } | null => {
+    const teamId = getTeamFromMousePosition(clientY);
+    if (!teamId || !ganttRef.current) return null;
 
     const movingTask = state.tasks.find(x => x.id === excludeTaskId);
-    if (movingTask && isDisallowed(movingTask as Task, parentId)) return null;
+    if (movingTask && isDisallowed(movingTask as Task, teamId)) return null;
 
     const timelineContent = ganttRef.current.querySelector('.timeline-content') as HTMLElement | null;
     const rect = timelineContent?.getBoundingClientRect();
@@ -213,7 +213,7 @@ export function GanttChart() {
     const zoneWidthPx = 16;
     const pointerX = clientX;
 
-    const candidates = state.tasks.filter(t => t.parentId === parentId && t.id !== excludeTaskId);
+    const candidates = state.tasks.filter(t => t.teamId === teamId && t.id !== excludeTaskId);
 
     for (const t of candidates) {
       const leftEdgePct = (occStart(t) / totalHours) * 100;
@@ -228,22 +228,22 @@ export function GanttChart() {
         // Check if there is enough space before the target for snapping
         const moving = state.tasks.find(x => x.id === excludeTaskId);
         if (!moving) continue;
-        const preds = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occEnd(x) <= occStart(t));
+        const preds = state.tasks.filter(x => x.teamId === teamId && x.id !== t.id && x.id !== excludeTaskId && occEnd(x) <= occStart(t));
         const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
         const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
-        const desiredStart = occStart(t) - effectiveDuration(moving, parentId);
-        if ((desiredStart) >= earliestOccStart) return { parentId, taskId: t.id, side: 'left' };
+        const desiredStart = occStart(t) - effectiveDuration(moving, teamId);
+        if ((desiredStart) >= earliestOccStart) return { teamId, taskId: t.id, side: 'left' };
       }
       if (inRightZone) {
         // Check if there is enough space after the target for snapping
         const moving = state.tasks.find(x => x.id === excludeTaskId);
         if (!moving) continue;
-        const succs = state.tasks.filter(x => x.parentId === parentId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
+        const succs = state.tasks.filter(x => x.teamId === teamId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
         const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
         const desiredStart = occEnd(t);
-        const desiredEnd = desiredStart + effectiveDuration(moving, parentId);
+        const desiredEnd = desiredStart + effectiveDuration(moving, teamId);
         const latestOccEnd = successor ? occStart(successor) : totalHours;
-        if (desiredEnd <= latestOccEnd) return { parentId, taskId: t.id, side: 'right' };
+        if (desiredEnd <= latestOccEnd) return { teamId, taskId: t.id, side: 'right' };
       }
     }
 
@@ -254,7 +254,7 @@ export function GanttChart() {
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_parent: state.selectedParentId });
+    dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_team: state.selectedTeamId });
 
     const originalTask = state.tasks.find(t => t.id === taskId);
     if (!originalTask) return;
@@ -285,12 +285,12 @@ export function GanttChart() {
       // Snap detection near other task edges
       setSnapTarget(null);
       setSnapLeftPct(null);
-      const targetParentIdForSnap = getParentFromMousePosition(evt.clientY);
+      const targetTeamIdForSnap = getTeamFromMousePosition(evt.clientY);
       const timelineContent = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
       const rect = timelineContent?.getBoundingClientRect();
-      if (rect && targetParentIdForSnap) {
+      if (rect && targetTeamIdForSnap) {
         const pointerX = evt.clientX;
-        const candidates = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== (draggedTask ?? ''));
+        const candidates = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== (draggedTask ?? ''));
         const zoneWidthPx = 16; // visual snap zone width
         let match: { taskId: string; side: 'left'|'right'; pct: number } | null = null;
 
@@ -320,23 +320,23 @@ export function GanttChart() {
           if (target && moving) {
             if (match.side === 'left') {
               // Check predecessor for left snap
-              const preds = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
+              const preds = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
               const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
               const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
-              const desiredStart = occStart(target) - effectiveDuration(moving, targetParentIdForSnap);
+              const desiredStart = occStart(target) - effectiveDuration(moving, targetTeamIdForSnap);
               if ((desiredStart) >= earliestOccStart) {
-                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapTarget({ teamId: targetTeamIdForSnap, taskId: match.taskId, side: match.side });
                 setSnapLeftPct(match.pct);
               }
             } else {
             // Check successor for right snap
-              const succs = state.tasks.filter(t => t.parentId === targetParentIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
+              const succs = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
               const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
               const desiredStart = occEnd(target);
-              const desiredEnd = desiredStart + effectiveDuration(moving, targetParentIdForSnap);
+              const desiredEnd = desiredStart + effectiveDuration(moving, targetTeamIdForSnap);
               const latestOccEnd = successor ? occStart(successor) : totalHours;
               if (desiredEnd <= latestOccEnd) {
-                setSnapTarget({ parentId: targetParentIdForSnap, taskId: match.taskId, side: match.side });
+                setSnapTarget({ teamId: targetTeamIdForSnap, taskId: match.taskId, side: match.side });
                 setSnapLeftPct(match.pct);
               }
             }
@@ -344,10 +344,10 @@ export function GanttChart() {
         }
       }
 
-      // Highlight drop zone if dragging vertically to a new parent/team
-      const targetParentId = getParentFromMousePosition(evt.clientY);
-      if (targetParentId && targetParentId !== originalTask.parentId) {
-        setDropZone({ parentId: targetParentId });
+      // Highlight drop zone if dragging vertically to a new team/team
+      const targetTeamId = getTeamFromMousePosition(evt.clientY);
+      if (targetTeamId && targetTeamId !== originalTask.teamId) {
+        setDropZone({ teamId: targetTeamId });
       } else {
         setDropZone(null);
       }
@@ -385,9 +385,9 @@ export function GanttChart() {
           const target = state.tasks.find(t => t.id === snapNow.taskId);
           if (target) {
             const desiredStart = snapNow.side === 'left'
-              ? occStart(target) - effectiveDuration(currentTask, snapNow.parentId)
+              ? occStart(target) - effectiveDuration(currentTask, snapNow.teamId)
               : occEnd(target);
-            const desiredEnd = desiredStart + effectiveDuration(currentTask, snapNow.parentId);
+            const desiredEnd = desiredStart + effectiveDuration(currentTask, snapNow.teamId);
 
             // Prevent drop in invalid period
             if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
@@ -395,8 +395,8 @@ export function GanttChart() {
               return;
             }
 
-            if (snapNow.parentId === currentTask.parentId) {
-              const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+            if (snapNow.teamId === currentTask.teamId) {
+              const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
               const plan = planSequentialLayoutHours(
                 siblings,
                 currentTask.id,
@@ -418,15 +418,15 @@ export function GanttChart() {
               }
               taskUpdated = true;
             } else {
-              // Move to new parent and reflow with desiredStart
-              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: snapNow.parentId });
+              // Move to new team and reflow with desiredStart
+              dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: snapNow.teamId });
 
-              const newParentSiblings = state.tasks
-                .filter(t => t.parentId === snapNow.parentId || t.id === taskId)
-                .map(t => (t.id === taskId ? { ...t, parentId: snapNow.parentId } : t));
+              const newTeamSiblings = state.tasks
+                .filter(t => t.teamId === snapNow.teamId || t.id === taskId)
+                .map(t => (t.id === taskId ? { ...t, teamId: snapNow.teamId } : t));
 
               const plan = planSequentialLayoutHours(
-                newParentSiblings as Task[],
+                newTeamSiblings as Task[],
                 taskId,
                 desiredStart,
                 totalHours
@@ -459,7 +459,7 @@ export function GanttChart() {
             const r = unassignedMenu.getBoundingClientRect();
             if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
               console.log("Success")
-              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
+              dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: null });
               taskUpdated = true;
             } 
           }
@@ -469,7 +469,7 @@ export function GanttChart() {
             const r = worldmap.getBoundingClientRect();
             if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
               console.log("Success")
-              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: null });
+              dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: null });
               taskUpdated = true;
             } 
           }
@@ -479,12 +479,12 @@ export function GanttChart() {
           // 3) Direct drop onto task body
           {
             console.log("Attempting to drop task onto other task body");
-            const targetParentId = getParentFromMousePosition(evt.clientY);
+            const targetTeamId = getTeamFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
             const rect = timeline?.getBoundingClientRect();
-            if (rect && targetParentId) {
+            if (rect && targetTeamId) {
               const pointerX = evt.clientX;
-              const siblings = state.tasks.filter(t => t.parentId === targetParentId && t.id !== currentTask.id);
+              const siblings = state.tasks.filter(t => t.teamId === targetTeamId && t.id !== currentTask.id);
               let bodyMatch: { taskId: string; side: 'left'|'right' } | null = null;
               for (const t of siblings) {
                 const leftPx = rect.left + ((occStart(t) / totalHours) * rect.width);
@@ -512,16 +512,16 @@ export function GanttChart() {
                   // Compute target's new start to be on the chosen side of moved block
                   const targetNewStart =
                     bodyMatch.side === 'left'
-                      ? (desiredStart + effectiveDuration(currentTask, targetParentId)) // move after
+                      ? (desiredStart + effectiveDuration(currentTask, targetTeamId)) // move after
                       : target.startHour; // stay
                   
                   const currentNewStart = 
                     bodyMatch.side === 'left'
                       ? desiredStart // stay
-                      : target.startHour + effectiveDuration(target, targetParentId); // move after
+                      : target.startHour + effectiveDuration(target, targetTeamId); // move after
 
-                  if (targetParentId === currentTask.parentId) {
-                    const sibs = state.tasks.filter(t => t.parentId === currentTask.parentId);
+                  if (targetTeamId === currentTask.teamId) {
+                    const sibs = state.tasks.filter(t => t.teamId === currentTask.teamId);
                     const sibsAdj = sibs.map(t => t.id === target.id ? { ...t, startHour: targetNewStart } : t);
                     const plan = planSequentialLayoutHours(
                       sibsAdj as Task[], 
@@ -549,19 +549,19 @@ export function GanttChart() {
                       return;
                     }
 
-                    if (isDisallowed(currentTask, targetParentId)) {
+                    if (isDisallowed(currentTask, targetTeamId)) {
                       // skip disallowed assignment
                       taskUpdated = true;
                     } else {
-                      dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
-                      const newParentSibs = state.tasks
-                        .filter(t => t.parentId === targetParentId || t.id === taskId)
+                      dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: targetTeamId });
+                      const newTeamSibs = state.tasks
+                        .filter(t => t.teamId === targetTeamId || t.id === taskId)
                         .map(t => {
-                          if (t.id === taskId) return { ...t, parentId: targetParentId };
+                          if (t.id === taskId) return { ...t, teamId: targetTeamId };
                           if (t.id === target.id) return { ...t, startHour: targetNewStart };
                           return t;
                         });
-                      const plan = planSequentialLayoutHours(newParentSibs as Task[], taskId, desiredStart, totalHours);
+                      const plan = planSequentialLayoutHours(newTeamSibs as Task[], taskId, desiredStart, totalHours);
                       for (const u of plan['updates']) {
                         const orig = state.tasks.find(t => t.id === u.id);
                         if (!orig) continue;
@@ -587,15 +587,15 @@ export function GanttChart() {
           if (snapTarget && !taskUpdated) {
             console.log("Attempting deffered snap to neightbor edges");
             const target = state.tasks.find(t => t.id === snapTarget.taskId);
-            if (isDisallowed(currentTask, snapTarget.parentId)) {
-              // skip disallowed parent assignment
+            if (isDisallowed(currentTask, snapTarget.teamId)) {
+              // skip disallowed team assignment
             } else if (target) {
               const desiredStart = snapTarget.side === 'left'
-                ? occStart(target) - effectiveDuration(currentTask, snapTarget.parentId)
+                ? occStart(target) - effectiveDuration(currentTask, snapTarget.teamId)
                 : occEnd(target);
 
-              if (snapTarget.parentId === currentTask.parentId) {
-                const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+              if (snapTarget.teamId === currentTask.teamId) {
+                const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
                 const plan = planSequentialLayoutHours(
                   siblings,
                   currentTask.id,
@@ -617,15 +617,15 @@ export function GanttChart() {
                 }
                 taskUpdated = true;
               } else {
-                // Move to new parent and reflow with desiredStart
-                dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: snapTarget.parentId });
+                // Move to new team and reflow with desiredStart
+                dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: snapTarget.teamId });
 
-                const newParentSiblings = state.tasks
-                  .filter(t => t.parentId === snapTarget.parentId || t.id === taskId)
-                  .map(t => (t.id === taskId ? { ...t, parentId: snapTarget.parentId } : t));
+                const newTeamSiblings = state.tasks
+                  .filter(t => t.teamId === snapTarget.teamId || t.id === taskId)
+                  .map(t => (t.id === taskId ? { ...t, teamId: snapTarget.teamId } : t));
 
                 const plan = planSequentialLayoutHours(
-                  newParentSiblings as Task[],
+                  newTeamSiblings as Task[],
                   taskId,
                   desiredStart,
                   totalHours
@@ -658,8 +658,8 @@ export function GanttChart() {
             const proposedStart = currentTask.startHour + (hoursDelta || 0); // Calculates start hour
             const proposedEnd = proposedStart + effectiveDuration(currentTask);
 
-            const targetParentId = getParentFromMousePosition(evt.clientY);
-            const isParentChange = !!targetParentId && targetParentId !== currentTask.parentId;
+            const targetTeamId = getTeamFromMousePosition(evt.clientY);
+            const isTeamChange = !!targetTeamId && targetTeamId !== currentTask.teamId;
 
             // Prevent drop in invalid period for horizontal/vertical moves
             if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
@@ -668,16 +668,16 @@ export function GanttChart() {
               return;
             }
 
-            if (isParentChange && targetParentId && !isDisallowed(currentTask, targetParentId)) {
-              // Move to new parent and reflow at proposedStart
-              dispatch({ type: 'UPDATE_TASK_PARENT', taskId, newParentId: targetParentId });
+            if (isTeamChange && targetTeamId && !isDisallowed(currentTask, targetTeamId)) {
+              // Move to new team and reflow at proposedStart
+              dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: targetTeamId });
 
-              const newParentSiblings = state.tasks
-                .filter(t => t.parentId === targetParentId || t.id === taskId)
-                .map(t => (t.id === taskId ? { ...t, parentId: targetParentId } : t));
+              const newTeamSiblings = state.tasks
+                .filter(t => t.teamId === targetTeamId || t.id === taskId)
+                .map(t => (t.id === taskId ? { ...t, teamId: targetTeamId } : t));
 
               const plan = planSequentialLayoutHours(
-                newParentSiblings as Task[],
+                newTeamSiblings as Task[],
                 taskId,
                 proposedStart,
                 totalHours
@@ -698,17 +698,17 @@ export function GanttChart() {
 
               for (const id of plan['unassign']) {
                 dispatch({
-                  type: 'UPDATE_TASK_PARENT',
+                  type: 'UPDATE_TASK_TEAM',
                   taskId: id,
-                  newParentId: null
+                  newTeamId: null
                 });
               }
               console.log("Success");
               taskUpdated = true;
 
             } else if (hasHoriz && ganttRef.current) {
-              // Horizontal only in same parent
-              const siblings = state.tasks.filter(t => t.parentId === currentTask.parentId);
+              // Horizontal only in same team
+              const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
 
               const plan = planSequentialLayoutHours(
                 siblings,
@@ -732,9 +732,9 @@ export function GanttChart() {
 
               for (const id of plan['unassign']) {
                 dispatch({
-                  type: 'UPDATE_TASK_PARENT',
+                  type: 'UPDATE_TASK_TEAM',
                   taskId: id,
-                  newParentId: null
+                  newTeamId: null
                 });
               }
               console.log("Success");
@@ -744,7 +744,7 @@ export function GanttChart() {
         }
       } else {
         // Click (no real drag)
-        dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_parent: 'any' });
+        dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: 'any' });
       }
 
       // Cleanup drag state and listeners
@@ -807,7 +807,7 @@ export function GanttChart() {
       totalHours: _totalHours
     });
 
-    // Import parents 
+    // Import teams 
     const availableColors: string[] = [
       "red",
       "blue",
@@ -823,42 +823,40 @@ export function GanttChart() {
       "teal",
       "maroon"
     ];
-    let formattedParents: Parent[] = []
-    if (result.parents && Array.isArray(result.parents)) {
-      formattedParents = result.parents.map((p: any, idx: number) => {
+    let formattedTeams: Team[] = []
+    if (result.teams && Array.isArray(result.teams)) {
+      formattedTeams = result.teams.map((p: any, idx: number) => {
         const id = p.id;
-        const name = p.name;
         const color = availableColors[idx % availableColors.length];
 
         return {
           id,
-          name,
           color
         }
       });
-      dispatch({ type: 'ADD_PARENTS', parents: formattedParents });
-      console.log("Imported Parents: ", formattedParents);
+      dispatch({ type: 'ADD_TEAMS', teams: formattedTeams });
+      console.log("Imported Teams: ", formattedTeams);
     }
 
     // Import durations
     if (result.durations && Array.isArray(result.durations)) { 
       const formattedTasks = result.durations.map((t: any) => { 
         const id = t.Activity;
-        const parentId = null;
+        const teamId = null;
         const startHour = 0;
         const defaultSetup = t['Default Setup (hrs)'];
         const defaultDuration = t['Default Duration (hrs)'];
-        const specialParents = t['Special Parents'];
+        const specialTeams = t['Special Teams'];
         const location = t.location || t['Location'] || { lat: 0, lon: 0 };
 
         // Calculate effective duration for the imported task
         return {
           id,
-          parentId,
+          teamId,
           startHour,
           defaultDuration,
           defaultSetup,
-          specialParents,
+          specialTeams,
           location
         };
       });
@@ -881,14 +879,14 @@ export function GanttChart() {
       for (const {team, tasks} of result.solution) {
         for (const {task, start} of tasks) {
           dispatch({
-            type: 'UPDATE_TASK_PARENT',
+            type: 'UPDATE_TASK_TEAM',
             taskId: task,
-            newParentId: team
+            newTeamId: team
           });
 
           // Update local copy after dispatch
           _tasks = _tasks.map(t => 
-            t.id === task ? { ...t, parentId: team } : t
+            t.id === task ? { ...t, teamId: team } : t
           );
 
           const foundTask = state.tasks.find(t => t.id === task);
@@ -911,18 +909,18 @@ export function GanttChart() {
 
       // Resolve overlaps
       const totalTasks: Task[] = _tasks;
-      const totalParents: Parent[] = state.parents; 
+      const totalTeams: Team[] = state.teams; 
 
       console.log("Resolving overlaps");
 
-      for (const p of totalParents) {
-        const parentSiblings = totalTasks
-          .filter(t => t.parentId === p.id)
+      for (const p of totalTeams) {
+        const teamSiblings = totalTasks
+          .filter(t => t.teamId === p.id)
           .sort((a, b) => occStart(a) - occStart(b));
 
-        for (let i = 1; i < parentSiblings.length; i++) {
-          const prev = parentSiblings[i - 1];
-          const curr = parentSiblings[i];
+        for (let i = 1; i < teamSiblings.length; i++) {
+          const prev = teamSiblings[i - 1];
+          const curr = teamSiblings[i];
 
           console.log(`Prev: [${prev.startHour}->${endHour(prev)}]`);
           console.log(`Curr: [${curr.startHour}->${endHour(curr)}]`);
@@ -967,13 +965,13 @@ export function GanttChart() {
                 !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
               console.log(`${newStart} is out of range or in invalid period for ${totalHours}`);
               dispatch({
-                type: 'UPDATE_TASK_PARENT',
+                type: 'UPDATE_TASK_TEAM',
                 taskId: curr.id,
-                newParentId: null
+                newTeamId: null
               });
 
               // Remove from local array 
-              parentSiblings.splice(i, 1);
+              teamSiblings.splice(i, 1);
               i--; 
             } 
             else {
@@ -1041,8 +1039,8 @@ export function GanttChart() {
               Teams
             </div>
             
-            {state.parents.map(parent => {
-              // Calculate relevantTask once for this parent row
+            {state.teams.map(team => {
+              // Calculate relevantTask once for this team row
               const relevantTask = state.dragging_to_gantt 
                 ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
                 : state.selectedTaskId 
@@ -1051,25 +1049,25 @@ export function GanttChart() {
                 ? state.tasks.find(t => t.id === draggedTask) 
                 : null;
               
-              const dis = relevantTask ? isDisallowed(relevantTask, parent.id) : false;
+              const dis = relevantTask ? isDisallowed(relevantTask, team.id) : false;
               
               return (
                 <div
-                  key={parent.id}
+                  key={team.id}
                   className={`h-12 flex items-center border-b px-2 relative transition-all ${
                     dis 
                       ? 'border-l-4 border-l-red-500'
-                      : dropZone?.parentId === parent.id
+                      : dropZone?.teamId === team.id
                         ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500'
                         : 'border-gray-100'
                   }`}
-                  data-parent-row="true"
-                  data-parent-id={parent.id}
-                  onClick={() => dispatch({ type: 'SET_SELECTED_PARENT', parentId: parent.id })}
+                  data-team-row="true"
+                  data-team-id={team.id}
+                  onClick={() => dispatch({ type: 'SET_SELECTED_TEAM', teamId: team.id })}
                 >
                   {/* Disallowed team overlay */}
                   {dis && (
-                    <div className="absolute inset-0 pointer-events-none z-5"
+                    <div className="absolute inset-0 pointer-events-none z-10"
                       style={{
                         background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
                         border: '2px dashed rgba(239, 68, 68, 0.4)',
@@ -1080,8 +1078,8 @@ export function GanttChart() {
                   )}
 
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-6 rounded-full" style={{ backgroundColor: parent.color }} />
-                    <span className="text-sm font-medium text-gray-700">{parent.name}</span>
+                    <div className="w-3 h-6 rounded-full" style={{ backgroundColor: team.color }} />
+                    <span className="text-sm font-medium text-gray-700">{team.id}</span>
                   </div>
 
                   {/* Teams drop/cant drop text */}
@@ -1091,7 +1089,7 @@ export function GanttChart() {
                     </div>
                   )}
 
-                  {dropZone?.parentId === parent.id && !dis && (
+                  {dropZone?.teamId === team.id && !dis && (
                     <div className='ml-auto text-xs font-medium text-blue-600'>
                       Drop here
                     </div>
@@ -1128,7 +1126,7 @@ export function GanttChart() {
 
               {/* Team rows and tasks */}
               {/* Bottom grid line */}
-              {state.parents.map(parent => {
+              {state.teams.map(team => {
                 // Check if this team is disallowed for the current dragging task
                 const relevantTask = state.dragging_to_gantt
                   ? state.tasks.find(t => t.id === state.dragging_to_gantt)
@@ -1138,18 +1136,18 @@ export function GanttChart() {
                       ? state.tasks.find(t => t.id === draggedTask)
                       : null;
                 
-                const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, parent.id) : false;
+                const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
 
                 return (
                   <div
-                    key={parent.id} 
+                    key={team.id} 
                     className={`h-12 border-b border-gray-100 relative transition-all`}
-                    data-parent-row="true"
-                    data-parent-id={parent.id}
+                    data-team-row="true"
+                    data-team-id={team.id}
                   >
                     {/* Disallowed team overlay */}
                     {isTeamDisallowed && (
-                      <div className="absolute inset-0 pointer-events-none z-5"
+                      <div className="absolute inset-0 pointer-events-none z-10"
                         style={{
                           background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
                           border: '2px dashed rgba(239, 68, 68, 0.4)',
@@ -1158,7 +1156,7 @@ export function GanttChart() {
                         }}
                       >
                         <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
-                          Not allowed
+                          Not allowed in this Team
                         </div>
                       </div>
                     )}
@@ -1169,7 +1167,7 @@ export function GanttChart() {
                   {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div
-                      key={`${parent.id}-grid-${p.id}`}
+                      key={`${team.id}-grid-${p.id}`}
                       className="absolute top-0 bottom-0 border-r border-gray-50"
                       style={{
                         left: `${(periodOffsets[idx] / totalHours) * 100}%`,
@@ -1199,7 +1197,7 @@ export function GanttChart() {
 
                       return (
                         <div
-                          key={`${parent.id}-invalid-${invalidPeriod}`}
+                          key={`${team.id}-invalid-${invalidPeriod}`}
                           className="absolute top-0 bottom-0 pointer-events-none z-10"
                           style={{
                             left: `${startPct}%`,
@@ -1216,12 +1214,12 @@ export function GanttChart() {
                   })()}
 
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
-                  {(draggedTask) && getTasksByParent(parent.id).map(t => {
+                  {(draggedTask) && getTasksByTeam(team.id).map(t => {
                     if (t.id !== state.dragging_from_gantt) {
                       const startPct = (occStart(t) / totalHours) * 100;
                       const endPct = (occEnd(t) / totalHours) * 100;
-                      const isLeftActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
-                      const isRightActive = !!(snapTarget && snapTarget.parentId === parent.id && snapTarget.taskId === t.id && snapTarget.side === 'right');
+                      const isLeftActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
+                      const isRightActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.id && snapTarget.side === 'right');
                       return (
                         <div key={`${t.id}-guides`}>
                           {/* Left guide */}
@@ -1263,7 +1261,7 @@ export function GanttChart() {
                   })}
 
                   {/* Tasks */}
-                  {getTasksByParent(parent.id).map(task => {
+                  {getTasksByTeam(team.id).map(task => {
                     const position = calculateTaskPosition(task);
                     const isSelected = state.selectedTaskId === task.id;
                     const isBeingDragged = draggedTask === task.id;
@@ -1288,7 +1286,7 @@ export function GanttChart() {
                           ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                           ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                           text-white`}
-                        style={{ backgroundColor: parent.color, ...position, ...dragStyle, overflow: 'hidden' } as CSSProperties }
+                        style={{ backgroundColor: team.color, ...position, ...dragStyle, overflow: 'hidden' } as CSSProperties }
                         onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
                       >
                         {(task.defaultSetup ?? 0) > 0 && (
@@ -1325,9 +1323,9 @@ export function GanttChart() {
                   })}
 
                   {/* Drop zone */}
-                  {dropZone?.parentId === parent.id && (() => {
+                  {dropZone?.teamId === team.id && (() => {
                     const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
-                    const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
+                    const dis = moving ? isDisallowed(moving as Task, team.id) : false;
 
                     if (!dis) {
                       return (

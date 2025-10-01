@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Parent, Period } from '../types';
+import { AppState, Task, Team, Period } from '../types';
 
 // ----------------------
 // Action Types for State
 // ----------------------
-// These actions cover all interactions with tasks, parents, periods, and drag-and-drop.
+// These actions cover all interactions with tasks, teams, periods, and drag-and-drop.
 type AppAction =
-  | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_parent: string | null }
-  | { type: 'SET_SELECTED_PARENT'; parentId: string | null }
+  | { type: 'SET_SELECTED_TASK'; taskId: string | null, toggle_team: string | null }
+  | { type: 'SET_SELECTED_TEAM'; teamId: string | null }
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
   | { type: 'SET_PERIODS'; periods: Period[]}
@@ -16,19 +16,19 @@ type AppAction =
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean}
 
-  | { type: 'UPDATE_TASK_PARENT'; taskId: string; newParentId: string | null }
+  | { type: 'UPDATE_TASK_TEAM'; taskId: string; newTeamId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
 
   | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'ADD_PARENTS'; parents: Parent[] };
+  | { type: 'ADD_TEAMS'; teams: Team[] };
   
 // ----------------------
 // Initial Application State
 // ----------------------
-// Contains sample tasks, parents, periods, and drag/drop state.
+// Contains sample tasks, teams, periods, and drag/drop state.
 const initialState: AppState = {
   selectedTaskId: null,
-  selectedParentId: 'all',
+  selectedTeamId: 'all',
   dragging_from_gantt: null,
   dragging_to_gantt: null,
   totalHours: 0,
@@ -37,7 +37,7 @@ const initialState: AppState = {
   toggledDrop: false,
 
   tasks: [],
-  parents: [],
+  teams: [],
   periods: [],
 };
 
@@ -57,10 +57,10 @@ const AppContext = createContext<{
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_SELECTED_TASK':
-      return { ...state, selectedTaskId: action.taskId, selectedParentId: action.toggle_parent };
+      return { ...state, selectedTaskId: action.taskId, selectedTeamId: action.toggle_team };
 
-    case 'SET_SELECTED_PARENT':
-      return { ...state, selectedParentId: action.parentId };
+    case 'SET_SELECTED_TEAM':
+      return { ...state, selectedTeamId: action.teamId };
 
     case 'SET_DRAGGING_FROM_GANTT': 
       return { ...state, dragging_from_gantt: action.taskId };
@@ -84,16 +84,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 
 
-    case 'UPDATE_TASK_PARENT': {
+    case 'UPDATE_TASK_TEAM': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.taskId
-          ? { ...task, parentId: action.newParentId }
+          ? { ...task, teamId: action.newTeamId }
           : task
       );
       return {
         ...state,
         tasks: updatedTasks,
-        selectedTaskId: action.newParentId === null ? null : state.selectedTaskId
+        selectedTaskId: action.newTeamId === null ? null : state.selectedTaskId
       };
     };
 
@@ -111,8 +111,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'ADD_TASKS':
       return { ...state, tasks: [...state.tasks, ...action.tasks] };
     
-    case 'ADD_PARENTS':
-      return { ...state, parents: [...state.parents, ...action.parents] };
+    case 'ADD_TEAMS':
+      return { ...state, teams: [...state.teams, ...action.teams] };
 
     default:
       return state;

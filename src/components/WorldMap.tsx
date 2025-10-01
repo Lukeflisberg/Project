@@ -37,7 +37,7 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
 // WorldMap Component
 // ---------------------------------------------
 // Displays a map with task markers, popups, and connection lines.
-// Allows filtering by team/parent and selecting tasks by clicking markers.
+// Allows filtering by team/team and selecting tasks by clicking markers.
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
@@ -80,20 +80,20 @@ export function WorldMap() {
   // ---------------------------------------------
   // getVisibleTasks
   // ---------------------------------------------
-  // Returns the list of tasks to display based on the current parent/team filter.
-  // If "all" is selected, returns all tasks; otherwise, filters by parentId.
+  // Returns the list of tasks to display based on the current team/team filter.
+  // If "all" is selected, returns all tasks; otherwise, filters by teamId.
   const getVisibleTasks = () => {
     // If "all" is selected, show all assigned tasks and unassigned if toggledNull is true
-    if (state.selectedParentId === 'all') {
+    if (state.selectedTeamId === 'all') {
       return state.tasks.filter(task =>
-        (task.parentId !== null) ||
-        (state.toggledNull && task.parentId === null)
+        (task.teamId !== null) ||
+        (state.toggledNull && task.teamId === null)
       );
     }
     // If a specific team is selected, show its tasks and unassigned if toggledNull is true
     return state.tasks.filter(task =>
-      (task.parentId === state.selectedParentId) ||
-      (state.toggledNull && task.parentId === null)
+      (task.teamId === state.selectedTeamId) ||
+      (state.toggledNull && task.teamId === null)
     );
   };
 
@@ -103,10 +103,10 @@ export function WorldMap() {
   // For filtered views (single team), returns an array of line objects connecting tasks in chronological order.
   // Each line includes positions, color, and style for rendering as a PolyLine.
   const getTaskConnectionLines = () => {
-    if (state.selectedParentId === 'all' || state.selectedParentId === null) return [];
+    if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
 
     // Only connect assigned tasks
-    const visibleTasks = getVisibleTasks().filter(task => task.parentId === state.selectedParentId);
+    const visibleTasks = getVisibleTasks().filter(task => task.teamId === state.selectedTeamId);
     const sortedTasks = [...visibleTasks].sort((a, b) => a.startHour - b.startHour);
 
     const lines = [];
@@ -120,7 +120,7 @@ export function WorldMap() {
           [currentTask.location.lat, currentTask.location.lon],
           [nextTask.location.lat, nextTask.location.lon]
         ],
-        color: getParentColor(currentTask.parentId),
+        color: getTeamColor(currentTask.teamId),
         weight: 4,
         opacity: 0.8
       });
@@ -130,13 +130,13 @@ export function WorldMap() {
   };
 
   // ---------------------------------------------
-  // getParentColor
+  // getTeamColor
   // ---------------------------------------------
-  // Returns the color associated with a parent/team, or gray if unassigned.
-  const getParentColor = (parentId: string | null) => {
-    if (!parentId) return '#6B7280'; // Gray for unassigned
-    const parent = state.parents.find(p => p.id === parentId);
-    return parent?.color || '#6B7280';
+  // Returns the color associated with a team/team, or gray if unassigned.
+  const getTeamColor = (teamId: string | null) => {
+    if (!teamId) return '#6B7280'; // Gray for unassigned
+    const team = state.teams.find(p => p.id === teamId);
+    return team?.color || '#6B7280';
   };
 
   // ---------------------------------------------
@@ -146,22 +146,22 @@ export function WorldMap() {
   const handleMarkerClick = (taskId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_TASK',
-      taskId, toggle_parent:
-      state.selectedParentId 
+      taskId, toggle_team:
+      state.selectedTeamId 
     });
     console.log(`Click on marker ${taskId}`);
   };
 
   // ---------------------------------------------
-  // handleParentToggle && handleNullToggle
+  // handleTeamToggle && handleNullToggle
   // ---------------------------------------------
-  // Toggles the parent/team/null filter. If already selected, switches to "all".
-  const handleParentToggle = (parentId: string | null) => {
+  // Toggles the team/team/null filter. If already selected, switches to "all".
+  const handleTeamToggle = (teamId: string | null) => {
     dispatch({
-      type: 'SET_SELECTED_PARENT',
-      parentId: state.selectedParentId === parentId ? 'all' : parentId
+      type: 'SET_SELECTED_TEAM',
+      teamId: state.selectedTeamId === teamId ? 'all' : teamId
     });
-    console.log(`Toggled parent ${state.selectedParentId}`);
+    console.log(`Toggled team ${state.selectedTeamId}`);
   };
 
   const handleNullToggle = () => {
@@ -176,7 +176,7 @@ export function WorldMap() {
   // MapController Component
   // ---------------------------------------------
   // Handles map fly-to behavior when a task is selected.
-  // Also toggles parent filter if "any" is selected.
+  // Also toggles team filter if "any" is selected.
   function MapController() {
     const { state } = useApp();
     const map = useMap();
@@ -188,7 +188,7 @@ export function WorldMap() {
           map.flyTo([task.location.lat, task.location.lon], 15, { duration: 1 });
         }
 
-        if (state.selectedParentId === 'any') handleParentToggle(state.selectedParentId);
+        if (state.selectedTeamId === 'any') handleTeamToggle(state.selectedTeamId);
       }
     }, [state.selectedTaskId, state.tasks, map]);
 
@@ -312,19 +312,19 @@ export function WorldMap() {
           const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
           
           if (ganttChart) {
-            const parentRow = elementUnderMouse?.closest('[data-parent-row]');
+            const teamRow = elementUnderMouse?.closest('[data-team-row]');
 
-            if (parentRow) {
-              const parentId = parentRow.getAttribute('data-parent-id');
+            if (teamRow) {
+              const teamId = teamRow.getAttribute('data-team-id');
 
-              if (parentId) {
+              if (teamId) {
                 const timeline = ganttChart.querySelector('.timeline-content');
                 const timelineRect = timeline?.getBoundingClientRect();
 
                 if (timelineRect) {
                   const totalHours = state.totalHours; 
                   const filteredTasks = state.tasks
-                    .filter(t => t.parentId === parentId)
+                    .filter(t => t.teamId === teamId)
                     .sort((a, b) => a.startHour - b.startHour)
 
                   const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
@@ -336,9 +336,9 @@ export function WorldMap() {
                   
                   if (result !== null) {
                     dispatch({
-                      type: 'UPDATE_TASK_PARENT',
+                      type: 'UPDATE_TASK_TEAM',
                       taskId: task.id,
-                      newParentId: parentId
+                      newTeamId: teamId
                     });
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
@@ -371,14 +371,14 @@ export function WorldMap() {
         ref={markerRef}
         position={originalPos}
         icon={createCustomIcon(
-          getParentColor(task.parentId), 
+          getTeamColor(task.teamId), 
           state.selectedTaskId === task.id
         )}
       >
         <Popup>
           <div className="p-2">
             <h3 className="font-semibold text-gray-800">{task.id}</h3>
-            <p className="text-sm text-gray-600">Parent: Unassigned</p>
+            <p className="text-sm text-gray-600">Team: Unassigned</p>
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <MapPin size={12} />
               {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
@@ -403,13 +403,13 @@ export function WorldMap() {
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
 
-        {/* Team/Parent Filter Buttons */}
-        <div className="flex gap-2">
+        {/* Team/Team Filter Buttons */}
+        <div className="flex flex-wrap gap-2">
           {/* All Tasks Button */}
           <button
-            onClick={() => handleParentToggle('all')}
+            onClick={() => handleTeamToggle('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              state.selectedParentId === 'all'
+              state.selectedTeamId === 'all'
                 ? 'bg-gray-700 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
@@ -417,24 +417,24 @@ export function WorldMap() {
             All
           </button>
           {/* Team Buttons */}
-          {state.parents.map(parent => (
+          {state.teams.map(team => (
             <button
-              key={parent.id}
-              onClick={() => handleParentToggle(parent.id)}
+              key={team.id}
+              onClick={() => handleTeamToggle(team.id)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                state.selectedParentId === parent.id
+                state.selectedTeamId === team.id
                   ? 'text-white'
                   : 'text-gray-700 hover:opacity-80'
               }`}
               style={{
                 backgroundColor:
-                  state.selectedParentId === parent.id ? parent.color : `${parent.color}20`,
-                borderColor: parent.color,
+                  state.selectedTeamId === team.id ? team.color : `${team.color}20`,
+                borderColor: team.color,
                 borderWidth: '1px',
                 borderStyle: 'solid'
               }}
             >
-              {parent.name}
+              {team.id}
             </button>
           ))}
           
@@ -465,7 +465,7 @@ export function WorldMap() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {/* Handles fly-to and parent toggling on selection */}
+          {/* Handles fly-to and team toggling on selection */}
           <MapController />
 
           {/* Deselects task when clicking on map background */}
@@ -485,24 +485,24 @@ export function WorldMap() {
           {/* Markers and Popups */}
           {(() => {
             // ALL view: show plain markers for all tasks
-            if (state.selectedParentId === 'all') {
-              const assignedTasks = getVisibleTasks().filter(task => task.parentId !== null);
+            if (state.selectedTeamId === 'all') {
+              const assignedTasks = getVisibleTasks().filter(task => task.teamId !== null);
 
               const unassignedTasks = state.toggledNull
-                ? getVisibleTasks().filter(task => task.parentId === null)
+                ? getVisibleTasks().filter(task => task.teamId === null)
                 : [];
 
               return (
                 <>
                 {assignedTasks.map((task) => {
                   const isSelected = state.selectedTaskId === task.id;
-                  const parentColor = getParentColor(task.parentId);
+                  const teamColor = getTeamColor(task.teamId);
 
                   return (
                   <Marker
                     key={task.id}
                     position={[task.location.lat, task.location.lon]}
-                    icon={createCustomIcon(parentColor, isSelected)} 
+                    icon={createCustomIcon(teamColor, isSelected)} 
                     eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                   >
                     {/* Popup with detailed task stats */}
@@ -511,23 +511,23 @@ export function WorldMap() {
                         <h3 className="font-semibold text-gray-800">{task.id}</h3>
                         <div className="text-xs text-gray-700">
                           <div><span className="font-medium">Task ID:</span> {task.id}</div>
-                          <div><span className="font-medium">Parent:</span> {task.parentId ? (state.parents.find(p => p.id === task.parentId)?.name || task.parentId) : 'Unassigned'}</div>
+                          <div><span className="font-medium">Team:</span> {task.teamId ? (state.teams.find(p => p.id === task.teamId)?.id || task.teamId) : 'Unassigned'}</div>
                           <div><span className="font-medium">Start Hour:</span> {task.startHour}</div>
                           <div><span className="font-medium">Default Duration:</span> {task.defaultDuration}h</div>
                           <div><span className="font-medium">Active Duration:</span> {
-                              task.parentId && typeof task.specialParents?.[task.parentId] === 'number'
-                                ? task.specialParents[task.parentId]
+                              task.teamId && typeof task.specialTeams?.[task.teamId] === 'number'
+                                ? task.specialTeams[task.teamId]
                                 : task.defaultDuration
                             }h</div>
                           <div><span className="font-medium">Setup Duration:</span> {task.defaultSetup}h</div>
                           <div><span className="font-medium">Total Duration:</span> {
-                              task.parentId && typeof task.specialParents?.[task.parentId] === 'number'
-                                ? (task.specialParents[task.parentId] as number) + task.defaultSetup
+                              task.teamId && typeof task.specialTeams?.[task.teamId] === 'number'
+                                ? (task.specialTeams[task.teamId] as number) + task.defaultSetup
                                 : task.defaultDuration + task.defaultSetup
                             }h</div>
                           <div><span className="font-medium">Special Teams:</span> {
-                              task.specialParents
-                                ? Object.entries(task.specialParents).map(([team, val]) => `${team}: ${val}`).join(', ')
+                              task.specialTeams
+                                ? Object.entries(task.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
                                 : 'None'
                             }</div>
                           <div><span className="font-medium">Location:</span> {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}</div>
@@ -548,11 +548,11 @@ export function WorldMap() {
 
             // Filtered view: show numbered markers and simple popups for tasks in the selected team
             const assignedTasks = getVisibleTasks()
-              .filter(task => task.parentId === state.selectedParentId)
+              .filter(task => task.teamId === state.selectedTeamId)
               .sort((a, b) => a.startHour - b.startHour);
 
             const unassignedTasks = state.toggledNull
-              ? getVisibleTasks().filter(task => task.parentId === null)
+              ? getVisibleTasks().filter(task => task.teamId === null)
               : [];
 
             return (
@@ -560,23 +560,23 @@ export function WorldMap() {
                 {/* Assigned tasks: numbered markers */}
                 {assignedTasks.map((task, index) => {
                   const isSelected = state.selectedTaskId === task.id;
-                  const parentColor = getParentColor(task.parentId);
+                  const teamColor = getTeamColor(task.teamId);
                   const markerIndex = index + 1;
 
                   return (
                     <Marker
                       key={task.id}
                       position={[task.location.lat, task.location.lon]}
-                      icon={createCustomIcon(parentColor, isSelected, markerIndex)}
+                      icon={createCustomIcon(teamColor, isSelected, markerIndex)}
                       eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                     >
                       <Popup>
                         <div className="p-2">
                           <h3 className="font-semibold text-gray-800">{task.id}</h3>
                           <p className="text-sm text-gray-600">
-                            Parent:{' '}
-                            {task.parentId
-                              ? state.parents.find(p => p.id === task.parentId)?.name || 'Unknown'
+                            Team:{' '}
+                            {task.teamId
+                              ? state.teams.find(p => p.id === task.teamId)?.id || 'Unknown'
                               : 'Unassigned'}
                           </p>
                           <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">

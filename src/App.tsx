@@ -3,10 +3,11 @@ import { AppProvider } from './context/AppContext';
 import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
-import { Trees, MapIcon, Calendar, Package, CpuIcon, Upload } from 'lucide-react'; // Icons
+import { Trees, Users, CheckCircle2, Circle } from 'lucide-react'; 
 import { useApp } from './context/AppContext';
 
 function AppContent() {
+  const { state, dispatch} = useApp();
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       {/* Header */}
@@ -34,22 +35,18 @@ function AppContent() {
       )}
         
         {/* Quick Stats */}
-        <div className="flex gap-4 mt-4">
+        <div className="flex flex-wrap gap-4 mt-4">
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
-            <CpuIcon size={16} className="text-purple-600" />
-            <span className="text-sm font-medium text-gray-700">n/a Projects</span>
+            <Users size={16} className="text-blue-600" />
+            <span className="text-sm font-medium text-gray-700"> {`Teams: ${state.teams.length ? state.teams.length : 'n/a'}`} </span>
           </div>
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
-            <Calendar size={16} className="text-blue-600" />
-            <span className="text-sm font-medium text-gray-700">n/a Active Tasks</span>
+            <CheckCircle2 size={16} className="text-green-600" />
+            <span className="text-sm font-medium text-gray-700"> {`Active: ${state.tasks.filter(t => t.teamId !== null).length ? state.tasks.filter(t => t.teamId !== null).length : 'n/a'}`} </span>
           </div>
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
-            <MapIcon size={16} className="text-green-600" />
-            <span className="text-sm font-medium text-gray-700">n/a Locations</span>
-          </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
-            <Package size={16} className="text-orange-600" />
-            <span className="text-sm font-medium text-gray-700">n/a Unassigned</span>
+            <Circle size={16} className="text-slate-600" />
+            <span className="text-sm font-medium text-gray-700"> {`Unassigned: ${state.tasks.filter(t => t.teamId === null).length ? state.tasks.filter(t => t.teamId === null).length : 'n/a'}`} </span>
           </div>
         </div>
       </header>

@@ -5,8 +5,8 @@ export async function importDataFromFile(
 ): Promise<{
   periods: string[];
   period_length: Period[];
-  parents: Array<{id: string, name: string}>;
-  durations: Array<{Activity: string, "Fixed cost": number, "Cost/hrs": number, "Default Setup (hrs)": number, "Default Duration (hrs)": number, "Special Parents": Record<string, string | number>}>; 
+  teams: string[];
+  durations: Array<{Activity: string, "Fixed cost": number, "Cost/hrs": number, "Default Setup (hrs)": number, "Default Duration (hrs)": number, "Special Teams": Record<string, string | number>}>; 
 } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -14,38 +14,38 @@ export async function importDataFromFile(
       try {
         const text = e.target?.result as string;
         if (!text) {
-          resolve({ periods: [], period_length: [], parents: [], durations: [] });
+          resolve({ periods: [], period_length: [], teams: [], durations: [] });
           return;
         }
         const json = JSON.parse(text);
 
         let periods: string[] = [];
         let period_length: Period[] = [];
-        let parents: Array<{id: string, name: string}> = [];
+        let teams: string[] = [];
         let durations: any[] = [];
 
         if (Array.isArray(json)) {
           if (json.length > 0) {
             if (json[0]?.periods) periods = json[0].periods;
             if (json[0]?.period_length) period_length = json[0].period_length;
-            if (json[0]?.parents) parents = json[0].parents;
+            if (json[0]?.teams) teams = json[0].teams;
             if (json[0]?.durations) durations = json[0].durations;
           }
         } else if (typeof json === 'object' && json !== null) {
           periods = Array.isArray(json.periods) ? json.periods : [];
           period_length = Array.isArray(json.period_length) ? json.period_length : [];
-          parents = Array.isArray(json.parents) ? json.parents : [];
+          teams = Array.isArray(json.teams) ? json.teams : [];
           durations = Array.isArray(json.durations) ? json.durations : [];
         }
-        resolve({ periods, period_length, parents, durations });
+        resolve({ periods, period_length, teams, durations });
       } catch (err) {
         alert('Failed to parse import file.');
-        resolve({ periods: [], period_length: [], parents: [], durations: [] });
+        resolve({ periods: [], period_length: [], teams: [], durations: [] });
       }
     };
     reader.onerror = () => {
       alert('Failed to read file.');
-      resolve({ periods: [], period_length: [], parents: [], durations: [] });
+      resolve({ periods: [], period_length: [], teams: [], durations: [] });
     };
     reader.readAsText(file);
   });

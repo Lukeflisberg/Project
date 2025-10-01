@@ -7,15 +7,15 @@ export const setupOf = (t: Task) => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
-export const effectiveDuration = (t: Task, parentId?: string | null) => {
-  const pid = parentId !== undefined ? parentId : t.parentId;
-  const ov = pid ? t.specialParents?.[pid] : undefined;
+export const effectiveDuration = (t: Task, teamId?: string | null) => {
+  const pid = teamId !== undefined ? teamId : t.teamId;
+  const ov = pid ? t.specialTeams?.[pid] : undefined;
   return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.defaultDuration + setupOf(t));
 };
 
-export const isDisallowed = (t: Task, parentId?: string | null) => {
-  const pid = parentId !== undefined ? parentId : t.parentId;
-  const ov = pid ? t.specialParents?.[pid] : undefined;
+export const isDisallowed = (t: Task, teamId?: string | null) => {
+  const pid = teamId !== undefined ? teamId : t.teamId;
+  const ov = pid ? t.specialTeams?.[pid] : undefined;
   return ov === 'X';
 };
 
