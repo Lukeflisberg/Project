@@ -1040,65 +1040,31 @@ export function GanttChart() {
             <div className={`h-10 flex items-center font-medium text-gray-700 border-b border-gray-200`}>
               Teams
             </div>
-            
             {state.parents.map(parent => {
-              // Calculate relevantTask once for this parent row
-              const relevantTask = state.dragging_to_gantt 
-                ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
-                : state.selectedTaskId 
-                ? state.tasks.find(t => t.id === state.selectedTaskId) 
-                : draggedTask 
-                ? state.tasks.find(t => t.id === draggedTask) 
-                : null;
-              
-              const dis = relevantTask ? isDisallowed(relevantTask, parent.id) : false;
-              
+              const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
+              const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
+
               return (
                 <div
-                  key={parent.id}
-                  className={`h-12 flex items-center border-b px-2 relative transition-all ${
-                    dis 
-                      ? 'border-l-4 border-l-red-500'
-                      : dropZone?.parentId === parent.id
-                        ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500'
-                        : 'border-gray-100'
+                  key={parent.id} 
+                  className={`h-12 flex items-center border-b border-gray-100 px-2 transition-all ${
+                    dropZone?.parentId === parent.id ? `${dis ? 'bg-red-50 border-l-4 border-l-red-500' : 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500'}` : ''
                   }`}
                   data-parent-row="true"
                   data-parent-id={parent.id}
                   onClick={() => dispatch({ type: 'SET_SELECTED_PARENT', parentId: parent.id })}
                 >
-                  {/* Disallowed team overlay */}
-                  {dis && (
-                    <div className="absolute inset-0 pointer-events-none z-5"
-                      style={{
-                        background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
-                        border: '2px dashed rgba(239, 68, 68, 0.4)',
-                        borderLeft: 'none',
-                        borderRight: 'none'
-                      }}
-                    />
-                  )}
-
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-6 rounded-full" style={{ backgroundColor: parent.color }} />
                     <span className="text-sm font-medium text-gray-700">{parent.name}</span>
                   </div>
-
-                  {/* Teams drop/cant drop text */}
-                  {dis && (
-                    <div className="ml-auto text-xs font-medium text-red-600">
-                      Can't drop here
-                    </div>
-                  )}
-
-                  {dropZone?.parentId === parent.id && !dis && (
-                    <div className='ml-auto text-xs font-medium text-blue-600'>
-                      Drop here
-                    </div>
+                  {dropZone?.parentId === parent.id && (
+                    <div className={`ml-auto ${dis ? 'text-red-600' : 'text-blue-600'} text-xs font-medium`}>
+                      {dis ? "Can't drop here" : "Drop here"}
+                      </div>
                   )}
                 </div>
-              );
-            })}
+            )})}
           </div>
 
           {/* Right: Timeline */}
@@ -1128,41 +1094,15 @@ export function GanttChart() {
 
               {/* Team rows and tasks */}
               {/* Bottom grid line */}
-              {state.parents.map(parent => {
-                // Check if this team is disallowed for the current dragging task
-                const relevantTask = state.dragging_to_gantt
-                  ? state.tasks.find(t => t.id === state.dragging_to_gantt)
-                  : state.selectedTaskId
-                    ? state.tasks.find(t => t.id === state.selectedTaskId)
-                    : draggedTask
-                      ? state.tasks.find(t => t.id === draggedTask)
-                      : null;
-                
-                const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, parent.id) : false;
-
-                return (
-                  <div
-                    key={parent.id} 
-                    className={`h-12 border-b border-gray-100 relative transition-all`}
-                    data-parent-row="true"
-                    data-parent-id={parent.id}
-                  >
-                    {/* Disallowed team overlay */}
-                    {isTeamDisallowed && (
-                      <div className="absolute inset-0 pointer-events-none z-5"
-                        style={{
-                          background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
-                          border: '2px dashed rgba(239, 68, 68, 0.4)',
-                          borderLeft: 'none',
-                          borderRight: 'none'
-                        }}
-                      >
-                        <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
-                          Not allowed
-                        </div>
-                      </div>
-                    )}
-
+              {state.parents.map(parent => (
+                <div
+                  key={parent.id} 
+                  className={`h-12 border-b border-gray-100 relative transition-all ${
+                    dropZone?.parentId === parent.id ? 'bg-blue-50' : ''
+                  }`}
+                  data-parent-row="true"
+                  data-parent-id={parent.id}
+                >
                   {/* Start grid line */}
                   <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" />
 
@@ -1324,24 +1264,21 @@ export function GanttChart() {
                     );
                   })}
 
-                  {/* Drop zone */}
+                  {/* Visual drop hint */}
                   {dropZone?.parentId === parent.id && (() => {
                     const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
                     const dis = moving ? isDisallowed(moving as Task, parent.id) : false;
 
-                    if (!dis) {
-                      return (
-                      <div className='absolute inset-0 bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed rounded flex items-center justify-center pointer-events-none'>
-                        <span className='text-blue-700 font-medium text-sm'>
-                          Drop here to assign
+                    return (
+                      <div className={`absolute inset-0 ${dis ? 'bg-red-200 bg-opacity-40 border-red-400' : 'bg-blue-200 bg-opacity-30 border-blue-400'} border-2 border-dashed rounded flex items-center justify-center pointer-events-none`}>
+                        <span className={`${dis ? 'text-red-700' : 'text-blue-700'} font-medium text-sm`}>
+                          {dis ? 'Not allowed in this team' : 'Drop here to assign'}
                         </span>
                       </div>
-                      );
-                    }
-                    }
-                  )()}
+                    );
+                  })()}
                 </div>
-              )})}
+              ))}
 
               {/* Global drop hint when dragging from unassigned */}
               {state.toggledDrop && (
