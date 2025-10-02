@@ -744,7 +744,10 @@ export function GanttChart() {
         }
       } else {
         // Click (no real drag)
-        dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: 'any' });
+        const teamId = state.tasks.find(t => t.id === taskId)?.teamId ?? 'all';
+
+        dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: teamId });
+        console.log("Clicked on task", taskId);
       }
 
       // Cleanup drag state and listeners
@@ -817,7 +820,6 @@ export function GanttChart() {
       "orange",
       "pink",
       "brown",
-      "gray",
       "black",
       "navy",
       "teal",
@@ -838,8 +840,11 @@ export function GanttChart() {
       console.log("Imported Teams: ", formattedTeams);
     }
 
-    // Import durations
-    if (result.durations && Array.isArray(result.durations)) { 
+    // Import tasks + durations
+    if ((result.tasks && Array.isArray(result.tasks)) && 
+      (result.durations && Array.isArray(result.durations))) { 
+      console.log("Imported Tasks: ", result.tasks);
+
       const formattedTasks = result.durations.map((t: any) => { 
         const id = t.Activity;
         const teamId = null;
@@ -847,7 +852,12 @@ export function GanttChart() {
         const defaultSetup = t['Default Setup (hrs)'];
         const defaultDuration = t['Default Duration (hrs)'];
         const specialTeams = t['Special Teams'];
-        const location = t.location || t['Location'] || { lat: 0, lon: 0 };
+
+        // Find matching location from result.tasks
+        const taskLocation = result.tasks.find((task: any) => task.id === id);
+        const location = taskLocation
+           ? { lat: taskLocation?.lat, lon: taskLocation.lon }
+           : { lat: 0, lon: 0 }
 
         // Calculate effective duration for the imported task
         return {
@@ -1012,14 +1022,18 @@ export function GanttChart() {
   // Render Gantt Chart UI
   // ----------------------
   return (
-    <div ref={ganttRef} className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden">
-      {/* Header: Title and Import Button */}
+    <div 
+      ref={ganttRef}
+      className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden"
+    >
+      {/* Header: Title and Import Buttons */}
       <div className="flex items-center gap-2 mb-4">
-        <Calendar className="text-green-600" size={24}/>
+        <Calendar className="text-green-600" size={24} />
         <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
-        {/* Import data button */}
+
+        {/* Import buttons */}
         <div className="ml-auto flex items-center gap-4">
-          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700">
+          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
             <Upload size={18} /> Import Data
             <input
               type="file"
@@ -1028,11 +1042,8 @@ export function GanttChart() {
               onChange={handleImportData}
             />
           </label>
-        </div>
-        {/* Import solution button */}
-        <div className="ml-auto flex items-center gap-4">
-          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700">
-            <Upload size={18} /> Import solution
+          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
+            <Upload size={18} /> Import Solution
             <input
               type="file"
               accept=".json"
@@ -1044,20 +1055,24 @@ export function GanttChart() {
       </div>
       
       {/* Instructions */}
-      <div className="mb-4 text-xs text-gray-500 text-center">
+      <div className="mb-2 text-xs text-gray-500 text-center">
         Drag tasks horizontally to adjust timing, vertically to change teams
       </div>
 
-      <>
-        <div className="flex h-full">
-          {/* Left: Teams List */}
-          <div className="w-48 flex-shrink-0">
-            <div className={`h-10 flex items-center font-medium text-gray-700 border-b border-gray-200`}>
-              Teams
-            </div>
-            
+      {/* Main Gantt Body */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* Left: Teams List */}
+        <div className="w-48 flex-shrink-0 flex flex-col border-r border-gray-200">
+
+          {/* Sticky team heading */}
+          <div className="h-10 flex items-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-20">
+            Teams
+          </div>
+
+          {/* Scrollable team rows */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {state.teams.map(team => {
-              // Calculate relevantTask once for this team row
               const relevantTask = state.dragging_to_gantt 
                 ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
                 : state.selectedTaskId 
@@ -1067,18 +1082,27 @@ export function GanttChart() {
                 : null;
               
               const dis = relevantTask ? isDisallowed(relevantTask, team.id) : false;
+              const isDropZone = dropZone?.teamId === team.id;
+
+              // Decide row classes
+              const rowClasses = [
+                "h-8 flex items-center border-b px-2 relative transition-all",
+                dis
+                  ? "border-l-4 border-l-red-500"
+                  : isDropZone
+                  ? "bg-blue-50 border-blue-300 border-l-4 border-l-blue-500"
+                  : "border-gray-100",
+              ].join("");
+
+              // Decide drop text
+              const dropText = dis ? "Can't drop here" : isDropZone ? "Drop here" : null;
+              const dropColor = dis ? "text-red-600" : "text-blue-600";
               
               return (
                 <div
                   key={team.id}
-                  className={`h-12 flex items-center border-b px-2 relative transition-all ${
-                    dis 
-                      ? 'border-l-4 border-l-red-500'
-                      : dropZone?.teamId === team.id
-                        ? 'bg-blue-50 border-blue-300 border-l-4 border-l-blue-500'
-                        : 'border-gray-100'
-                  }`}
-                  data-team-row="true"
+                  className={rowClasses}
+                  data-team-row
                   data-team-id={team.id}
                   onClick={() => dispatch({ type: 'SET_SELECTED_TEAM', teamId: team.id })}
                 >
@@ -1086,7 +1110,8 @@ export function GanttChart() {
                   {dis && (
                     <div className="absolute inset-0 pointer-events-none z-10"
                       style={{
-                        background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
+                        background: 
+                          'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
                         border: '2px dashed rgba(239, 68, 68, 0.4)',
                         borderLeft: 'none',
                         borderRight: 'none'
@@ -1094,57 +1119,57 @@ export function GanttChart() {
                     />
                   )}
 
+                  {/* Team info */}
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-6 rounded-full" style={{ backgroundColor: team.color }} />
+                    <div 
+                      className="w-3 h-4 rounded-full"
+                      style={{ backgroundColor: team.color }} 
+                    />
                     <span className="text-sm font-medium text-gray-700">{team.id}</span>
                   </div>
 
-                  {/* Teams drop/cant drop text */}
-                  {dis && (
-                    <div className="ml-auto text-xs font-medium text-red-600">
-                      Can't drop here
-                    </div>
-                  )}
-
-                  {dropZone?.teamId === team.id && !dis && (
-                    <div className='ml-auto text-xs font-medium text-blue-600'>
-                      Drop here
+                  {/* Drop feedback */}
+                  {dropText && (
+                    <div className={`ml-auto text-xs font-medium ${dropColor}`}>
+                      {dropText}
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
+        </div>
 
-          {/* Right: Timeline */}
-          <div className="flex-1 overflow-x-auto">
-            {/* Timeline header: periods */}
-            <div className="timeline-content relative">
-              {/* Start period boundary */}
-              <div className="absolute top-0 bottom-0 left-0 border-r border-gray-100" /> 
+        {/* Right: Timeline */}
+        <div className="flex-1 flex flex-col overflow-hidden">
 
-              {/* Bottom grid line */}
-              <div className="h-10 border-b border-gray-200 relative"> 
+          {/* Timeline container */}
+          <div className="timeline-content relative">
 
-                {/* Grid lines at period boundaries */}
-                {periods.map((p, idx) => ( 
-                  <div 
-                    key={p.id}
-                    className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100" 
-                    style={{
-                      left: `${(periodOffsets[idx] / totalHours) * 100}%`,
-                      width: `${(periods[idx].length_h / totalHours) * 100}%`
-                    }} 
-                  > 
-                    {p.name}
-                  </div>
-                ))}
+            {/* Horizontal scroll wrapper */}
+            <div className="flex-1 overflow-x-auto overflow-y-hidden">
+
+              {/* Start period boundary: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-100" />  */}
+              {/* Sticky periods header row */}
+              <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-20"> 
+                <div className="flex h-full w-max">
+                    {periods.map((p, idx) => ( 
+                      <div 
+                        key={p.id}
+                        className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100" 
+                        style={{
+                          left: `${(periodOffsets[idx] / totalHours) * 100}%`,
+                          width: `${(periods[idx].length_h / totalHours) * 100}%`
+                        }} 
+                      > 
+                        {p.name}
+                      </div>
+                    ))}
+                </div>
               </div>
 
-              {/* Team rows and tasks */}
-              {/* Bottom grid line */}
+              {/* Timeline rows */}
               {state.teams.map(team => {
-                // Check if this team is disallowed for the current dragging task
                 const relevantTask = state.dragging_to_gantt
                   ? state.tasks.find(t => t.id === state.dragging_to_gantt)
                   : state.selectedTaskId
@@ -1152,35 +1177,34 @@ export function GanttChart() {
                     : draggedTask
                       ? state.tasks.find(t => t.id === draggedTask)
                       : null;
-                
+              
                 const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
 
                 return (
                   <div
                     key={team.id} 
-                    className={`h-12 border-b border-gray-100 relative transition-all`}
+                    className={`h-8 border-b border-gray-100 relative`}
                     data-team-row="true"
                     data-team-id={team.id}
                   >
-                    {/* Disallowed team overlay */}
-                    {isTeamDisallowed && (
-                      <div className="absolute inset-0 pointer-events-none z-10"
-                        style={{
-                          background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
-                          border: '2px dashed rgba(239, 68, 68, 0.4)',
-                          borderLeft: 'none',
-                          borderRight: 'none'
-                        }}
-                      >
-                        <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
-                          Not allowed in this Team
-                        </div>
+
+                  {/* Disallowed team overlay */}
+                  {isTeamDisallowed && (
+                    <div className="absolute inset-0 pointer-events-none z-10"
+                      style={{
+                        background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
+                        border: '2px dashed rgba(239, 68, 68, 0.4)',
+                        borderLeft: 'none',
+                        borderRight: 'none'
+                      }}
+                    >
+                      <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
+                        Not allowed in this Team
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                  {/* Start grid line */}
-                  <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" />
-
+                  {/* Start grid line: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" /> */}
                   {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div
@@ -1277,105 +1301,121 @@ export function GanttChart() {
                       )};
                   })}
 
-                  {/* Tasks */}
-                  {getTasksByTeam(team.id).map(task => {
-                    const position = calculateTaskPosition(task);
-                    const isSelected = state.selectedTaskId === task.id;
-                    const isBeingDragged = draggedTask === task.id;
+                {/* Tasks */}
+                {getTasksByTeam(team.id).map(task => {
+                  const position = calculateTaskPosition(task);
+                  const isSelected = state.selectedTaskId === task.id;
+                  const isBeingDragged = draggedTask === task.id;
 
-                    const dragStyle = isBeingDragged
-                      ? {
-                          transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
-                          zIndex: 1000,
-                          cursor: 'grabbing',
-                          transition: 'none',
-                          pointerEvents: 'none'
-                        }
-                      : { cursor: 'grab' };
-                      
-                    const effDur = effectiveDuration(task);
-                    const disallowed = isDisallowed(task);
+                  const dragStyle = isBeingDragged
+                    ? {
+                        transform: `translate(${dragPosition.x}px, ${dragPosition.y}px)`,
+                        zIndex: 1000,
+                        cursor: 'grabbing',
+                        transition: 'none',
+                        pointerEvents: 'none'
+                      }
+                    : { cursor: 'grab' };
+                    
+                  const effDur = effectiveDuration(task);
+                  const disallowed = isDisallowed(task);
 
-                    return (
-                      <div
-                        key={task.id}
-                        className={`absolute top-2 bottom-2 rounded px-2 py-1 text-xs font-medium cursor-move transition-all select-none 
-                          ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
-                          ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
-                          text-white`}
-                        style={{ backgroundColor: team.color, ...position, ...dragStyle, overflow: 'hidden' } as CSSProperties }
-                        onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
-                      >
-                        {(task.defaultSetup ?? 0) > 0 && (
-                          <div
-                            className="absolute inset-y-0 left-0 pointer-events-none flex items-center justify-center"
-                            title={`Setup: ${task.defaultSetup}h`}
-                            style={{
-                              width: `${((task.defaultSetup ?? 0) / effDur) * 100}%`,
-                              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.35) 75%)',
-                              backgroundSize: '8px 8px',
-                              backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
-                              borderRight: '1px dashed rgba(255,255,255,0.8)'
-                            }}
-                          >
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-white/90 select-none">setup</span>
-                          </div>
-                        )}
+                  return (
+                    <div
+                      key={task.id}
+                      className={`group absolute top-1.5 bottom-1.5 rounded px-1 py-0.5 text-[10px] font-medium text-white cursor-move select-none 
+                        ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
+                        ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
+                      `}
+                      style={{ backgroundColor: team.color, ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
+                      onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
+                    >
+                      {/* Setup visual indicator */}
+                      {(task.defaultSetup ?? 0) > 0 && (
                         <div
-                          className="flex items-center justify-center h-full relative"
+                          className="absolute inset-y-0 left-0 pointer-events-none"
+                          title={`Setup: ${task.defaultSetup}h`}
                           style={{
-                            marginLeft: `${(((task.defaultSetup ?? 0) / effDur) * 100)}%`,
-                            width: `${100 - (((task.defaultSetup ?? 0) / effDur) * 100)}%`
+                            width: `${((task.defaultSetup ?? 0) / effDur) * 100}%`,
+                            backgroundImage:
+                              'repeating-linear-gradient(45deg, rgba(255,255,255,0.35), rgba(255,255,255,0.35) 2px, transparent 2px, transparent 4px)',
+                            borderRight: '1px dashed rgba(255,255,255,0.8)'
                           }}
-                        >
-                          <span className="truncate w-full text-center">{task.id}</span>
-                        </div>
-                        {disallowed && (
-                          <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center pointer-events-none">
-                            <span className="text-white font-semibold text-xs drop-shadow">Not allowed</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        />
+                      )}
 
-                  {/* Drop zone */}
-                  {dropZone?.teamId === team.id && (() => {
-                    const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
-                    const dis = moving ? isDisallowed(moving as Task, team.id) : false;
-
-                    if (!dis) {
-                      return (
-                      <div className='absolute inset-0 bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed rounded flex items-center justify-center pointer-events-none'>
-                        <span className='text-blue-700 font-medium text-sm'>
-                          Drop here to assign
+                      {/* Task text */}
+                      <div
+                        className="flex items-center justify-center h-full relative overflow-hidden"
+                        style={{
+                          marginLeft: `${(((task.defaultSetup ?? 0) / effDur) * 100)}%`,
+                          width: `${100 - (((task.defaultSetup ?? 0) / effDur) * 100)}%`
+                        }}
+                      >
+                        <span className="truncate w-full text-center text-[10px] leading-none">
+                          {task.id}
                         </span>
                       </div>
-                      );
-                    }
-                    }
+
+                      {/* Tooltip with fade + upward slide */}
+                      <div className="
+                        absolute bottom-full mb-1 left-1/2 -translate-x-1/2
+                        px-2 py-1 rounded bg-black text-white text-[10px] whitespace-nowrap shadow
+                        opacity-0 translate-y-1
+                        group-hover:opacity-100 group-hover:translate-y-0
+                        transition-all duration-200 ease-out
+                        pointer-events-none z-50
+                      ">
+                        {task.id}
+                      </div>
+
+                      {/* Disallowed overlay */}
+                      {disallowed && (
+                        <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center pointer-events-none">
+                          <span className="text-white font-semibold text-[10px] drop-shadow">Not allowed</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Drop zone */}
+                {dropZone?.teamId === team.id && (() => {
+                  const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
+                  const dis = moving ? isDisallowed(moving as Task, team.id) : false;
+
+                  if (!dis) {
+                    return (
+                    <div className='absolute inset-0 bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed rounded flex items-center justify-center pointer-events-none'>
+                      <span className='text-blue-700 font-medium text-sm'>
+                        Drop here to assign
+                      </span>
+                    </div>
+                    );
+                  }
+                  }
                   )()}
                 </div>
               )})}
-
-              {/* Global drop hint when dragging from unassigned */}
-              {state.toggledDrop && (
-                <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
-                  <div className="text-center">
-                    <div className="flex items-center justify-center gap-2 text-green-700 mb-2">
-                      <Calendar size={24} />
-                      <span className="font-semibold text-lg">Drop here to assign to a team</span>
-                    </div>
-                    <div className="text-sm text-green-600">
-                      Drag to specific team rows to assign to that team
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
+
+          {/* Global drop hint when dragging from unassigned */}
+          {state.toggledDrop && (
+              <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-green-700 mb-2">
+                    <Calendar size={24} />
+                    <span className="font-semibold text-lg">Drop here to assign to a team</span>
+                  </div>
+                  <div className="text-sm text-green-600">
+                    Drag to specific team rows to assign to that team
+                  </div>
+                </div>
+              </div>
+          )}
         </div>
-      </>
+      </div>
     </div>
   );
 }

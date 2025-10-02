@@ -6,11 +6,25 @@ import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 import { findEarliestHour } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
+import proj4 from 'proj4';
 
-// ---------------------------------------------
+// Define EPSG:3006 (SWEREF99 TM) and WGS84
+proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
+proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
+
+// Helper function to convert SWEREF99 TM to WGS84
+const swerefToWGS84 = (northing: number, easting: number): [number, number] => {
+  try {
+    const [lon, lat] = proj4('EPSG:3006', 'EPSG:4326', [easting, northing]);
+    return [lat, lon];
+  } catch (error) {
+    console.error('Error converting coordinates:', error, { northing, easting });
+    // Fallback to approximate center of Sweden if conversion fails
+    return [62.0, 15.0];
+  }
+};
+
 // Leaflet Marker Icon Fix
-// ---------------------------------------------
-// Ensures that the default Leaflet marker icons are loaded correctly
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -18,36 +32,23 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// ---------------------------------------------
 // DeselectOnMapClick Component
-// ---------------------------------------------
-// Listens for map click events and calls the provided onDeselect callback.
-// Used to clear the selected task when clicking on the map background.
 function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
     click() {
       onDeselect();
-      console.log("Diselected");
+      console.log("Deselected");
     }
   });
   return null;
 }
 
-// ---------------------------------------------
 // WorldMap Component
-// ---------------------------------------------
-// Displays a map with task markers, popups, and connection lines.
-// Allows filtering by team/team and selecting tasks by clicking markers.
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
-  // ---------------------------------------------
-  // createCustomIcon
-  // ---------------------------------------------
-  // Generates a custom circular marker icon with color, selection state, and optional index number.
-  // Used for both plain and numbered markers.
   const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
-    const size = isSelected ? 35 : 25;
+    const size = isSelected ? 20 : 8;
 
     const iconHtml = `
       <div style="
@@ -55,17 +56,28 @@ export function WorldMap() {
         width: ${size}px;
         height: ${size}px;
         border-radius: 50%;
-        border: ${isSelected ? '4px' : '2px'} solid white;
+        border: ${isSelected ? '4px' : '1px'} ${isSelected ? 'solid white' : 'solid black'};
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         display: flex;
         align-items: center;
         justify-content: center;
         ${isSelected ? 'animation: pulse 2s infinite;' : ''}
-        color: white;
-        font-weight: bold;
-        font-size: ${isSelected ? 16 : 12}px;
       ">
-        ${index !== undefined ? index : ''}
+        <span style="
+          position: absolute;
+          top: -10px;
+          right: -5px;
+          color: white;
+          font-weight: bold;
+          font-size: ${isSelected ? 16 : 12}px;
+          text-shadow: 
+            -1px -1px 0 black,  
+            1px -1px 0 black,
+            -1px  1px 0 black,
+            1px  1px 0 black;
+        ">
+          ${index !== undefined ? index : ''}
+        </span>
       </div>
     `;
 
@@ -77,35 +89,22 @@ export function WorldMap() {
     });
   };
 
-  // ---------------------------------------------
-  // getVisibleTasks
-  // ---------------------------------------------
-  // Returns the list of tasks to display based on the current team/team filter.
-  // If "all" is selected, returns all tasks; otherwise, filters by teamId.
   const getVisibleTasks = () => {
-    // If "all" is selected, show all assigned tasks and unassigned if toggledNull is true
     if (state.selectedTeamId === 'all') {
       return state.tasks.filter(task =>
         (task.teamId !== null) ||
         (state.toggledNull && task.teamId === null)
       );
     }
-    // If a specific team is selected, show its tasks and unassigned if toggledNull is true
     return state.tasks.filter(task =>
       (task.teamId === state.selectedTeamId) ||
       (state.toggledNull && task.teamId === null)
     );
   };
 
-  // ---------------------------------------------
-  // getTaskConnectionLines
-  // ---------------------------------------------
-  // For filtered views (single team), returns an array of line objects connecting tasks in chronological order.
-  // Each line includes positions, color, and style for rendering as a PolyLine.
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
 
-    // Only connect assigned tasks
     const visibleTasks = getVisibleTasks().filter(task => task.teamId === state.selectedTeamId);
     const sortedTasks = [...visibleTasks].sort((a, b) => a.startHour - b.startHour);
 
@@ -114,14 +113,15 @@ export function WorldMap() {
       const currentTask = sortedTasks[i];
       const nextTask = sortedTasks[i + 1];
 
+      // Convert SWEREF99 to WGS84 for display
+      const currentPos = swerefToWGS84(currentTask.location.lat, currentTask.location.lon);
+      const nextPos = swerefToWGS84(nextTask.location.lat, nextTask.location.lon);
+
       lines.push({
         id: `${currentTask.id}-${nextTask.id}`,
-        positions: [
-          [currentTask.location.lat, currentTask.location.lon],
-          [nextTask.location.lat, nextTask.location.lon]
-        ],
+        positions: [currentPos, nextPos],
         color: getTeamColor(currentTask.teamId),
-        weight: 4,
+        weight: 2.5,
         opacity: 0.8
       });
     }
@@ -129,33 +129,21 @@ export function WorldMap() {
     return lines;
   };
 
-  // ---------------------------------------------
-  // getTeamColor
-  // ---------------------------------------------
-  // Returns the color associated with a team/team, or gray if unassigned.
   const getTeamColor = (teamId: string | null) => {
-    if (!teamId) return '#6B7280'; // Gray for unassigned
+    if (!teamId) return '#6B7280';
     const team = state.teams.find(p => p.id === teamId);
     return team?.color || '#6B7280';
   };
 
-  // ---------------------------------------------
-  // handleMarkerClick
-  // ---------------------------------------------
-  // Sets the selected task in the global state when a marker is clicked.
   const handleMarkerClick = (taskId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_TASK',
-      taskId, toggle_team:
-      state.selectedTeamId 
+      taskId, 
+      toggle_team: state.selectedTeamId 
     });
     console.log(`Click on marker ${taskId}`);
   };
 
-  // ---------------------------------------------
-  // handleTeamToggle && handleNullToggle
-  // ---------------------------------------------
-  // Toggles the team/team/null filter. If already selected, switches to "all".
   const handleTeamToggle = (teamId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_TEAM',
@@ -172,11 +160,7 @@ export function WorldMap() {
     console.log("Toggled null");
   }
 
-  // ---------------------------------------------
   // MapController Component
-  // ---------------------------------------------
-  // Handles map fly-to behavior when a task is selected.
-  // Also toggles team filter if "any" is selected.
   function MapController() {
     const { state } = useApp();
     const map = useMap();
@@ -185,7 +169,17 @@ export function WorldMap() {
       if (state.selectedTaskId) {
         const task = state.tasks.find(t => t.id === state.selectedTaskId);
         if (task) {
-          map.flyTo([task.location.lat, task.location.lon], 15, { duration: 1 });
+          try {
+            // Convert SWEREF99 to WGS84
+            const [lat, lon] = swerefToWGS84(task.location.lat, task.location.lon);
+            console.log(`Moving to task ${task.id}:`, { sweref: [task.location.lat, task.location.lon], wgs84: [lat, lon] });
+            
+            if (isFinite(lat) && isFinite(lon)) {
+              map.setView([lat, lon], map.getZoom(), { animate: true, duration: 1 });
+            }
+          } catch (error) {
+            console.error('Error navigating to task:', error);
+          }
         }
 
         if (state.selectedTeamId === 'any') handleTeamToggle(state.selectedTeamId);
@@ -195,11 +189,7 @@ export function WorldMap() {
     return null;
   }
 
-  // ---------------------------------------------
   // PolyLine Component
-  // ---------------------------------------------
-  // Renders a dashed line between two task locations.
-  // Cleans up the line when the component unmounts or updates.
   const PolyLine = ({ positions, color, weight, opacity }: any) => {
     const map = useMap();
 
@@ -223,11 +213,10 @@ export function WorldMap() {
 
   function DraggableUnassignedMarker({ task }: { task: Task }) {
     const map = useMap();
-    const originalPos: [number, number] = [task.location.lat, task.location.lon];
+    const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
     const markerRef = useRef<L.Marker>(null);
     const [, setIsDragging] = useState(false);
 
-    // Ensure map dragging is re-enabled if the component unmounts or something goes wrong
     useEffect(() => {
       const marker = markerRef.current;
       if (!marker) return;
@@ -239,7 +228,6 @@ export function WorldMap() {
         e.originalEvent.stopPropagation();
         e.originalEvent.preventDefault();
 
-        // Set as selected task
         if (state.selectedTaskId !== task.id) {
           dispatch({ 
             type: 'SET_DRAGGING_TO_GANTT', 
@@ -250,10 +238,8 @@ export function WorldMap() {
         isDrag = false;
         setIsDragging(true);
 
-        // Disable map dragging immediately
         if (map?.dragging?.disable) map.dragging.disable();
 
-        // Create clone of the marker
         const markerElement = marker.getElement();
         if (markerElement) {
           cloneElement = markerElement.cloneNode(true) as HTMLElement;
@@ -261,9 +247,8 @@ export function WorldMap() {
           cloneElement.style.zIndex = '9999';
           cloneElement.style.pointerEvents = 'none';
           cloneElement.style.opacity = '0.7';
-          cloneElement.style.transform = 'none'; // Remove center transform
+          cloneElement.style.transform = 'none';
           
-          // Position at initial mouse location
           cloneElement.style.left = `${e.originalEvent.clientX}px`;
           cloneElement.style.top = `${e.originalEvent.clientY}px`;
           
@@ -273,7 +258,6 @@ export function WorldMap() {
         const handleMouseMove = (e: MouseEvent) => {
           isDrag = true;
 
-          // Move the clone with the mouse, maintaining the offset
           if (cloneElement) {
             cloneElement.style.left = `${e.clientX}px`;
             cloneElement.style.top = `${e.clientY}px`;
@@ -287,27 +271,22 @@ export function WorldMap() {
             taskId: null 
           });
 
-          // Remove the clone
           if (cloneElement && cloneElement.parentNode) {
             cloneElement.parentNode.removeChild(cloneElement);
             cloneElement = null;
           }
 
-          // Re-enable map dragging
           setTimeout(() => {
             if (map?.dragging?.enable) map.dragging.enable();
           }, 0);
 
-          // Clean up event listeners
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseup', handleMouseUp);
 
-          // Handle click vs drag
           if (!isDrag) {
             handleMarkerClick(task.id);
           }
 
-          // Check if dropped on the Gantt chart
           const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
           const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
           
@@ -328,11 +307,6 @@ export function WorldMap() {
                     .sort((a, b) => a.startHour - b.startHour)
 
                   const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
-                  console.log("Total hours: ", totalHours);
-                  console.log("Task stats: ", task);
-                  console.log("Tasks: ", filteredTasks);
-                  console.log("Periods: ", state.periods);
-                  console.log("Calculated earliest: ", result);
                   
                   if (result !== null) {
                     dispatch({
@@ -363,13 +337,13 @@ export function WorldMap() {
         marker.off('mousedown', handleMouseDown);
         if (map?.dragging?.enable) map.dragging.enable();
       };
-    }, [map, originalPos, task.id]);
+    }, [map, wgs84Pos, task.id]);
 
     return (
       <Marker
         key={task.id}
         ref={markerRef}
-        position={originalPos}
+        position={wgs84Pos}
         icon={createCustomIcon(
           getTeamColor(task.teamId), 
           state.selectedTaskId === task.id
@@ -381,7 +355,7 @@ export function WorldMap() {
             <p className="text-sm text-gray-600">Team: Unassigned</p>
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <MapPin size={12} />
-              {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+              N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}
             </div>
           </div>
         </Popup>
@@ -389,23 +363,16 @@ export function WorldMap() {
     );
   }
 
-  // ---------------------------------------------
   // Render
-  // ---------------------------------------------
-  // Main render block for the WorldMap component.
-  // Includes header, filter controls, map, markers, popups, and connection lines.
   return (
     <div className="world-map-container bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
-      {/* Header and Filter Controls */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <MapIcon className="text-blue-600" size={24} />
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
 
-        {/* Team/Team Filter Buttons */}
         <div className="flex flex-wrap gap-2">
-          {/* All Tasks Button */}
           <button
             onClick={() => handleTeamToggle('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -416,7 +383,6 @@ export function WorldMap() {
           >
             All
           </button>
-          {/* Team Buttons */}
           {state.teams.map(team => (
             <button
               key={team.id}
@@ -440,7 +406,6 @@ export function WorldMap() {
             </button>
           ))}
           
-          {/* Unassigned Button */}
           <button 
             onClick={() => handleNullToggle()}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
@@ -454,26 +419,22 @@ export function WorldMap() {
         </div>
       </div>
 
-      {/* Map Display */}
       <div className="flex-1 rounded-lg overflow-hidden">
         <MapContainer
-          center={[45.5017, -73.5673]}
-          zoom={13}
+          center={[62.0, 15.0]}
+          zoom={5}
+          minZoom={4}
+          maxZoom={15}
           style={{ height: '100%', width: '100%' }}
           className="rounded-lg"
         >
-          {/* Map Tiles */}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {/* Handles fly-to and team toggling on selection */}
           <MapController />
-
-          {/* Deselects task when clicking on map background */}
           <DeselectOnMapClick onDeselect={() => handleMarkerClick(null)} />
           
-          {/* Connection Lines (PolyLines) for filtered views */}
           {getTaskConnectionLines().map(line => (
             <PolyLine
               key={line.id}
@@ -484,12 +445,9 @@ export function WorldMap() {
             />
           ))}
 
-          {/* Markers and Popups */}
           {(() => {
-            // ALL view: show plain markers for all tasks
             if (state.selectedTeamId === 'all') {
               const assignedTasks = getVisibleTasks().filter(task => task.teamId !== null);
-
               const unassignedTasks = state.toggledNull
                 ? getVisibleTasks().filter(task => task.teamId === null)
                 : [];
@@ -499,15 +457,15 @@ export function WorldMap() {
                 {assignedTasks.map((task) => {
                   const isSelected = state.selectedTaskId === task.id;
                   const teamColor = getTeamColor(task.teamId);
+                  const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
 
                   return (
                   <Marker
                     key={task.id}
-                    position={[task.location.lat, task.location.lon]}
+                    position={wgs84Pos}
                     icon={createCustomIcon(teamColor, isSelected)} 
                     eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                   >
-                    {/* Popup with detailed task stats */}
                     <Popup>
                       <div className="p-2 space-y-1">
                         <h3 className="font-semibold text-gray-800">{task.id}</h3>
@@ -532,7 +490,7 @@ export function WorldMap() {
                                 ? Object.entries(task.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
                                 : 'None'
                             }</div>
-                          <div><span className="font-medium">Location:</span> {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}</div>
+                          <div><span className="font-medium">Coordinates:</span> N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}</div>
                           <div><span className="font-medium">Invalid Periods:</span> {task.invalidPeriods?.length ? task.invalidPeriods.join(', ') : 'None'}</div>
                         </div>
                       </div>
@@ -548,7 +506,6 @@ export function WorldMap() {
               )
             }
 
-            // Filtered view: show numbered markers and simple popups for tasks in the selected team
             const assignedTasks = getVisibleTasks()
               .filter(task => task.teamId === state.selectedTeamId)
               .sort((a, b) => a.startHour - b.startHour);
@@ -559,16 +516,16 @@ export function WorldMap() {
 
             return (
               <>
-                {/* Assigned tasks: numbered markers */}
                 {assignedTasks.map((task, index) => {
                   const isSelected = state.selectedTaskId === task.id;
                   const teamColor = getTeamColor(task.teamId);
                   const markerIndex = index + 1;
+                  const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
 
                   return (
                     <Marker
                       key={task.id}
-                      position={[task.location.lat, task.location.lon]}
+                      position={wgs84Pos}
                       icon={createCustomIcon(teamColor, isSelected, markerIndex)}
                       eventHandlers={{ click: () => handleMarkerClick(task.id) }}
                     >
@@ -583,7 +540,7 @@ export function WorldMap() {
                           </p>
                           <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
                             <MapPin size={12} />
-                            {task.location.lat.toFixed(4)}, {task.location.lon.toFixed(4)}
+                            N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}
                           </div>
                         </div>
                       </Popup>
@@ -591,7 +548,6 @@ export function WorldMap() {
                   );
                 })}
 
-                {/* Unassigned tasks: draggable markers, no numbers */}
                 {unassignedTasks.map(task => (
                   <DraggableUnassignedMarker key={task.id} task={task} />
                 ))}
