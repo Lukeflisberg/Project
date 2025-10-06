@@ -1066,7 +1066,7 @@ export function GanttChart() {
         <div className="w-48 flex-shrink-0 flex flex-col border-r border-gray-200">
 
           {/* Sticky team heading */}
-          <div className="h-10 flex items-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-20">
+          <div className="h-10 flex items-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
             Teams
           </div>
 
@@ -1151,7 +1151,7 @@ export function GanttChart() {
 
               {/* Start period boundary: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-100" />  */}
               {/* Sticky periods header row */}
-              <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-20"> 
+              <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-10"> 
                 <div className="flex h-full w-max">
                     {periods.map((p, idx) => ( 
                       <div 

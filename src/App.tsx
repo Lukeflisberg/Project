@@ -1,10 +1,9 @@
 import React from 'react';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
-import { useApp } from './context/AppContext';
 
 function AppContent() {
   const { state, dispatch} = useApp();

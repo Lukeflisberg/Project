@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Map as MapIcon, MapPin } from 'lucide-react';
+import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
 import { findEarliestHour } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
+
+const DEFAULT_POSITION = { x: 0, y: 0};
+const DEFAULT_SIZE = { width: 800, height: 600 };
 
 // Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
@@ -46,6 +49,125 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
 // WorldMap Component
 export function WorldMap() {
   const { state, dispatch } = useApp();
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [position, setPosition] = useState(DEFAULT_POSITION);
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // immediate revalidation
+    mapRef.current.invalidateSize();
+
+    // delay revalidation (after DOM reflow)
+    setTimeout(() => {
+      mapRef.current?.invalidateSize();
+    }, 300);
+    
+  }, [isMaximized, size]);
+
+  useEffect(() => {
+    if (isMaximized || !containerRef.current) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Only allow dragging if not clicking on the map container itself
+      if (target.closest('.leaflet-container')) return;
+
+      e.preventDefault();
+      dragStartRef.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y
+      };
+
+      const handleMouseMove = (e: MouseEvent) => {
+        setPosition({
+          x: e.clientX - dragStartRef.current.x,
+          y: e.clientY - dragStartRef.current.y
+        });
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const container = containerRef.current;
+    container.addEventListener('mousedown', handleMouseDown);
+
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, [isMaximized, position]);
+
+  const handleReset = () => {
+    setPosition(DEFAULT_POSITION);
+    setSize(DEFAULT_SIZE);
+    setIsMaximized(false);
+  };
+
+  const handleResize = (e: React.MouseEvent, edge: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = size.width;
+    const startHeight = size.height;
+    const startPosX = position.x;
+    const startPosY = position.y;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newPosX = startPosX;
+      let newPosY = startPosY;
+
+      if (edge.includes('e')) {
+        newWidth = Math.max(400, startWidth + deltaX);
+      }
+      if (edge.includes('w')) {
+        newWidth = Math.max(400, startWidth - deltaX);
+        newPosX = startPosX + (startWidth - newWidth);
+      }
+      if (edge.includes('s')) {
+        newHeight = Math.max(300, startHeight + deltaY);
+      }
+      if (edge.includes('n')) {
+        newHeight = Math.max(300, startHeight - deltaY);
+        newPosY = startPosY + (startHeight - newHeight);
+      }
+
+      setSize({ width: newWidth, height: newHeight });
+      setPosition({ x: newPosX, y: newPosY });
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const toggleMaximized = () => {
+    setIsMaximized(!isMaximized);
+  };
 
   const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
     const size = isSelected ? 20 : 8;
@@ -158,6 +280,22 @@ export function WorldMap() {
       toggledNull: state.toggledNull ? false : true
     })
     console.log("Toggled null");
+  }
+
+  const ResizeHandler = () => {
+    const map = useMap();
+    const container = map.getContainer();
+
+    useEffect(() => {
+      const observer = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+
+      observer.observe(container);
+      return () => observer.disconnect();
+    }, [map, container]);
+
+    return null
   }
 
   // MapController Component
@@ -365,66 +503,147 @@ export function WorldMap() {
 
   // Render
   return (
-    <div className="world-map-container bg-white rounded-lg shadow-lg p-6 h-full flex flex-col">
+    <div
+      ref={wrapperRef}
+      className={`${isMaximized ? 'fixed inset-0 z-50' : 'absolute z-10'}`}
+      style={
+        isMaximized
+        ? {}
+        : {
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            width: `${size.width}px`,
+            height: `${size.height}px`,
+          }
+      }
+    >
+    
+    {/* Resize Handles */}
+    {!isMaximized && (
+      <>
+        {/* Corner handles */}
+        <div
+          onMouseDown={(e) => handleResize(e, 'nw')}
+          className="absolute -top-1 -left-1 w-3 h-3 cursor-nw-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 'ne')}
+          className="absolute -top-1 -right-1 w-3 h-3 cursor-ne-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 'sw')}
+          className="absolute -bottom-1 -left-1 w-3 h-3 cursor-sw-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 'se')}
+          className="absolute -bottom-1 -right-1 w-3 h-3 cursor-se-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        
+        {/* Edge handles */}
+        <div
+          onMouseDown={(e) => handleResize(e, 'n')}
+          className="absolute -top-1 left-8 right-8 h-2 cursor-n-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 's')}
+          className="absolute -bottom-1 left-8 right-8 h-2 cursor-s-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 'w')}
+          className="absolute -left-1 top-8 bottom-8 w-2 cursor-w-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+        <div
+          onMouseDown={(e) => handleResize(e, 'e')}
+          className="absolute -right-1 top-8 bottom-8 w-2 cursor-e-resize z-10 hover:bg-blue-200 transition-colors"
+        />
+      </>
+    )}
+    
+    {/* Heading */}
+    <div
+      ref={containerRef}
+      className="world-map-container bg-white rounded-lg shadow-lg p-6 h-full flex flex-col"
+      style={{ cursor: !isMaximized ? 'move' : 'default' }}
+    >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <MapIcon className="text-blue-600" size={24} />
+          <MapIcon className="text-blue-600" width="24" height="24" />
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-2 control-buttons">
           <button
-            onClick={() => handleTeamToggle('all')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              state.selectedTeamId === 'all'
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
+            onClick={toggleMaximized}
+            className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+            title={isMaximized ? 'Restore' : 'Maximize'}
           >
-            All
+            {isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
-          {state.teams.map(team => (
-            <button
-              key={team.id}
-              onClick={() => handleTeamToggle(team.id)}
-              className={`relative px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                state.selectedTeamId === team.id
-                  ? 'text-white'
-                  : 'text-gray-700 hover:opacity-80'
-              }`}
-              style={{
-                backgroundColor: 
-                  state.selectedTeamId === team.id
-                  ? team.color
-                  : `color-mix(in srgb, ${team.color} 20%, transparent)`,
-                borderColor: team.color,
-                borderWidth: '1px',
-                borderStyle: 'solid'
-              }}
-            >
-              {team.id}
-            </button>
-          ))}
-          
-          <button 
-            onClick={() => handleNullToggle()}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
-              state.toggledNull === true
-                ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
-                : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
-            }`}
+
+          <button
+            onClick={handleReset}
+            className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+            title="Reset map size"
           >
-            Unassigned
+            <RotateCcw size={18} />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 rounded-lg overflow-hidden">
+      {/* Sub Heading */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => handleTeamToggle('all')}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            state.selectedTeamId === 'all'
+              ? 'bg-gray-700 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          All
+        </button>
+        {state.teams.map(team => (
+          <button
+            key={team.id}
+            onClick={() => handleTeamToggle(team.id)}
+            className={`relative px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              state.selectedTeamId === team.id
+                ? 'text-white'
+                : 'text-gray-700 hover:opacity-80'
+            }`}
+            style={{
+              backgroundColor: 
+                state.selectedTeamId === team.id
+                ? team.color
+                : `color-mix(in srgb, ${team.color} 20%, transparent)`,
+              borderColor: team.color,
+              borderWidth: '1px',
+              borderStyle: 'solid'
+            }}
+          >
+            {team.id}
+          </button>
+        ))}
+        
+        <button 
+          onClick={() => handleNullToggle()}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
+            state.toggledNull === true
+              ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
+              : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
+          }`}
+        >
+          Unassigned
+        </button>
+      </div>
+
+      {/* Map Container */}
+      <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default' }}>
         <MapContainer
+          ref={mapRef}
           center={[62.0, 15.0]}
           zoom={5}
-          minZoom={4}
-          maxZoom={15}
+          maxZoom={19}
           style={{ height: '100%', width: '100%' }}
           className="rounded-lg"
         >
@@ -432,6 +651,7 @@ export function WorldMap() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <ResizeHandler />
           <MapController />
           <DeselectOnMapClick onDeselect={() => handleMarkerClick(null)} />
           
@@ -497,7 +717,7 @@ export function WorldMap() {
                     </Popup>
                   </Marker>
                   );
-                })};
+                })}
 
                 {unassignedTasks.map(task => (
                   <DraggableUnassignedMarker key={task.id} task={task} />
@@ -557,5 +777,6 @@ export function WorldMap() {
         </MapContainer>
       </div>
     </div>
+  </div>
   );
 }
