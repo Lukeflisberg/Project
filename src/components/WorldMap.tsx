@@ -4,12 +4,12 @@ import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
-import { findEarliestHour } from '../helper/taskUtils';
+import { findEarliestHour, effectiveDuration } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
-const DEFAULT_POSITION = { x: 0, y: 0};
-const DEFAULT_SIZE = { width: 800, height: 600 };
+const DEFAULT_POSITION = { x: 1277, y: 12};
+const DEFAULT_SIZE = { width: 632, height: 749 };
 
 // Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
@@ -310,11 +310,20 @@ export function WorldMap() {
           try {
             // Convert SWEREF99 to WGS84
             const [lat, lon] = swerefToWGS84(task.location.lat, task.location.lon);
-            console.log(`Moving to task ${task.id}:`, { sweref: [task.location.lat, task.location.lon], wgs84: [lat, lon] });
-            
+
             if (isFinite(lat) && isFinite(lon)) {
-              map.setView([lat, lon], map.getZoom(), { animate: true, duration: 1 });
-            }
+              // Check if the marker is within the current map bounds
+              const bounds = map.getBounds();
+              const markerLatLng = L.latLng(lat, lon);
+
+              if (!bounds.contains(markerLatLng)) {
+                // Only move the map if the marker is outside the current view
+                console.log(`Moving to task ${task.id}:`, { sweref: [task.location.lat, task.location.lon], wgs84: [lat, lon] });
+                map.setView([lat, lon], map.getZoom(), { animate: true, duration: 1 });
+              } else {
+                console.log(`Task ${task.id} is already in view, not moving map`);
+              }
+            }            
           } catch (error) {
             console.error('Error navigating to task:', error);
           }
@@ -444,9 +453,13 @@ export function WorldMap() {
                     .filter(t => t.teamId === teamId)
                     .sort((a, b) => a.startHour - b.startHour)
 
-                  const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
+                  console.log(`Attempting to move task "${task.id}" to team ${teamId}`);
+                  console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
+                  
+                  const result = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
                   
                   if (result !== null) {
+                    console.log(`SUCCESS: Task moved to hour ${result}`);
                     dispatch({
                       type: 'UPDATE_TASK_TEAM',
                       taskId: task.id,
@@ -457,7 +470,16 @@ export function WorldMap() {
                       taskId: task.id,
                       startHour: result,
                       defaultDuration: task.defaultDuration
-                    })
+                    });
+
+                    // Success popup
+                    alert(`✅ Task successfully placed at hour ${result}`);
+                  } else {
+                    console.log(`FAILED: No valid slot found for task in team ${teamId}`);
+                    console.log(`Reason: No gaps large enough or all slots conflict with invalid periods`);
+
+                    // Failure popup
+                    alert(`❌ Unable to place task\n\nNo valid time slot found in this team.\nTry:\n• Removing or moving other tasks\n• Checking period restrictions\n• Using a different team`);
                   }
                 }
               }

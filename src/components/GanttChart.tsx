@@ -761,6 +761,11 @@ export function GanttChart() {
 
   // Handler for importing everything from one file
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    state.tasks = [];
+    state.teams = [];
+    state.periods = [];
+    console.log("Reset state: ", state.tasks, state.teams, state.periods);
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -811,20 +816,8 @@ export function GanttChart() {
     });
 
     // Import teams 
-    const availableColors: string[] = [
-      "red",
-      "blue",
-      "green",
-      "yellow",
-      "purple",
-      "orange",
-      "pink",
-      "brown",
-      "black",
-      "navy",
-      "teal",
-      "maroon"
-    ];
+    const availableColors: string[] = ["#5F8A8B"]; // Steel Teal
+
     let formattedTeams: Team[] = []
     if (result.teams && Array.isArray(result.teams)) {
       formattedTeams = result.teams.map((p: any, idx: number) => {
@@ -885,21 +878,35 @@ export function GanttChart() {
 
     let _tasks = state.tasks; // Store local copy of state.tasks
 
+    // Reset the teams of all tasks
+    for (const task of _tasks) {
+      dispatch({
+        type: 'UPDATE_TASK_TEAM',
+        taskId: task.id,
+        newTeamId: null
+      })
+    }
+
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
         for (const {task, start} of tasks) {
-          dispatch({
-            type: 'UPDATE_TASK_TEAM',
-            taskId: task,
-            newTeamId: team
-          });
+          if (state.teams.some(item => item.id === team)) {
+            dispatch({
+              type: 'UPDATE_TASK_TEAM',
+              taskId: task,
+              newTeamId: team
+            });
+          } 
+          else {
+            console.log("Failed to assign task to team. Team does not exist in current list", team, state.teams, state.teams.some(item => item.id === team));
+          }
 
           // Update local copy after dispatch
           _tasks = _tasks.map(t => 
             t.id === task ? { ...t, teamId: team } : t
           );
 
-          const foundTask = state.tasks.find(t => t.id === task);
+          const foundTask = _tasks.find(t => t.id === task);
           if (foundTask) {
             dispatch({
               type: 'UPDATE_TASK_HOURS',
@@ -1029,7 +1036,7 @@ export function GanttChart() {
       {/* Header: Title and Import Buttons */}
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24} />
-        <h2 className="text-xl font-semibold text-gray-800">Task Timeline</h2>
+        <h2 className="text-xl font-semibold text-gray-800">Planning</h2>
 
         {/* Import buttons */}
         <div className="ml-auto flex items-center gap-4">
@@ -1063,10 +1070,10 @@ export function GanttChart() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* Left: Teams List */}
-        <div className="w-48 flex-shrink-0 flex flex-col border-r border-gray-200">
+        <div className="w-24 flex-shrink-0 flex flex-col border-r border-gray-200">
 
           {/* Sticky team heading */}
-          <div className="h-10 flex items-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
+          <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
             Teams
           </div>
 
@@ -1083,20 +1090,18 @@ export function GanttChart() {
               
               const dis = relevantTask ? isDisallowed(relevantTask, team.id) : false;
               const isDropZone = dropZone?.teamId === team.id;
+              const isSelected = state.selectedTeamId === team.id;
+              const highlight = isDropZone || isSelected;
 
               // Decide row classes
               const rowClasses = [
                 "h-8 flex items-center border-b px-2 relative transition-all",
                 dis
                   ? "border-l-4 border-l-red-500"
-                  : isDropZone
-                  ? "bg-blue-50 border-blue-300 border-l-4 border-l-blue-500"
+                  : highlight
+                  ? "bg-blue-50 border-blue-300 border-l-4 border-l-blue-500 border-b-gray-200"
                   : "border-gray-100",
               ].join("");
-
-              // Decide drop text
-              const dropText = dis ? "Can't drop here" : isDropZone ? "Drop here" : null;
-              const dropColor = dis ? "text-red-600" : "text-blue-600";
               
               return (
                 <div
@@ -1127,13 +1132,69 @@ export function GanttChart() {
                     />
                     <span className="text-sm font-medium text-gray-700">{team.id}</span>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-                  {/* Drop feedback */}
-                  {dropText && (
-                    <div className={`ml-auto text-xs font-medium ${dropColor}`}>
-                      {dropText}
+        {/* Middle: Total Duration */}
+        <div className="w-12 flex flex-col border-r border-gray-200">
+
+          {/* Sticky total duration heading */}
+          <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
+            d
+          </div>
+
+          {/* Scrollable duration rows */}
+          <div className="flex-1 overflow-y-hidden overflow-x-hidden">
+            {state.teams.map(team => {
+              const relevantTask = state.dragging_to_gantt 
+                ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
+                : state.selectedTaskId 
+                ? state.tasks.find(t => t.id === state.selectedTaskId) 
+                : draggedTask 
+                ? state.tasks.find(t => t.id === draggedTask) 
+                : null;
+              
+              const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
+              const rowTasks = state.tasks.filter(t => t.teamId === team.id);
+              const totalDuration = rowTasks
+                .reduce((sum, task) => sum + effectiveDuration(task), 0)
+                .toFixed(1);
+              const isSelected = state.selectedTeamId === team.id;
+              
+              return (
+                <div
+                  key={team.id}
+                  className={`h-8 border-b border-gray-100 relative`}
+                  data-team-row
+                  data-team-id={team.id}
+                >
+                  {/* Disallowed team overlay */}
+                  {isTeamDisallowed && (
+                    <div className="absolute inset-0 pointer-events-none z-10"
+                      style={{
+                        background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
+                        border: '2px dashed rgba(239, 68, 68, 0.4)',
+                        borderLeft: 'none',
+                        borderRight: 'none'
+                      }}
+                    >
                     </div>
                   )}
+
+                  {/* Selected team overlay */}
+                  {isSelected && (
+                    <div className='absolute inset-0 pointer-events-none bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed border-r-0 flex items-center justify-center'></div>
+                  )}
+
+                  {/* Duration info */}
+                  <div className="flex items-center justify-center h-full">
+                    <span className="text-xs font-medium text-gray-600 text-center">
+                      {totalDuration}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -1179,6 +1240,7 @@ export function GanttChart() {
                       : null;
               
                 const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
+                const isSelected = state.selectedTeamId === team.id;
 
                 return (
                   <div
@@ -1190,7 +1252,7 @@ export function GanttChart() {
 
                   {/* Disallowed team overlay */}
                   {isTeamDisallowed && (
-                    <div className="absolute inset-0 pointer-events-none z-10"
+                    <div className="absolute inset-0 pointer-events-none"
                       style={{
                         background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.15) 0px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.08) 10px, rgba(239, 68, 68, 0.08) 20px)',
                         border: '2px dashed rgba(239, 68, 68, 0.4)',
@@ -1198,10 +1260,12 @@ export function GanttChart() {
                         borderRight: 'none'
                       }}
                     >
-                      <div className="flex items-center justify-center h-full text-xs font-medium text-red-600">
-                        Not allowed in this Team
-                      </div>
                     </div>
+                  )}
+
+                  {/* Selected team overlay */}
+                  {isSelected && (
+                    <div className='absolute inset-0 pointer-events-none bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed border-l-0 flex items-center justify-center'></div>
                   )}
 
                   {/* Start grid line: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" /> */}
@@ -1387,14 +1451,13 @@ export function GanttChart() {
                   if (!dis) {
                     return (
                     <div className='absolute inset-0 bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed rounded flex items-center justify-center pointer-events-none'>
-                      <span className='text-blue-700 font-medium text-sm'>
+                      <span className='text-blue-900 font-medium text-sm z-20'>
                         Drop here to assign
                       </span>
                     </div>
                     );
                   }
-                  }
-                  )()}
+                })()}
                 </div>
               )})}
             </div>
