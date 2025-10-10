@@ -211,6 +211,23 @@ export function WorldMap() {
     });
   };
 
+  // Home base triangle icon for teams
+  const createHomeBaseIcon = (color: string, isSelected: boolean = false) => {
+    const size = isSelected ? 28 : 18;
+    const stroke = isSelected ? 2 : 1;
+    const iconHtml = `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+        <polygon points="12,2 22,22 2,22" fill="${color}" stroke="black" stroke-width="${stroke}" />
+      </svg>
+    `;
+    return L.divIcon({
+      html: iconHtml,
+      className: 'custom-marker',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
+    });
+  };
+
   const getVisibleTasks = () => {
     if (state.selectedTeamId === 'all') {
       return state.tasks.filter(task =>
@@ -222,6 +239,12 @@ export function WorldMap() {
       (task.duration.teamId === state.selectedTeamId) ||
       (state.toggledNull && task.duration.teamId === null)
     );
+  };
+
+  const getVisibleTeams = () => {
+    if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return state.teams;
+    const t = state.teams.find(t => t.id === state.selectedTeamId);
+    return t ? [t] : [];
   };
 
   const getTaskConnectionLines = () => {
@@ -686,6 +709,30 @@ export function WorldMap() {
               opacity={line.opacity}
             />
           ))}
+
+          {getVisibleTeams().map(team => {
+            const isSelectedTeam = state.selectedTeamId === team.id;
+            const wgs84Pos = swerefToWGS84(team.lat, team.lon);
+            return (
+              <Marker
+                key={`homebase-${team.id}`}
+                position={wgs84Pos}
+                icon={createHomeBaseIcon(team.color, isSelectedTeam)}
+                eventHandlers={{ click: () => handleTeamToggle(team.id) }}
+              >
+                <Popup>
+                  <div className="p-2">
+                    <h3 className="font-semibold text-gray-800">Team {team.id}</h3>
+                    <p className="text-xs text-gray-600">Home base</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                      <MapPin size={12} />
+                      N: {team.lat.toFixed(2)}, E: {team.lon.toFixed(2)}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {(() => {
             if (state.selectedTeamId === 'all') {

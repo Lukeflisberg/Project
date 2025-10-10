@@ -897,6 +897,8 @@ export function GanttChart() {
       })
     }
 
+    console.log("Reset all teams");
+
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
         for (const {task, start} of tasks) {
@@ -913,7 +915,7 @@ export function GanttChart() {
 
           // Update local copy after dispatch
           _tasks = _tasks.map(t => 
-            t.task.id === task ? { ...t, teamId: team } : t
+            t.task.id === task ? { ...t, duration: { ...t.duration, teamId: team } } : t
           );
 
           const foundTask = _tasks.find(t => t.task.id === task);
@@ -927,10 +929,9 @@ export function GanttChart() {
 
             // Update local copy after dispatch
             _tasks = _tasks.map(t => 
-              t.task.id === task ? { ...t, startHour: start } : t
+              t.task.id === task ? { ...t, duration: { ...t.duration, startHour: start } } : t
             );
           }
-
         }
       }
     }
@@ -942,14 +943,14 @@ export function GanttChart() {
     const totalTeams: Team[] = state.teams; 
 
     console.log("Resolving overlaps...");
-
-    console.log("Total Tasks: ", totalTasks);
-    console.log("Total Teams: ", totalTeams);
+    console.log("Total teams: ", totalTeams.length);
 
     for (const p of totalTeams) {
       const teamSiblings = totalTasks
         .filter(t => t.duration.teamId === p.id)
         .sort((a, b) => occStart(a) - occStart(b));
+
+      console.log("Siblings: ", teamSiblings, teamSiblings.length);
 
       for (let i = 1; i < teamSiblings.length; i++) {
         const prev = teamSiblings[i - 1];
