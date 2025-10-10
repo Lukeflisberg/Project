@@ -214,21 +214,21 @@ export function WorldMap() {
   const getVisibleTasks = () => {
     if (state.selectedTeamId === 'all') {
       return state.tasks.filter(task =>
-        (task.teamId !== null) ||
-        (state.toggledNull && task.teamId === null)
+        (task.duration.teamId !== null) ||
+        (state.toggledNull && task.duration.teamId === null)
       );
     }
     return state.tasks.filter(task =>
-      (task.teamId === state.selectedTeamId) ||
-      (state.toggledNull && task.teamId === null)
+      (task.duration.teamId === state.selectedTeamId) ||
+      (state.toggledNull && task.duration.teamId === null)
     );
   };
 
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
 
-    const visibleTasks = getVisibleTasks().filter(task => task.teamId === state.selectedTeamId);
-    const sortedTasks = [...visibleTasks].sort((a, b) => a.startHour - b.startHour);
+    const visibleTasks = getVisibleTasks().filter(task => task.duration.teamId === state.selectedTeamId);
+    const sortedTasks = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
 
     const lines = [];
     for (let i = 0; i < sortedTasks.length - 1; i++) {
@@ -236,13 +236,13 @@ export function WorldMap() {
       const nextTask = sortedTasks[i + 1];
 
       // Convert SWEREF99 to WGS84 for display
-      const currentPos = swerefToWGS84(currentTask.location.lat, currentTask.location.lon);
-      const nextPos = swerefToWGS84(nextTask.location.lat, nextTask.location.lon);
+      const currentPos = swerefToWGS84(currentTask.task.lat, currentTask.task.lon);
+      const nextPos = swerefToWGS84(nextTask.task.lat, nextTask.task.lon);
 
       lines.push({
-        id: `${currentTask.id}-${nextTask.id}`,
+        id: `${currentTask.task.id}-${nextTask.task.id}`,
         positions: [currentPos, nextPos],
-        color: getTeamColor(currentTask.teamId),
+        color: getTeamColor(currentTask.duration.teamId),
         weight: 2.5,
         opacity: 0.8
       });
@@ -253,7 +253,7 @@ export function WorldMap() {
 
   const getTeamColor = (teamId: string | null) => {
     if (!teamId) return '#6B7280';
-    const team = state.teams.find(p => p.id === teamId);
+    const team = state.teams.find(p => p.id=== teamId);
     return team?.color || '#6B7280';
   };
 
@@ -305,11 +305,11 @@ export function WorldMap() {
 
     useEffect(() => {
       if (state.selectedTaskId) {
-        const task = state.tasks.find(t => t.id === state.selectedTaskId);
+        const task = state.tasks.find(t => t.task.id=== state.selectedTaskId);
         if (task) {
           try {
             // Convert SWEREF99 to WGS84
-            const [lat, lon] = swerefToWGS84(task.location.lat, task.location.lon);
+            const [lat, lon] = swerefToWGS84(task.task.lat, task.task.lon);
 
             if (isFinite(lat) && isFinite(lon)) {
               // Check if the marker is within the current map bounds
@@ -318,10 +318,10 @@ export function WorldMap() {
 
               if (!bounds.contains(markerLatLng)) {
                 // Only move the map if the marker is outside the current view
-                console.log(`Moving to task ${task.id}:`, { sweref: [task.location.lat, task.location.lon], wgs84: [lat, lon] });
+                console.log(`Moving to task ${task.task.id}:`, { sweref: [task.task.lat, task.task.lon], wgs84: [lat, lon] });
                 map.setView([lat, lon], map.getZoom(), { animate: true, duration: 1 });
               } else {
-                console.log(`Task ${task.id} is already in view, not moving map`);
+                console.log(`Task ${task.task.id} is already in view, not moving map`);
               }
             }            
           } catch (error) {
@@ -360,7 +360,7 @@ export function WorldMap() {
 
   function DraggableUnassignedMarker({ task }: { task: Task }) {
     const map = useMap();
-    const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
+    const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
     const markerRef = useRef<L.Marker>(null);
     const [, setIsDragging] = useState(false);
 
@@ -375,10 +375,10 @@ export function WorldMap() {
         e.originalEvent.stopPropagation();
         e.originalEvent.preventDefault();
 
-        if (state.selectedTaskId !== task.id) {
+        if (state.selectedTaskId !== task.task.id) {
           dispatch({ 
             type: 'SET_DRAGGING_TO_GANTT', 
-            taskId: task.id
+            taskId: task.task.id
           });
         }
 
@@ -431,7 +431,7 @@ export function WorldMap() {
           document.removeEventListener('mouseup', handleMouseUp);
 
           if (!isDrag) {
-            handleMarkerClick(task.id);
+            handleMarkerClick(task.task.id);
           }
 
           const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
@@ -450,10 +450,10 @@ export function WorldMap() {
                 if (timelineRect) {
                   const totalHours = state.totalHours; 
                   const filteredTasks = state.tasks
-                    .filter(t => t.teamId === teamId)
-                    .sort((a, b) => a.startHour - b.startHour)
+                    .filter(t => t.duration.teamId === teamId)
+                    .sort((a, b) => a.duration.startHour - b.duration.startHour)
 
-                  console.log(`Attempting to move task "${task.id}" to team ${teamId}`);
+                  console.log(`Attempting to move task "${task.task.id}" to team ${teamId}`);
                   console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
                   
                   const result = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
@@ -462,14 +462,14 @@ export function WorldMap() {
                     console.log(`SUCCESS: Task moved to hour ${result}`);
                     dispatch({
                       type: 'UPDATE_TASK_TEAM',
-                      taskId: task.id,
+                      taskId: task.task.id,
                       newTeamId: teamId
                     });
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
-                      taskId: task.id,
+                      taskId: task.task.id,
                       startHour: result,
-                      defaultDuration: task.defaultDuration
+                      defaultDuration: task.duration.defaultDuration
                     });
 
                     // Success popup
@@ -497,25 +497,25 @@ export function WorldMap() {
         marker.off('mousedown', handleMouseDown);
         if (map?.dragging?.enable) map.dragging.enable();
       };
-    }, [map, wgs84Pos, task.id]);
+    }, [map, wgs84Pos, task.task.id]);
 
     return (
       <Marker
-        key={task.id}
+        key={task.task.id}
         ref={markerRef}
         position={wgs84Pos}
         icon={createCustomIcon(
-          getTeamColor(task.teamId), 
-          state.selectedTaskId === task.id
+          getTeamColor(task.duration.teamId), 
+          state.selectedTaskId === task.task.id
         )}
       >
         <Popup>
           <div className="p-2">
-            <h3 className="font-semibold text-gray-800">{task.id}</h3>
+            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
             <p className="text-sm text-gray-600">Team: Unassigned</p>
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <MapPin size={12} />
-              N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}
+              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
             </div>
           </div>
         </Popup>
@@ -689,51 +689,51 @@ export function WorldMap() {
 
           {(() => {
             if (state.selectedTeamId === 'all') {
-              const assignedTasks = getVisibleTasks().filter(task => task.teamId !== null);
+              const assignedTasks = getVisibleTasks().filter(task => task.duration.teamId !== null);
               const unassignedTasks = state.toggledNull
-                ? getVisibleTasks().filter(task => task.teamId === null)
+                ? getVisibleTasks().filter(task => task.duration.teamId === null)
                 : [];
 
               return (
                 <>
                 {assignedTasks.map((task) => {
-                  const isSelected = state.selectedTaskId === task.id;
-                  const teamColor = getTeamColor(task.teamId);
-                  const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
+                  const isSelected = state.selectedTaskId === task.task.id;
+                  const teamColor = getTeamColor(task.duration.teamId);
+                  const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
 
                   return (
                   <Marker
-                    key={task.id}
+                    key={task.task.id}
                     position={wgs84Pos}
                     icon={createCustomIcon(teamColor, isSelected)} 
-                    eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                    eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                   >
                     <Popup>
                       <div className="p-2 space-y-1">
-                        <h3 className="font-semibold text-gray-800">{task.id}</h3>
+                        <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
                         <div className="text-xs text-gray-700">
-                          <div><span className="font-medium">Task ID:</span> {task.id}</div>
-                          <div><span className="font-medium">Team:</span> {task.teamId ? (state.teams.find(p => p.id === task.teamId)?.id || task.teamId) : 'Unassigned'}</div>
-                          <div><span className="font-medium">Start Hour:</span> {task.startHour}</div>
-                          <div><span className="font-medium">Default Duration:</span> {task.defaultDuration}h</div>
+                          <div><span className="font-medium">Task ID:</span> {task.task.id}</div>
+                          <div><span className="font-medium">Team:</span> {task.duration.teamId ? (state.teams.find(p => p.id=== task.duration.teamId)?.id|| task.duration.teamId) : 'Unassigned'}</div>
+                          <div><span className="font-medium">Start Hour:</span> {task.duration.startHour}</div>
+                          <div><span className="font-medium">Default Duration:</span> {task.duration.defaultDuration}h</div>
                           <div><span className="font-medium">Active Duration:</span> {
-                              task.teamId && typeof task.specialTeams?.[task.teamId] === 'number'
-                                ? task.specialTeams[task.teamId]
-                                : task.defaultDuration
+                              task.duration.teamId && typeof task.duration.specialTeams?.[task.duration.teamId] === 'number'
+                                ? task.duration.specialTeams[task.duration.teamId]
+                                : task.duration.defaultDuration
                             }h</div>
-                          <div><span className="font-medium">Setup Duration:</span> {task.defaultSetup}h</div>
+                          <div><span className="font-medium">Setup Duration:</span> {task.duration.defaultSetup}h</div>
                           <div><span className="font-medium">Total Duration:</span> {
-                              task.teamId && typeof task.specialTeams?.[task.teamId] === 'number'
-                                ? (task.specialTeams[task.teamId] as number) + task.defaultSetup
-                                : task.defaultDuration + task.defaultSetup
+                              task.duration.teamId && typeof task.duration.specialTeams?.[task.duration.teamId] === 'number'
+                                ? (task.duration.specialTeams[task.duration.teamId] as number) + task.duration.defaultSetup
+                                : task.duration.defaultDuration + task.duration.defaultSetup
                             }h</div>
                           <div><span className="font-medium">Special Teams:</span> {
-                              task.specialTeams
-                                ? Object.entries(task.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
+                              task.duration.specialTeams
+                                ? Object.entries(task.duration.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
                                 : 'None'
                             }</div>
-                          <div><span className="font-medium">Coordinates:</span> N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}</div>
-                          <div><span className="font-medium">Invalid Periods:</span> {task.invalidPeriods?.length ? task.invalidPeriods.join(', ') : 'None'}</div>
+                          <div><span className="font-medium">Coordinates:</span> N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}</div>
+                          <div><span className="font-medium">Invalid Periods:</span> {task.duration.invalidPeriods?.length ? task.duration.invalidPeriods.join(', ') : 'None'}</div>
                         </div>
                       </div>
                     </Popup>
@@ -742,47 +742,47 @@ export function WorldMap() {
                 })}
 
                 {unassignedTasks.map(task => (
-                  <DraggableUnassignedMarker key={task.id} task={task} />
+                  <DraggableUnassignedMarker key={task.task.id} task={task} />
                 ))}
                 </>
               )
             }
 
             const assignedTasks = getVisibleTasks()
-              .filter(task => task.teamId === state.selectedTeamId)
-              .sort((a, b) => a.startHour - b.startHour);
+              .filter(task => task.duration.teamId === state.selectedTeamId)
+              .sort((a, b) => a.duration.startHour - b.duration.startHour);
 
             const unassignedTasks = state.toggledNull
-              ? getVisibleTasks().filter(task => task.teamId === null)
+              ? getVisibleTasks().filter(task => task.duration.teamId === null)
               : [];
 
             return (
               <>
                 {assignedTasks.map((task, index) => {
-                  const isSelected = state.selectedTaskId === task.id;
-                  const teamColor = getTeamColor(task.teamId);
+                  const isSelected = state.selectedTaskId === task.task.id;
+                  const teamColor = getTeamColor(task.duration.teamId);
                   const markerIndex = index + 1;
-                  const wgs84Pos = swerefToWGS84(task.location.lat, task.location.lon);
+                  const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
 
                   return (
                     <Marker
-                      key={task.id}
+                      key={task.task.id}
                       position={wgs84Pos}
                       icon={createCustomIcon(teamColor, isSelected, markerIndex)}
-                      eventHandlers={{ click: () => handleMarkerClick(task.id) }}
+                      eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                     >
                       <Popup>
                         <div className="p-2">
-                          <h3 className="font-semibold text-gray-800">{task.id}</h3>
+                          <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
                           <p className="text-sm text-gray-600">
                             Team:{' '}
-                            {task.teamId
-                              ? state.teams.find(p => p.id === task.teamId)?.id || 'Unknown'
+                            {task.duration.teamId
+                              ? state.teams.find(p => p.id=== task.duration.teamId)?.id|| 'Unknown'
                               : 'Unassigned'}
                           </p>
                           <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
                             <MapPin size={12} />
-                            N: {task.location.lat.toFixed(2)}, E: {task.location.lon.toFixed(2)}
+                            N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
                           </div>
                         </div>
                       </Popup>
@@ -791,7 +791,7 @@ export function WorldMap() {
                 })}
 
                 {unassignedTasks.map(task => (
-                  <DraggableUnassignedMarker key={task.id} task={task} />
+                  <DraggableUnassignedMarker key={task.task.id} task={task} />
                 ))}
               </>
             );

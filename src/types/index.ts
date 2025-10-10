@@ -1,26 +1,48 @@
-export interface Task {
-  id: string;
-  teamId: string | null; 
-  startHour: number;    
-  defaultSetup: number;    
-  defaultDuration: number;   
-  specialTeams: Record<string, number | 'X'>;
-  invalidPeriods?: string[];
-  location: {
-    lat: number;
-    lon: number;
-  };
-}
-
-export interface Team {
-  id: string;
-  color: string;
-}
-
 export interface Period {
   id: string;
   name: string;
   length_h: number;
+}
+
+export interface Month {
+  monthId: string;
+  periods: Period[];
+}
+
+export interface Task {
+  duration: Task.Duration;
+  task: Task.TaskDetails;
+}
+
+export namespace Task {
+  export interface Duration {
+    fixedCost: number;
+    costPerHrs: number,
+    defaultSetup: number;
+    defaultDuration: number;
+    specialTeams: Record<string, number | 'X'>;
+    
+    invalidPeriods?: string[];
+
+    teamId: string | null;
+    startHour: number;
+  }
+
+  export interface TaskDetails {
+    id: string;
+    lat: number;
+    lon: number;
+    avvForm: string;
+    barighet: string;
+  }
+}
+
+export interface Team {
+  id: string;
+  lat: number;
+  lon: number;
+  maxWheelingDist_km: number;
+  color: string;
 }
 
 export interface DragData {
@@ -42,4 +64,5 @@ export interface AppState {
   tasks: Task[];
   teams: Team[];
   periods: Period[];  
+  months: Month[];
 }

@@ -19,9 +19,9 @@ const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
 // ----------------------
 // Checks if a task's scheduled time overlaps with any invalid period.
 function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: Period[], periodOffsets: number[]): boolean {
-  if (!task.invalidPeriods || !task.invalidPeriods.length) return false;
+  if (!task.duration.invalidPeriods || !task.duration.invalidPeriods.length) return false;
 
-  for (const invalidPeriod of task.invalidPeriods) {
+  for (const invalidPeriod of task.duration.invalidPeriods) {
     const idx = periods.findIndex(p => p.id === invalidPeriod)
     if (idx === -1) continue;
     const periodStart = periodOffsets[idx];
@@ -32,7 +32,7 @@ function isInInvalidPeriod(task: Task, startHour: number, endHour: number, perio
   return false;
 }
 
-const occStart = (t: Task) => t.startHour;
+const occStart = (t: Task) => t.duration.startHour;
 const occEnd = (t: Task) => endHour(t);
 
 // ----------------------
@@ -50,13 +50,13 @@ function planSequentialLayoutHours(
   const local = siblings.map(t => ({ ...t }));
 
   // Apply moved task's new start locally first (no snapping)
-  const moved = local.find(t => t.id === movedTaskId);
+  const moved = local.find(t => t.task.id === movedTaskId);
   if (!moved) return { updates: [], unassign: [] };
-  const movedDur = effectiveDuration(moved, moved.teamId);
-  moved.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
+  const movedDur = effectiveDuration(moved, moved.duration.teamId);
+  moved.duration.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
 
   // Sort other tasks by their current occupied start positions
-  const others = local.filter(t => t.id !== movedTaskId)
+  const others = local.filter(t => t.task.id !== movedTaskId)
                       .sort((a, b) => occStart(a) - occStart(b));
 
   // Find where to insert the moved task based on its new occupied start
@@ -82,7 +82,7 @@ function planSequentialLayoutHours(
     task: t,
     occStart: occStart(t),
     occEnd: occEnd(t),
-    duration: effectiveDuration(t, t.teamId),
+    duration: effectiveDuration(t, t.duration.teamId),
   }));
 
   // Resolve overlaps by pushing tasks to the right from the insertion point
@@ -107,7 +107,7 @@ function planSequentialLayoutHours(
         // Check if this would push the task beyond the boundary
         if (newStart + curr.duration > maxHour) {
           // Mark for unassignment
-          unassign.push(curr.task.id);
+          unassign.push(curr.task.task.id);
           // Remove from working array to prevent further processing
           working.splice(i, 1);
           i--; // Adjust index after removal
@@ -117,8 +117,8 @@ function planSequentialLayoutHours(
 
         const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
         
-        if (clampedStart !== curr.task.startHour) {
-          curr.task.startHour = clampedStart;
+        if (clampedStart !== curr.task.duration.startHour) {
+          curr.task.duration.startHour = clampedStart;
           curr.occStart = occStart(curr.task);
           curr.occEnd = occEnd(curr.task);
           changed = true;
@@ -130,9 +130,9 @@ function planSequentialLayoutHours(
   // Generate updates for all tasks that weren't unassigned
   for (const item of working) {
     updates.push({
-      id: item.task.id,
-      startHour: item.task.startHour,
-      defaultDuration: item.task.defaultDuration
+      id: item.task.task.id,
+      startHour: item.task.duration.startHour,
+      defaultDuration: item.task.duration.defaultDuration
     });
   }
 
@@ -160,14 +160,14 @@ export function GanttChart() {
   // Get all tasks for a given team/team, sorted by start time
   const getTasksByTeam = (teamId: string | null) => {
     return state.tasks
-      .filter(task => task.teamId === teamId)
+      .filter(task => task.duration.teamId === teamId)
       .sort((a, b) => {
         const diff = occStart(a) - occStart(b);
         if (diff !== 0) return diff;
 
         // If they start equal, prioritize the currently dragged task
-        if (a.id === draggedTask) return -1;
-        if (b.id === draggedTask) return 1;
+        if (a.task.id === draggedTask) return -1;
+        if (b.task.id === draggedTask) return 1;
 
         return 0;
       });
@@ -176,7 +176,7 @@ export function GanttChart() {
   // Calculate the left position and width of a task block in the timeline
   const calculateTaskPosition = (task: Task) => {
     const left = (Math.max(0, occStart(task)) / totalHours) * 100;
-    const width = ((effectiveDuration(task)) / totalHours) * 100;
+    const width = ((effectiveDuration(task, task.duration.teamId)) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
   };
 
@@ -203,7 +203,7 @@ export function GanttChart() {
     const teamId = getTeamFromMousePosition(clientY);
     if (!teamId || !ganttRef.current) return null;
 
-    const movingTask = state.tasks.find(x => x.id === excludeTaskId);
+    const movingTask = state.tasks.find(x => x.task.id === excludeTaskId);
     if (movingTask && isDisallowed(movingTask as Task, teamId)) return null;
 
     const timelineContent = ganttRef.current.querySelector('.timeline-content') as HTMLElement | null;
@@ -213,7 +213,7 @@ export function GanttChart() {
     const zoneWidthPx = 16;
     const pointerX = clientX;
 
-    const candidates = state.tasks.filter(t => t.teamId === teamId && t.id !== excludeTaskId);
+    const candidates = state.tasks.filter(t => t.duration.teamId === teamId && t.task.id !== excludeTaskId);
 
     for (const t of candidates) {
       const leftEdgePct = (occStart(t) / totalHours) * 100;
@@ -226,24 +226,24 @@ export function GanttChart() {
 
       if (inLeftZone) {
         // Check if there is enough space before the target for snapping
-        const moving = state.tasks.find(x => x.id === excludeTaskId);
+        const moving = state.tasks.find(x => x.task.id === excludeTaskId);
         if (!moving) continue;
-        const preds = state.tasks.filter(x => x.teamId === teamId && x.id !== t.id && x.id !== excludeTaskId && occEnd(x) <= occStart(t));
+        const preds = state.tasks.filter(x => x.duration.teamId === teamId && x.task.id !== t.task.id && x.task.id !== excludeTaskId && occEnd(x) <= occStart(t));
         const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
         const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
         const desiredStart = occStart(t) - effectiveDuration(moving, teamId);
-        if ((desiredStart) >= earliestOccStart) return { teamId, taskId: t.id, side: 'left' };
+        if ((desiredStart) >= earliestOccStart) return { teamId, taskId: t.task.id, side: 'left' };
       }
       if (inRightZone) {
         // Check if there is enough space after the target for snapping
-        const moving = state.tasks.find(x => x.id === excludeTaskId);
+        const moving = state.tasks.find(x => x.task.id === excludeTaskId);
         if (!moving) continue;
-        const succs = state.tasks.filter(x => x.teamId === teamId && x.id !== t.id && x.id !== excludeTaskId && occStart(x) >= occEnd(t));
+        const succs = state.tasks.filter(x => x.duration.teamId === teamId && x.task.id !== t.task.id && x.task.id !== excludeTaskId && occStart(x) >= occEnd(t));
         const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
         const desiredStart = occEnd(t);
         const desiredEnd = desiredStart + effectiveDuration(moving, teamId);
         const latestOccEnd = successor ? occStart(successor) : totalHours;
-        if (desiredEnd <= latestOccEnd) return { teamId, taskId: t.id, side: 'right' };
+        if (desiredEnd <= latestOccEnd) return { teamId, taskId: t.task.id, side: 'right' };
       }
     }
 
@@ -256,7 +256,7 @@ export function GanttChart() {
     e.stopPropagation();
     dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_team: state.selectedTeamId });
 
-    const originalTask = state.tasks.find(t => t.id === taskId);
+    const originalTask = state.tasks.find(t => t.task.id === taskId);
     if (!originalTask) return;
 
     const offset = { x: e.clientX, y: e.clientY };
@@ -290,7 +290,7 @@ export function GanttChart() {
       const rect = timelineContent?.getBoundingClientRect();
       if (rect && targetTeamIdForSnap) {
         const pointerX = evt.clientX;
-        const candidates = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== (draggedTask ?? ''));
+        const candidates = state.tasks.filter(t => t.duration.teamId === targetTeamIdForSnap && t.task.id !== (draggedTask ?? ''));
         const zoneWidthPx = 16; // visual snap zone width
         let match: { taskId: string; side: 'left'|'right'; pct: number } | null = null;
 
@@ -304,23 +304,23 @@ export function GanttChart() {
           const inRightZone = pointerX >= rightPx - zoneWidthPx / 2 && pointerX <= rightPx + zoneWidthPx / 2;
 
           if (inLeftZone) {
-            match = { taskId: t.id, side: 'left', pct: startPct };
+            match = { taskId: t.task.id, side: 'left', pct: startPct };
             break;
           }
           if (inRightZone) {
-            match = { taskId: t.id, side: 'right', pct: endPct };
+            match = { taskId: t.task.id, side: 'right', pct: endPct };
             break;
           }
         }
 
         // Set snap target if a valid match is found
         if (match && draggedTask) {
-          const target = state.tasks.find(t => t.id === match.taskId);
-          const moving = state.tasks.find(t => t.id === draggedTask);
+          const target = state.tasks.find(t => t.task.id === match.taskId);
+          const moving = state.tasks.find(t => t.task.id === draggedTask);
           if (target && moving) {
             if (match.side === 'left') {
               // Check predecessor for left snap
-              const preds = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== target.id && t.id !== draggedTask && occEnd(t) <= occStart(target));
+              const preds = state.tasks.filter(t => t.duration.teamId === targetTeamIdForSnap && t.task.id !== target.task.id && t.task.id !== draggedTask && occEnd(t) <= occStart(target));
               const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
               const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
               const desiredStart = occStart(target) - effectiveDuration(moving, targetTeamIdForSnap);
@@ -330,7 +330,7 @@ export function GanttChart() {
               }
             } else {
             // Check successor for right snap
-              const succs = state.tasks.filter(t => t.teamId === targetTeamIdForSnap && t.id !== target.id && t.id !== draggedTask && occStart(t) >= occEnd(target));
+              const succs = state.tasks.filter(t => t.duration.teamId === targetTeamIdForSnap && t.task.id !== target.task.id && t.task.id !== draggedTask && occStart(t) >= occEnd(target));
               const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
               const desiredStart = occEnd(target);
               const desiredEnd = desiredStart + effectiveDuration(moving, targetTeamIdForSnap);
@@ -346,7 +346,7 @@ export function GanttChart() {
 
       // Highlight drop zone if dragging vertically to a new team/team
       const targetTeamId = getTeamFromMousePosition(evt.clientY);
-      if (targetTeamId && targetTeamId !== originalTask.teamId) {
+      if (targetTeamId && targetTeamId !== originalTask.duration.teamId) {
         setDropZone({ teamId: targetTeamId });
       } else {
         setDropZone(null);
@@ -371,7 +371,7 @@ export function GanttChart() {
       dispatch({ type: 'SET_DRAGGING_FROM_GANTT', taskId: null });
 
       // Snapshot current task (don’t trust stale closure vars)
-      const currentTask = state.tasks.find(t => t.id === taskId);
+      const currentTask = state.tasks.find(t => t.task.id === taskId);
       if (!currentTask) return;
 
       let taskUpdated = false;
@@ -382,7 +382,7 @@ export function GanttChart() {
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
           console.log("Attempting to snap to neighbour edges");
-          const target = state.tasks.find(t => t.id === snapNow.taskId);
+          const target = state.tasks.find(t => t.task.id === snapNow.taskId);
           if (target) {
             const desiredStart = snapNow.side === 'left'
               ? occStart(target) - effectiveDuration(currentTask, snapNow.teamId)
@@ -395,18 +395,18 @@ export function GanttChart() {
               return;
             }
 
-            if (snapNow.teamId === currentTask.teamId) {
-              const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
+            if (snapNow.teamId === currentTask.duration.teamId) {
+              const siblings = state.tasks.filter(t => t.duration.teamId === currentTask.duration.teamId);
               const plan = planSequentialLayoutHours(
                 siblings,
-                currentTask.id,
+                currentTask.task.id,
                 desiredStart,
                 totalHours
               );
               for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.id === u.id);
+                const orig = state.tasks.find(t => t.task.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
@@ -422,8 +422,8 @@ export function GanttChart() {
               dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: snapNow.teamId });
 
               const newTeamSiblings = state.tasks
-                .filter(t => t.teamId === snapNow.teamId || t.id === taskId)
-                .map(t => (t.id === taskId ? { ...t, teamId: snapNow.teamId } : t));
+                .filter(t => t.duration.teamId === snapNow.teamId || t.task.id === taskId)
+                .map(t => (t.task.id === taskId ? { ...t, teamId: snapNow.teamId } : t));
 
               const plan = planSequentialLayoutHours(
                 newTeamSiblings as Task[],
@@ -432,9 +432,9 @@ export function GanttChart() {
                 totalHours
               );
               for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.id === u.id);
+                const orig = state.tasks.find(t => t.task.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
@@ -484,24 +484,24 @@ export function GanttChart() {
             const rect = timeline?.getBoundingClientRect();
             if (rect && targetTeamId) {
               const pointerX = evt.clientX;
-              const siblings = state.tasks.filter(t => t.teamId === targetTeamId && t.id !== currentTask.id);
+              const siblings = state.tasks.filter(t => t.duration.teamId === targetTeamId && t.task.id !== currentTask.task.id);
               let bodyMatch: { taskId: string; side: 'left'|'right' } | null = null;
               for (const t of siblings) {
                 const leftPx = rect.left + ((occStart(t) / totalHours) * rect.width);
                 const rightPx = rect.left + ((occEnd(t) / totalHours) * rect.width);
                 if (pointerX > leftPx && pointerX < rightPx) {
                   const side: 'left' | 'right' = pointerX <= (leftPx + rightPx) / 2 ? 'left' : 'right';
-                  bodyMatch = { taskId: t.id, side };
+                  bodyMatch = { taskId: t.task.id, side };
                   break;
                 }
               }
               if (bodyMatch) {
-                const target = state.tasks.find(t => t.id === bodyMatch.taskId);
+                const target = state.tasks.find(t => t.task.id === bodyMatch.taskId);
                 if (target && currentTask) {
                   // Place moving at visual drop position
                   const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
                   const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-                  const desiredStart = currentTask.startHour + (hoursDelta || 0);
+                  const desiredStart = currentTask.duration.startHour + (hoursDelta || 0);
                   const desiredEnd = desiredStart + effectiveDuration(currentTask);
                   
                   if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
@@ -513,26 +513,26 @@ export function GanttChart() {
                   const targetNewStart =
                     bodyMatch.side === 'left'
                       ? (desiredStart + effectiveDuration(currentTask, targetTeamId)) // move after
-                      : target.startHour; // stay
+                      : target.duration.startHour; // stay
                   
                   const currentNewStart = 
                     bodyMatch.side === 'left'
                       ? desiredStart // stay
-                      : target.startHour + effectiveDuration(target, targetTeamId); // move after
+                      : target.duration.startHour + effectiveDuration(target, targetTeamId); // move after
 
-                  if (targetTeamId === currentTask.teamId) {
-                    const sibs = state.tasks.filter(t => t.teamId === currentTask.teamId);
-                    const sibsAdj = sibs.map(t => t.id === target.id ? { ...t, startHour: targetNewStart } : t);
+                  if (targetTeamId === currentTask.duration.teamId) {
+                    const sibs = state.tasks.filter(t => t.duration.teamId === currentTask.duration.teamId);
+                    const sibsAdj = sibs.map(t => t.task.id === target.task.id ? { ...t, startHour: targetNewStart } : t);
                     const plan = planSequentialLayoutHours(
                       sibsAdj as Task[], 
-                      currentTask.id, 
+                      currentTask.task.id, 
                       currentNewStart, 
                       totalHours
                     );
                     for (const u of plan['updates']) {
-                      const orig = state.tasks.find(t => t.id === u.id);
+                      const orig = state.tasks.find(t => t.task.id === u.id);
                       if (!orig) continue;
-                      if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                      if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                         dispatch({ 
                           type: 'UPDATE_TASK_HOURS', 
                           taskId: u.id, 
@@ -555,17 +555,17 @@ export function GanttChart() {
                     } else {
                       dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: targetTeamId });
                       const newTeamSibs = state.tasks
-                        .filter(t => t.teamId === targetTeamId || t.id === taskId)
+                        .filter(t => t.duration.teamId === targetTeamId || t.task.id === taskId)
                         .map(t => {
-                          if (t.id === taskId) return { ...t, teamId: targetTeamId };
-                          if (t.id === target.id) return { ...t, startHour: targetNewStart };
+                          if (t.task.id === taskId) return { ...t, teamId: targetTeamId };
+                          if (t.task.id === target.task.id) return { ...t, startHour: targetNewStart };
                           return t;
                         });
                       const plan = planSequentialLayoutHours(newTeamSibs as Task[], taskId, desiredStart, totalHours);
                       for (const u of plan['updates']) {
-                        const orig = state.tasks.find(t => t.id === u.id);
+                        const orig = state.tasks.find(t => t.task.id === u.id);
                         if (!orig) continue;
-                        if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                        if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                           dispatch({ 
                             type: 'UPDATE_TASK_HOURS', 
                             taskId: u.id,
@@ -586,7 +586,7 @@ export function GanttChart() {
           // 4) Snap to neighbor edges (deferred)
           if (snapTarget && !taskUpdated) {
             console.log("Attempting deffered snap to neightbor edges");
-            const target = state.tasks.find(t => t.id === snapTarget.taskId);
+            const target = state.tasks.find(t => t.task.id === snapTarget.taskId);
             if (isDisallowed(currentTask, snapTarget.teamId)) {
               // skip disallowed team assignment
             } else if (target) {
@@ -594,18 +594,18 @@ export function GanttChart() {
                 ? occStart(target) - effectiveDuration(currentTask, snapTarget.teamId)
                 : occEnd(target);
 
-              if (snapTarget.teamId === currentTask.teamId) {
-                const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
+              if (snapTarget.teamId === currentTask.duration.teamId) {
+                const siblings = state.tasks.filter(t => t.duration.teamId === currentTask.duration.teamId);
                 const plan = planSequentialLayoutHours(
                   siblings,
-                  currentTask.id,
+                  currentTask.task.id,
                   desiredStart,
                   totalHours
                 );
                 for (const u of plan['updates']) {
-                  const orig = state.tasks.find(t => t.id === u.id);
+                  const orig = state.tasks.find(t => t.task.id === u.id);
                   if (!orig) continue;
-                  if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                  if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
                       taskId: u.id,
@@ -621,8 +621,8 @@ export function GanttChart() {
                 dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: snapTarget.teamId });
 
                 const newTeamSiblings = state.tasks
-                  .filter(t => t.teamId === snapTarget.teamId || t.id === taskId)
-                  .map(t => (t.id === taskId ? { ...t, teamId: snapTarget.teamId } : t));
+                  .filter(t => t.duration.teamId === snapTarget.teamId || t.task.id === taskId)
+                  .map(t => (t.task.id === taskId ? { ...t, teamId: snapTarget.teamId } : t));
 
                 const plan = planSequentialLayoutHours(
                   newTeamSiblings as Task[],
@@ -631,9 +631,9 @@ export function GanttChart() {
                   totalHours
                 );
                 for (const u of plan['updates']) {
-                  const orig = state.tasks.find(t => t.id === u.id);
+                  const orig = state.tasks.find(t => t.task.id === u.id);
                   if (!orig) continue;
-                  if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                  if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                     dispatch({
                       type: 'UPDATE_TASK_HOURS',
                       taskId: u.id,
@@ -655,11 +655,11 @@ export function GanttChart() {
             const rect = timelineContent?.getBoundingClientRect();
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
             const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
-            const proposedStart = currentTask.startHour + (hoursDelta || 0); // Calculates start hour
+            const proposedStart = currentTask.duration.startHour + (hoursDelta || 0); // Calculates start hour
             const proposedEnd = proposedStart + effectiveDuration(currentTask);
 
             const targetTeamId = getTeamFromMousePosition(evt.clientY);
-            const isTeamChange = !!targetTeamId && targetTeamId !== currentTask.teamId;
+            const isTeamChange = !!targetTeamId && targetTeamId !== currentTask.duration.teamId;
 
             // Prevent drop in invalid period for horizontal/vertical moves
             if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
@@ -673,8 +673,8 @@ export function GanttChart() {
               dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: targetTeamId });
 
               const newTeamSiblings = state.tasks
-                .filter(t => t.teamId === targetTeamId || t.id === taskId)
-                .map(t => (t.id === taskId ? { ...t, teamId: targetTeamId } : t));
+                .filter(t => t.duration.teamId === targetTeamId || t.task.id === taskId)
+                .map(t => (t.task.id === taskId ? { ...t, teamId: targetTeamId } : t));
 
               const plan = planSequentialLayoutHours(
                 newTeamSiblings as Task[],
@@ -684,9 +684,9 @@ export function GanttChart() {
               );
 
               for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.id === u.id);
+                const orig = state.tasks.find(t => t.task.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
@@ -708,19 +708,19 @@ export function GanttChart() {
 
             } else if (hasHoriz && ganttRef.current) {
               // Horizontal only in same team
-              const siblings = state.tasks.filter(t => t.teamId === currentTask.teamId);
+              const siblings = state.tasks.filter(t => t.duration.teamId === currentTask.duration.teamId);
 
               const plan = planSequentialLayoutHours(
                 siblings,
-                currentTask.id,
+                currentTask.task.id,
                 proposedStart,
                 totalHours
               );
 
               for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.id === u.id);
+                const orig = state.tasks.find(t => t.task.id === u.id);
                 if (!orig) continue;
-                if (orig.startHour !== u.startHour || orig.defaultDuration !== u.defaultDuration) {
+                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
                   dispatch({
                     type: 'UPDATE_TASK_HOURS',
                     taskId: u.id,
@@ -744,7 +744,7 @@ export function GanttChart() {
         }
       } else {
         // Click (no real drag)
-        const teamId = state.tasks.find(t => t.id === taskId)?.teamId ?? 'all';
+        const teamId = state.tasks.find(t => t.task.id === taskId)?.duration.teamId ?? 'all';
 
         dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: teamId });
         console.log("Clicked on task", taskId);
@@ -810,57 +810,67 @@ export function GanttChart() {
       });
     }
 
-    dispatch({ // only needed to be called here as its the only time it will ever be changed
+    dispatch({
       type: 'SET_TOTAL_HOURS',
       totalHours: _totalHours
     });
 
+    // Import months
+    if (result.months && Array.isArray(result.months)) {
+      const formattedMonths = result.months;
+      dispatch({ type: 'SET_MONTHS', months: formattedMonths });
+      console.log("Imported months: ", formattedMonths);
+    }
+
     // Import teams 
-    const availableColors: string[] = ["#5F8A8B"]; // Steel Teal
-
-    let formattedTeams: Team[] = []
     if (result.teams && Array.isArray(result.teams)) {
-      formattedTeams = result.teams.map((p: any, idx: number) => {
-        const id = p.id;
-        const color = availableColors[idx % availableColors.length];
-
-        return {
-          id,
-          color
-        }
-      });
+      const formattedTeams = result.teams;
       dispatch({ type: 'ADD_TEAMS', teams: formattedTeams });
       console.log("Imported Teams: ", formattedTeams);
     }
 
-    // Import tasks + durations
+    // Import tasksDetails + durations
     if ((result.tasks && Array.isArray(result.tasks)) && 
       (result.durations && Array.isArray(result.durations))) { 
-      console.log("Imported Tasks: ", result.tasks);
 
       const formattedTasks = result.durations.map((t: any) => { 
-        const id = t.Activity;
-        const teamId = null;
-        const startHour = 0;
+        const id = t['Activity'];
+
+        // Extract duration properties
+        const fixedCost = t['Fixed cost'];
+        const costPerHrs = t['Cost/hrs'];
         const defaultSetup = t['Default Setup (hrs)'];
         const defaultDuration = t['Default Duration (hrs)'];
         const specialTeams = t['Special Teams'];
 
-        // Find matching location from result.tasks
-        const taskLocation = result.tasks.find((task: any) => task.id === id);
-        const location = taskLocation
-           ? { lat: taskLocation?.lat, lon: taskLocation.lon }
-           : { lat: 0, lon: 0 }
+        // Initialize with no value (is populated when solution is loaded)
+        const teamId = null;
+        const startHour = 0;
 
-        // Calculate effective duration for the imported task
+        // Find matching task details
+        const entry = result.tasks.find((t: any) => t.id === id);
+        
+        if (!entry) {
+          console.warn(`No task details found for id: ${id}`);
+        }
+
         return {
-          id,
-          teamId,
-          startHour,
-          defaultDuration,
-          defaultSetup,
-          specialTeams,
-          location
+          task: {
+            id,
+            lat: entry ? entry.lat : 0,
+            lon: entry ? entry.lon : 0,
+            avvForm: entry ? entry.avvForm : 'n/a',
+            barighet: entry ? entry.barighet : 'n/a'
+          },
+          duration: {
+            teamId,
+            startHour,
+            defaultSetup,
+            defaultDuration,
+            specialTeams,
+            fixedCost,
+            costPerHrs
+          }
         };
       });
 
@@ -882,7 +892,7 @@ export function GanttChart() {
     for (const task of _tasks) {
       dispatch({
         type: 'UPDATE_TASK_TEAM',
-        taskId: task.id,
+        taskId: task.task.id,
         newTeamId: null
       })
     }
@@ -903,21 +913,21 @@ export function GanttChart() {
 
           // Update local copy after dispatch
           _tasks = _tasks.map(t => 
-            t.id === task ? { ...t, teamId: team } : t
+            t.task.id === task ? { ...t, teamId: team } : t
           );
 
-          const foundTask = _tasks.find(t => t.id === task);
+          const foundTask = _tasks.find(t => t.task.id === task);
           if (foundTask) {
             dispatch({
               type: 'UPDATE_TASK_HOURS',
               taskId: task,
               startHour: start,
-              defaultDuration: foundTask.defaultDuration
+              defaultDuration: foundTask.duration.defaultDuration
             }) 
 
             // Update local copy after dispatch
             _tasks = _tasks.map(t => 
-              t.id === task ? { ...t, startHour: start } : t
+              t.task.id === task ? { ...t, startHour: start } : t
             );
           }
 
@@ -925,20 +935,20 @@ export function GanttChart() {
       }
     }
 
-    console.log("Updated tasks: ", _tasks);
+    console.log("Updated tasks");
 
     // Resolve overlaps
     const totalTasks: Task[] = _tasks;
     const totalTeams: Team[] = state.teams; 
 
-    console.log("Resolving overlaps");
+    console.log("Resolving overlaps...");
 
     console.log("Total Tasks: ", totalTasks);
     console.log("Total Teams: ", totalTeams);
 
     for (const p of totalTeams) {
       const teamSiblings = totalTasks
-        .filter(t => t.teamId === p.id)
+        .filter(t => t.duration.teamId === p.id)
         .sort((a, b) => occStart(a) - occStart(b));
 
       for (let i = 1; i < teamSiblings.length; i++) {
@@ -946,11 +956,11 @@ export function GanttChart() {
         const curr = teamSiblings[i];
 
         console.log('');
-        console.log(`Prev: [${prev.startHour}->${endHour(prev)}]`);
-        console.log(`Curr: [${curr.startHour}->${endHour(curr)}]`);
+        console.log(`Prev: [${prev.duration.startHour}->${endHour(prev)}]`);
+        console.log(`Curr: [${curr.duration.startHour}->${endHour(curr)}]`);
 
         // If the current start before prev ends -> overlap
-        if (curr.startHour < endHour(prev)) {
+        if (curr.duration.startHour < endHour(prev)) {
           let newStart = endHour(prev);
           console.log(`Overlap detected. Initial newStart: ${newStart}`);
 
@@ -969,7 +979,7 @@ export function GanttChart() {
               const periodEnd = cumulativeHour + length_h;
 
               // If newStart is in or before this invalid period, try the next period
-              if (curr.invalidPeriods?.includes(id) && newStart < periodEnd) {
+              if (curr.duration.invalidPeriods?.includes(id) && newStart < periodEnd) {
                 newStart = periodEnd; // Move to start of next period
                 foundNextValid = true;
                 break;
@@ -990,7 +1000,7 @@ export function GanttChart() {
             console.log(`${newStart} will be out of range or in invalid period for ${totalHours}`);
             dispatch({
               type: 'UPDATE_TASK_TEAM',
-              taskId: curr.id,
+              taskId: curr.task.id,
               newTeamId: null
             });
 
@@ -1002,21 +1012,21 @@ export function GanttChart() {
             console.log(`Moving curr to ${newStart}`);
             dispatch({
               type: 'UPDATE_TASK_HOURS',
-              taskId: curr.id,
+              taskId: curr.task.id,
               startHour: newStart,
-              defaultDuration: curr.defaultDuration
+              defaultDuration: curr.duration.defaultDuration
             });
 
             // Update local object
-            curr.startHour = newStart;
+            curr.duration.startHour = newStart;
           }
         } else {
           // Ensure it doesn't overflow
-          if (curr.startHour + effectiveDuration(curr) > totalHours) {
-            console.log(`Curr is overflowing. Curr ends at ${curr.startHour + effectiveDuration(curr)} but totalHours is only ${totalHours}`);
+          if (curr.duration.startHour + effectiveDuration(curr) > totalHours) {
+            console.log(`Curr is overflowing. Curr ends at ${curr.duration.startHour + effectiveDuration(curr)} but totalHours is only ${totalHours}`);
             dispatch({
               type: 'UPDATE_TASK_TEAM',
-              taskId: curr.id,
+              taskId: curr.task.id,
               newTeamId: null
             });
           }
@@ -1081,11 +1091,11 @@ export function GanttChart() {
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {state.teams.map(team => {
               const relevantTask = state.dragging_to_gantt 
-                ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
+                ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
                 : state.selectedTaskId 
-                ? state.tasks.find(t => t.id === state.selectedTaskId) 
+                ? state.tasks.find(t => t.task.id === state.selectedTaskId) 
                 : draggedTask 
-                ? state.tasks.find(t => t.id === draggedTask) 
+                ? state.tasks.find(t => t.task.id === draggedTask) 
                 : null;
               
               const dis = relevantTask ? isDisallowed(relevantTask, team.id) : false;
@@ -1150,15 +1160,15 @@ export function GanttChart() {
           <div className="flex-1 overflow-y-hidden overflow-x-hidden">
             {state.teams.map(team => {
               const relevantTask = state.dragging_to_gantt 
-                ? state.tasks.find(t => t.id === state.dragging_to_gantt) 
+                ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
                 : state.selectedTaskId 
-                ? state.tasks.find(t => t.id === state.selectedTaskId) 
+                ? state.tasks.find(t => t.task.id === state.selectedTaskId) 
                 : draggedTask 
-                ? state.tasks.find(t => t.id === draggedTask) 
+                ? state.tasks.find(t => t.task.id === draggedTask) 
                 : null;
               
               const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
-              const rowTasks = state.tasks.filter(t => t.teamId === team.id);
+              const rowTasks = state.tasks.filter(t => t.duration.teamId === team.id);
               const totalDuration = rowTasks
                 .reduce((sum, task) => sum + effectiveDuration(task), 0)
                 .toFixed(1);
@@ -1232,11 +1242,11 @@ export function GanttChart() {
               {/* Timeline rows */}
               {state.teams.map(team => {
                 const relevantTask = state.dragging_to_gantt
-                  ? state.tasks.find(t => t.id === state.dragging_to_gantt)
+                  ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
                   : state.selectedTaskId
-                    ? state.tasks.find(t => t.id === state.selectedTaskId)
+                    ? state.tasks.find(t => t.task.id === state.selectedTaskId)
                     : draggedTask
-                      ? state.tasks.find(t => t.id === draggedTask)
+                      ? state.tasks.find(t => t.task.id === draggedTask)
                       : null;
               
                 const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
@@ -1284,16 +1294,16 @@ export function GanttChart() {
                   {/* Invalid period overlays when task is selected or being dragged */}
                   {(state.dragging_to_gantt || state.selectedTaskId || draggedTask) && (() => {
                     const relevantTask = state.dragging_to_gantt
-                    ? state.tasks.find(t => t.id === state.dragging_to_gantt)
+                    ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
                     : state.selectedTaskId
-                      ? state.tasks.find(t => t.id === state.selectedTaskId)
+                      ? state.tasks.find(t => t.task.id === state.selectedTaskId)
                       : draggedTask
-                        ? state.tasks.find(t => t.id === draggedTask)
+                        ? state.tasks.find(t => t.task.id === draggedTask)
                         : null
 
-                    if (!relevantTask?.invalidPeriods?.length) return null;
+                    if (!relevantTask?.duration.invalidPeriods?.length) return null;
 
-                    return relevantTask.invalidPeriods.map(invalidPeriod => {
+                    return relevantTask.duration.invalidPeriods.map(invalidPeriod => {
                       const periodIdx = periods.findIndex(p => p.id === invalidPeriod);
                       if (periodIdx === -1) return null;
 
@@ -1320,13 +1330,13 @@ export function GanttChart() {
 
                   {/* Edge guides on all tasks (wider, animated, labeled) */}
                   {(draggedTask) && getTasksByTeam(team.id).map(t => {
-                    if (t.id !== state.dragging_from_gantt) {
+                    if (t.task.id !== state.dragging_from_gantt) {
                       const startPct = (occStart(t) / totalHours) * 100;
                       const endPct = (occEnd(t) / totalHours) * 100;
-                      const isLeftActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.id && snapTarget.side === 'left');
-                      const isRightActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.id && snapTarget.side === 'right');
+                      const isLeftActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.task.id && snapTarget.side === 'left');
+                      const isRightActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.task.id && snapTarget.side === 'right');
                       return (
-                        <div key={`${t.id}-guides`}>
+                        <div key={`${t.task.id}-guides`}>
                           {/* Left guide */}
                           <div
                             className="absolute top-0 bottom-0 pointer-events-none"
@@ -1368,8 +1378,8 @@ export function GanttChart() {
                 {/* Tasks */}
                 {getTasksByTeam(team.id).map(task => {
                   const position = calculateTaskPosition(task);
-                  const isSelected = state.selectedTaskId === task.id;
-                  const isBeingDragged = draggedTask === task.id;
+                  const isSelected = state.selectedTaskId === task.task.id;
+                  const isBeingDragged = draggedTask === task.task.id;
 
                   const dragStyle = isBeingDragged
                     ? {
@@ -1386,21 +1396,21 @@ export function GanttChart() {
 
                   return (
                     <div
-                      key={task.id}
+                      key={task.task.id}
                       className={`group absolute top-1.5 bottom-1.5 rounded px-1 py-0.5 text-[10px] font-medium text-white cursor-move select-none 
                         ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                         ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                       `}
                       style={{ backgroundColor: team.color, ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
-                      onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
+                      onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
                     >
                       {/* Setup visual indicator */}
-                      {(task.defaultSetup ?? 0) > 0 && (
+                      {(task.duration.defaultSetup ?? 0) > 0 && (
                         <div
                           className="absolute inset-y-0 left-0 pointer-events-none"
-                          title={`Setup: ${task.defaultSetup}h`}
+                          title={`Setup: ${task.duration.defaultSetup}h`}
                           style={{
-                            width: `${((task.defaultSetup ?? 0) / effDur) * 100}%`,
+                            width: `${((task.duration.defaultSetup ?? 0) / effDur) * 100}%`,
                             backgroundImage:
                               'repeating-linear-gradient(45deg, rgba(255,255,255,0.35), rgba(255,255,255,0.35) 2px, transparent 2px, transparent 4px)',
                             borderRight: '1px dashed rgba(255,255,255,0.8)'
@@ -1412,12 +1422,12 @@ export function GanttChart() {
                       <div
                         className="flex items-center justify-center h-full relative overflow-hidden"
                         style={{
-                          marginLeft: `${(((task.defaultSetup ?? 0) / effDur) * 100)}%`,
-                          width: `${100 - (((task.defaultSetup ?? 0) / effDur) * 100)}%`
+                          marginLeft: `${(((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`,
+                          width: `${100 - (((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`
                         }}
                       >
                         <span className="truncate w-full text-center text-[10px] leading-none">
-                          {task.id}
+                          {task.task.id}
                         </span>
                       </div>
 
@@ -1430,7 +1440,7 @@ export function GanttChart() {
                         transition-all duration-200 ease-out
                         pointer-events-none z-50
                       ">
-                        {task.id}
+                        {task.task.id}
                       </div>
 
                       {/* Disallowed overlay */}
@@ -1445,7 +1455,7 @@ export function GanttChart() {
 
                 {/* Drop zone */}
                 {dropZone?.teamId === team.id && (() => {
-                  const moving = draggedTask ? state.tasks.find(t => t.id === draggedTask) : null;
+                  const moving = draggedTask ? state.tasks.find(t => t.task.id === draggedTask) : null;
                   const dis = moving ? isDisallowed(moving as Task, team.id) : false;
 
                   if (!dis) {

@@ -41,11 +41,11 @@ function AppContent() {
           </div>
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
             <CheckCircle2 size={16} className="text-green-600" />
-            <span className="text-sm font-medium text-gray-700"> {`Active: ${state.tasks.filter(t => t.teamId !== null).length ? state.tasks.filter(t => t.teamId !== null).length : 'n/a'}`} </span>
+            <span className="text-sm font-medium text-gray-700"> {`Active: ${state.tasks.filter(t => t.duration.teamId !== null).length ? state.tasks.filter(t => t.duration.teamId !== null).length : 'n/a'}`} </span>
           </div>
           <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
             <AlertCircle size={16} className="text-slate-600" />
-            <span className="text-sm font-medium text-gray-700"> {`Unassigned: ${state.tasks.filter(t => t.teamId === null).length ? state.tasks.filter(t => t.teamId === null).length : 'n/a'}`} </span>
+            <span className="text-sm font-medium text-gray-700"> {`Unassigned: ${state.tasks.filter(t => t.duration.teamId === null).length ? state.tasks.filter(t => t.duration.teamId === null).length : 'n/a'}`} </span>
           </div>
         </div>
       </header>

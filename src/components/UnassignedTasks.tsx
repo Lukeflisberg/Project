@@ -10,14 +10,14 @@ export function UnassignedTasks() {
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
 
   // Filter tasks not assigned too a team
-  const unassignedTasks = state.tasks.filter(task => task.teamId === null);
+  const unassignedTasks = state.tasks.filter(task => task.duration.teamId === null);
 
   // Handles mouse down event to start dragging a task
   const handleTaskMouseDown = (e: React.MouseEvent, taskId: string) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const task = state.tasks.find(t => t.id === taskId);
+    const task = state.tasks.find(t => t.task.id === taskId);
     if (!task) return;
 
     // Get the DOM element and its position/size
@@ -84,7 +84,7 @@ export function UnassignedTasks() {
       setDraggedTask(null);
 
       // Get the latest task state
-      const currentTask = state.tasks.find(t => t.id === taskId);
+      const currentTask = state.tasks.find(t => t.task.id === taskId);
       if (!currentTask) {
         cleanup();
         return;
@@ -109,10 +109,10 @@ export function UnassignedTasks() {
             if (timelineRect) {
               const totalHours = state.totalHours; 
               const filteredTasks = state.tasks
-                    .filter(t => t.teamId === teamId)
-                    .sort((a, b) => a.startHour - b.startHour)
+                    .filter(t => t.duration.teamId === teamId)
+                    .sort((a, b) => a.duration.startHour - b.duration.startHour)
               
-              const result = findEarliestHour(task, filteredTasks, totalHours, state.periods);
+              const result = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
               console.log("Total hours: ", totalHours);
               console.log("Task stats: ", task);
               console.log("Tasks: ", state.tasks);
@@ -121,13 +121,13 @@ export function UnassignedTasks() {
               if (result !== null) {
                 dispatch({
                   type: 'UPDATE_TASK_HOURS',
-                  taskId: task.id,
+                  taskId: task.task.id,
                   startHour: result,
-                  defaultDuration: task.defaultDuration
+                  defaultDuration: task.duration.defaultDuration
                 })
                 dispatch({
                   type: 'UPDATE_TASK_TEAM',
-                  taskId: task.id,
+                  taskId: task.task.id,
                   newTeamId: teamId
                 });
               }
@@ -208,12 +208,12 @@ export function UnassignedTasks() {
           ) : (
             <div className="p-4 space-y-3">
               {unassignedTasks.map(task => {
-                const isSelected = state.selectedTaskId === task.id;
-                const isDragging = draggedTask === task.id;
+                const isSelected = state.selectedTaskId === task.task.id;
+                const isDragging = draggedTask === task.task.id;
                 
                 return (
                   <div
-                    key={task.id}
+                    key={task.task.id}
                     className={`p-3 border rounded-lg cursor-move transition-all ${
                       isSelected 
                         ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-400 ring-opacity-50' 
@@ -221,18 +221,18 @@ export function UnassignedTasks() {
                     } ${
                       isDragging ? 'opacity-50 rotate-2 scale-105' : ''
                     }`}
-                    onMouseDown={(e) => handleTaskMouseDown(e, task.id)}
-                    onClick={(e) => handleTaskClick(e, task.id)}
+                    onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
+                    onClick={(e) => handleTaskClick(e, task.task.id)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-gray-800 truncate">
-                          {task.id}
+                          {task.task.id}
                         </h4>
                         <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
                           <div className="flex items-center gap-1">
                             <MapPin size={12} />
-                            {task.location.lat.toFixed(2)}, {task.location.lon.toFixed(2)}
+                            {task.task.lat.toFixed(2)}, {task.task.lon.toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -244,7 +244,7 @@ export function UnassignedTasks() {
                     </div>
                     
                     <div className="mt-2 text-xs text-gray-500">
-                      Start: {task.startHour}h • Duration: {task.defaultDuration}h • Distance: n/a • Cost: n/a 
+                      Start: {task.duration.startHour}h • Duration: {task.duration.defaultDuration}h • Distance: n/a • Cost: n/a 
                     </div>
                   </div>
                 );

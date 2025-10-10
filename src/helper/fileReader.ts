@@ -1,13 +1,14 @@
-import { Period } from "../types";
+import { Period, Month, Team, Task } from "../types";
 
 export async function importDataFromFile(
   file: File
 ): Promise<{
   periods: string[];
   period_length: Period[];
-  tasks: Array<{id: string, lat: number, lon: number}>;
-  teams: string[];
-  durations: Array<{Activity: string, "Fixed cost": number, "Cost/hrs": number, "Default Setup (hrs)": number, "Default Duration (hrs)": number, "Special Teams": Record<string, string | number>}>; 
+  months: Month[];
+  tasks: Task.TaskDetails[];
+  teams: Team[];
+  durations: any[];
 } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -15,41 +16,54 @@ export async function importDataFromFile(
       try {
         const text = e.target?.result as string;
         if (!text) {
-          resolve({ periods: [], period_length: [], tasks: [], teams: [], durations: [] });
+          resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
           return;
         }
         const json = JSON.parse(text);
 
         let periods: string[] = [];
         let period_length: Period[] = [];
-        let tasks: Array<{id: string, lat: number, lon: number}> = [];
-        let teams: string[] = [];
-        let durations: Array<{Activity: string, "Fixed cost": number, "Cost/hrs": number, "Default Setup (hrs)": number, "Default Duration (hrs)": number, "Special Teams": Record<string, string | number>}> = [];
+        let months: Month[] = [];
+        let tasks: Task.TaskDetails[] = [];
+        let teams: Team[] = [];
+        let durations: any[] = [];
 
         if (Array.isArray(json)) {
           if (json.length > 0) {
             if (json[0]?.periods) periods = json[0].periods;
             if (json[0]?.period_length) period_length = json[0].period_length;
+            if (json[0]?.months) months = json[0].months;
             if (json[0]?.tasks) tasks = json[0].tasks;
-            if (json[0]?.teams) teams = json[0].teams;
+            if (json[0]?.teams) {
+              teams = json[0].teams.map((team: any) => ({ 
+                ...team,
+                color: "#5F8A8B"
+              }));
+            }
             if (json[0]?.durations) durations = json[0].durations;
           }
         } else if (typeof json === 'object' && json !== null) {
           periods = Array.isArray(json.periods) ? json.periods : [];
           period_length = Array.isArray(json.period_length) ? json.period_length : [];
+          months = Array.isArray(json.months) ? json.months : [];
           tasks = Array.isArray(json.tasks) ? json.tasks: [];
-          teams = Array.isArray(json.teams) ? json.teams : [];
+          teams = Array.isArray(json.teams) 
+            ? json.teams.map((team: any) => ({
+              ...team,
+              color: "#5F8A8B"
+            })) 
+            : [];
           durations = Array.isArray(json.durations) ? json.durations : [];
         }
-        resolve({ periods, period_length, tasks, teams, durations });
+        resolve({ periods, period_length, months, tasks, teams, durations });
       } catch (err) {
         alert('Failed to parse import file.');
-        resolve({ periods: [], period_length: [], tasks: [], teams: [], durations: [] });
+        resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
       }
     };
     reader.onerror = () => {
       alert('Failed to read file.');
-      resolve({ periods: [], period_length: [], tasks: [], teams: [], durations: [] });
+      resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
     };
     reader.readAsText(file);
   });

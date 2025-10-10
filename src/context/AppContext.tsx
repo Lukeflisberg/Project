@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Team, Period } from '../types';
+import { AppState, Task, Team, Period, Month } from '../types';
 
 // ----------------------
 // Action Types for State
@@ -11,6 +11,7 @@ type AppAction =
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
   | { type: 'SET_PERIODS'; periods: Period[]}
+  | { type: 'SET_MONTHS'; months: Month[]}
   | { type: 'SET_TOTAL_HOURS'; totalHours: number }
   
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
@@ -39,6 +40,7 @@ const initialState: AppState = {
   tasks: [],
   teams: [],
   periods: [],
+  months: [],
 };
 
 // ----------------------
@@ -73,7 +75,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_PERIODS':
       return { ...state, periods: action.periods };
-
+    
+    case 'SET_MONTHS':
+      return { ...state, months: action.months };
 
 
     case 'TOGGLE_NULL':
@@ -86,8 +90,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'UPDATE_TASK_TEAM': {
       const updatedTasks = state.tasks.map(task =>
-        task.id === action.taskId
-          ? { ...task, teamId: action.newTeamId }
+        task.task.id === action.taskId
+          ? { ...task, duration: { ...task.duration, teamId: action.newTeamId } }
           : task
       );
       return {
@@ -99,8 +103,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'UPDATE_TASK_HOURS': {
       const updatedTasks = state.tasks.map(task =>
-        task.id === action.taskId
-          ? { ...task, startHour: action.startHour, defaultDuration: action.defaultDuration }
+        task.task.id === action.taskId
+          ? { ...task, duration: { ...task.duration, startHour: action.startHour, defaultDuration: action.defaultDuration } }
           : task
       );
       return { ...state, tasks: updatedTasks };

@@ -3,23 +3,23 @@ import { Task, Period } from '../types';
 export const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 export const setupOf = (t: Task) => {
-  const n = t.defaultSetup ?? 0;
+  const n = t.duration.defaultSetup ?? 0;
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
 export const effectiveDuration = (t: Task, teamId?: string | null) => {
-  const pid = teamId !== undefined ? teamId : t.teamId;
-  const ov = pid ? t.specialTeams?.[pid] : undefined;
-  return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.defaultDuration + setupOf(t));
+  const pid = teamId !== undefined ? teamId : t.duration.teamId;
+  const ov = pid ? t.duration.specialTeams?.[pid] : undefined;
+  return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.duration.defaultDuration + setupOf(t));
 };
 
 export const isDisallowed = (t: Task, teamId?: string | null) => {
-  const pid = teamId !== undefined ? teamId : t.teamId;
-  const ov = pid ? t.specialTeams?.[pid] : undefined;
+  const pid = teamId !== undefined ? teamId : t.duration.teamId;
+  const ov = pid ? t.duration.specialTeams?.[pid] : undefined;
   return ov === 'X';
 };
 
-export const endHour = (t: Task) => t.startHour + effectiveDuration(t);
+export const endHour = (t: Task) => t.duration.startHour + effectiveDuration(t);
 
 export const findEarliestHour = (
   // Takes a task and a list of the other tasks. Then find the earliest starthour possible for that task where it doesnt overlap with any of the other tasks and doesnt lie in a invalid period
@@ -46,7 +46,7 @@ export const findEarliestHour = (
     console.log(`✗ Hour 0 invalid, searching through periods...`);
     let cumulativeHour = 0;
     for (const { id, length_h } of periods) {
-      if (!t.invalidPeriods?.includes(id)) {
+      if (!t.duration.invalidPeriods?.includes(id)) {
         if (taskDuration <= length_h && cumulativeHour + taskDuration <= totalHour) {
           console.log(`✓ Found valid slot at hour ${cumulativeHour} (in period ${id})`);
           return cumulativeHour;
@@ -62,7 +62,7 @@ export const findEarliestHour = (
   console.log(`Checking ${tasks.length} existing tasks for gaps`);
 
   // Check if task can fit before the first task
-  const firstTaskStart = tasks[0].startHour;
+  const firstTaskStart = tasks[0].duration.startHour;
   console.log(`\n▪ Gap before first task: [0 → ${firstTaskStart}] (${firstTaskStart}h available)`);
   if (taskDuration <= firstTaskStart && 
       isInValidPeriod(t, 0, taskDuration, periods)) {
@@ -73,7 +73,7 @@ export const findEarliestHour = (
 
   // Iterate over gaps between consecutive tasks
   for (let i = 1; i < tasks.length; i++) {
-    const currStart = tasks[i].startHour;
+    const currStart = tasks[i].duration.startHour;
     const prevEnd = endHour(tasks[i-1]);
     const gapSize = currStart - prevEnd;
 
@@ -113,7 +113,7 @@ export const isInValidPeriod = (
   duration: number, 
   periods: Array<Period>
 ): boolean => {
-if (!t.invalidPeriods || t.invalidPeriods.length === 0) {
+if (!t.duration.invalidPeriods || t.duration.invalidPeriods.length === 0) {
   return true; // No invalid periods means all period area valid
 }
 
@@ -126,7 +126,7 @@ for (const { id, length_h } of periods) {
   const periodEnd = cumulativeHour + length_h;
 
   // Check if this is an invalid period for the task
-  if (t.invalidPeriods.includes(id)) {
+  if (t.duration.invalidPeriods.includes(id)) {
     // Check if the task slot overlaps with this invalid period
     if (startHour < periodEnd && endHour > periodStart) {
       return false; // Overlaps with an invalid period
