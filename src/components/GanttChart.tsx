@@ -32,6 +32,20 @@ function isInInvalidPeriod(task: Task, startHour: number, endHour: number, perio
   return false;
 }
 
+// ----------------------
+// Task Color Mapping
+// ----------------------
+// Returns a color based on the task's avvForm value
+function getTaskColor(avvForm: string, teamColor: string): string {
+  const colorMap: Record<string, string> = {
+    'GA': '#ef4444', // red-500
+    'SA': '#f59e0b', // amber-500
+    'n/a': teamColor, // fallback to team color
+  };
+  
+  return colorMap[avvForm] || teamColor;
+}
+
 const occStart = (t: Task) => t.duration.startHour;
 const occEnd = (t: Task) => endHour(t);
 
@@ -210,7 +224,7 @@ export function GanttChart() {
     const rect = timelineContent?.getBoundingClientRect();
     if (!rect) return null;
 
-    const zoneWidthPx = 16;
+    const zoneWidthPx = 8;
     const pointerX = clientX;
 
     const candidates = state.tasks.filter(t => t.duration.teamId === teamId && t.task.id !== excludeTaskId);
@@ -291,7 +305,7 @@ export function GanttChart() {
       if (rect && targetTeamIdForSnap) {
         const pointerX = evt.clientX;
         const candidates = state.tasks.filter(t => t.duration.teamId === targetTeamIdForSnap && t.task.id !== (draggedTask ?? ''));
-        const zoneWidthPx = 16; // visual snap zone width
+        const zoneWidthPx = 8; // visual snap zone width
         let match: { taskId: string; side: 'left'|'right'; pct: number } | null = null;
 
         for (const t of candidates) {
@@ -423,7 +437,7 @@ export function GanttChart() {
 
               const newTeamSiblings = state.tasks
                 .filter(t => t.duration.teamId === snapNow.teamId || t.task.id === taskId)
-                .map(t => (t.task.id === taskId ? { ...t, teamId: snapNow.teamId } : t));
+                .map(t => (t.task.id === taskId ? { ...t, duration: { ...t.duration, teamId: snapNow.teamId } } : t));
 
               const plan = planSequentialLayoutHours(
                 newTeamSiblings as Task[],
@@ -502,7 +516,7 @@ export function GanttChart() {
                   const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
                   const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
                   const desiredStart = currentTask.duration.startHour + (hoursDelta || 0);
-                  const desiredEnd = desiredStart + effectiveDuration(currentTask);
+                  const desiredEnd = desiredStart + effectiveDuration(currentTask, targetTeamId);
                   
                   if (isInInvalidPeriod(currentTask, desiredStart, desiredEnd, periods, periodOffsets)) {
                     cancelDrag();
@@ -522,7 +536,7 @@ export function GanttChart() {
 
                   if (targetTeamId === currentTask.duration.teamId) {
                     const sibs = state.tasks.filter(t => t.duration.teamId === currentTask.duration.teamId);
-                    const sibsAdj = sibs.map(t => t.task.id === target.task.id ? { ...t, startHour: targetNewStart } : t);
+                    const sibsAdj = sibs.map(t => t.task.id === target.task.id ? { ...t, duration: { ...t.duration, startHour: targetNewStart } } : t);
                     const plan = planSequentialLayoutHours(
                       sibsAdj as Task[], 
                       currentTask.task.id, 
@@ -557,8 +571,8 @@ export function GanttChart() {
                       const newTeamSibs = state.tasks
                         .filter(t => t.duration.teamId === targetTeamId || t.task.id === taskId)
                         .map(t => {
-                          if (t.task.id === taskId) return { ...t, teamId: targetTeamId };
-                          if (t.task.id === target.task.id) return { ...t, startHour: targetNewStart };
+                          if (t.task.id === taskId) return { ...t, duration: { ...t.duration, teamId: targetTeamId } };
+                          if (t.task.id === target.task.id) return { ...t, duration: { ...t.duration, startHour: targetNewStart } };
                           return t;
                         });
                       const plan = planSequentialLayoutHours(newTeamSibs as Task[], taskId, desiredStart, totalHours);
@@ -622,7 +636,7 @@ export function GanttChart() {
 
                 const newTeamSiblings = state.tasks
                   .filter(t => t.duration.teamId === snapTarget.teamId || t.task.id === taskId)
-                  .map(t => (t.task.id === taskId ? { ...t, teamId: snapTarget.teamId } : t));
+                  .map(t => (t.task.id === taskId ? { ...t, duration: { ...t.duration, teamId: snapTarget.teamId } } : t));
 
                 const plan = planSequentialLayoutHours(
                   newTeamSiblings as Task[],
@@ -656,10 +670,10 @@ export function GanttChart() {
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
             const hoursDelta = hasHoriz && rect ? (finalOffset.x / rect.width) * totalHours : 0;
             const proposedStart = currentTask.duration.startHour + (hoursDelta || 0); // Calculates start hour
-            const proposedEnd = proposedStart + effectiveDuration(currentTask);
-
             const targetTeamId = getTeamFromMousePosition(evt.clientY);
             const isTeamChange = !!targetTeamId && targetTeamId !== currentTask.duration.teamId;
+            const effTeamForDrop = (isTeamChange && targetTeamId) ? targetTeamId : currentTask.duration.teamId;
+            const proposedEnd = proposedStart + effectiveDuration(currentTask, effTeamForDrop);
 
             // Prevent drop in invalid period for horizontal/vertical moves
             if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
@@ -674,7 +688,7 @@ export function GanttChart() {
 
               const newTeamSiblings = state.tasks
                 .filter(t => t.duration.teamId === targetTeamId || t.task.id === taskId)
-                .map(t => (t.task.id === taskId ? { ...t, teamId: targetTeamId } : t));
+                .map(t => (t.task.id === taskId ? { ...t, duration: { ...t.duration, teamId: targetTeamId } } : t));
 
               const plan = planSequentialLayoutHours(
                 newTeamSiblings as Task[],
@@ -920,16 +934,19 @@ export function GanttChart() {
 
           const foundTask = _tasks.find(t => t.task.id === task);
           if (foundTask) {
+            const effDur = effectiveDuration(foundTask as Task, team);
+            const clampedStart = clamp(start, 0, Math.max(0, totalHours - effDur));
+
             dispatch({
               type: 'UPDATE_TASK_HOURS',
               taskId: task,
-              startHour: start,
+              startHour: clampedStart,
               defaultDuration: foundTask.duration.defaultDuration
             }) 
 
             // Update local copy after dispatch
             _tasks = _tasks.map(t => 
-              t.task.id === task ? { ...t, duration: { ...t.duration, startHour: start } } : t
+              t.task.id === task ? { ...t, duration: { ...t.duration, startHour: clampedStart } } : t
             );
           }
         }
@@ -1402,7 +1419,7 @@ export function GanttChart() {
                         ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                         ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                       `}
-                      style={{ backgroundColor: team.color, ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
+                      style={{ backgroundColor: getTaskColor(task.task.avvForm, team.color), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
                       onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
                     >
                       {/* Setup visual indicator */}

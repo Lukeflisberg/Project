@@ -1,7 +1,7 @@
 import { Period } from "../types";
 
 export function getPeriodData(
-  periods: Array<Period>,
+  periods: Period[],
   fallbackLen = 1
 ) {
   const periodLengths = periods.map((period) => {

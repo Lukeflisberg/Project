@@ -1,4 +1,4 @@
-import { Period, Month, Team, Task } from "../types";
+import { Period, Month, Task, Team, Production, Productivity, Resource, Demand, Distances } from "../types";
 
 export async function importDataFromFile(
   file: File
@@ -8,7 +8,12 @@ export async function importDataFromFile(
   months: Month[];
   tasks: Task.TaskDetails[];
   teams: Team[];
-  durations: any[];
+  durations: Record<string, Task.Duration>[]; 
+  production: Production[];
+  productivity: Productivity[];
+  resource: Resource[];
+  demand: Demand[];
+  distances: Distances[];
 } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -16,7 +21,7 @@ export async function importDataFromFile(
       try {
         const text = e.target?.result as string;
         if (!text) {
-          resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
+          resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], production: [], productivity: [], resource: [], demand: [], distances: [] });
           return;
         }
         const json = JSON.parse(text);
@@ -26,7 +31,12 @@ export async function importDataFromFile(
         let months: Month[] = [];
         let tasks: Task.TaskDetails[] = [];
         let teams: Team[] = [];
-        let durations: any[] = [];
+        let durations: Record<string, Task.Duration>[] = [];
+        let production: Production[] = [];
+        let productivity: Productivity[] = [];
+        let resource: Resource[] = [];
+        let demand: Demand[] = [];
+        let distances: Distances[] = [];
 
         if (Array.isArray(json)) {
           if (json.length > 0) {
@@ -41,6 +51,11 @@ export async function importDataFromFile(
               }));
             }
             if (json[0]?.durations) durations = json[0].durations;
+            if (json[0]?.production) production = json[0].production;
+            if (json[0]?.productivity) productivity = json[0].productivity;
+            if (json[0]?.resource) resource = json[0].resource;
+            if (json[0]?.demand) demand = json[0].demand;
+            if (json[0]?.distances) distances = json[0].distances;
           }
         } else if (typeof json === 'object' && json !== null) {
           periods = Array.isArray(json.periods) ? json.periods : [];
@@ -54,16 +69,21 @@ export async function importDataFromFile(
             })) 
             : [];
           durations = Array.isArray(json.durations) ? json.durations : [];
+          production = Array.isArray(json.production) ? json.production : [];
+          productivity = Array.isArray(json.productivity) ? json.productivity : [];
+          resource = Array.isArray(json.resource) ? json.resource : [];
+          demand = Array.isArray(json.demand) ? json.demand : [];
+          distances = Array.isArray(json.distances) ? json.distances : [];
         }
-        resolve({ periods, period_length, months, tasks, teams, durations });
+        resolve({ periods, period_length, months, tasks, teams, durations, production, productivity, resource, demand, distances });
       } catch (err) {
         alert('Failed to parse import file.');
-        resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
+        resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], production: [], productivity: [], resource: [], demand: [], distances: [] });
       }
     };
     reader.onerror = () => {
       alert('Failed to read file.');
-      resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [] });
+      resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], production: [], productivity: [], resource: [], demand: [], distances: [] });
     };
     reader.readAsText(file);
   });
