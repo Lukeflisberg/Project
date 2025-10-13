@@ -847,16 +847,12 @@ export function GanttChart() {
       (result.durations && Array.isArray(result.durations)) && 
       (result.harvestCosts && Array.isArray(result.harvestCosts)) && 
       (result.production && Array.isArray(result.production)) && 
-      (result.productivity && Array.isArray(result.productivity))
+      (result.Productivity && Array.isArray(result.Productivity))
     ) { 
-      console.log(result.harvestCosts);
-      console.log(result.production);
-      console.log(result.productivity);
-
       const formattedTasks = result.durations.map((t: any) => { 
         const id = t['Activity'];
 
-        // Extract duration properties
+        // Duration
         const fixedCost = t['Fixed cost'];
         const costPerHrs = t['Cost/hrs'];
         const defaultSetup = t['Default Setup (hrs)'];
@@ -867,35 +863,22 @@ export function GanttChart() {
         const teamId = null;
         const startHour = 0;
 
-        // Find matching details
-        const _details = result.tasks.find((d: any) => d.id === id);
-        if (!_details) {
-          console.warn(`No task details found for id: ${id}`);
-        }
+        // Details
+        const task = result.tasks.find((d: any) => d.id === id)!;
 
-        const _harvestCosts = result.harvestCosts.find((h: any) => h['Activity'] === id)?.costs;
-        if (!_harvestCosts) {
-          console.warn(`No task harvesting costs found for id: ${id}`);
-        }
+        // Harvest costs
+        const harvestCosts = result.harvestCosts.find((h: any) => h['Activity'] === id)!.costs;
 
-        const _production = result.production.find((p: any) => p['Activity'] === id);
-        if (!_production) {
-          console.warn(`No task production found for id: ${id}`);
-        }
+        // Production
+        const _production = result.production.find((p: any) => p['Activity'] === id)!;
+        const { Activity: a, ...production } = _production;
 
-        const _productivity = result.productivity.find((p: any) => p['Activity'] === id);
-        if (!_productivity) {
-          console.warn(`No task productivity found for id: ${id}`);
-        }
+        // Productivity
+        const _productivity = result.Productivity.find((p: any) => p['Activity'] === id)!;
+        const { Activity: b, ...productivity } = _productivity;
 
         return {
-          task: {
-            id,
-            lat: _details ? _details['lat'] : 0,
-            lon: _details ? _details['lon'] : 0,
-            avvForm: _details ? _details['avvForm'] : 'n/a',
-            barighet: _details ? _details['barighet'] : 'n/a',
-          },
+          task,
           duration: {
             teamId,
             startHour,
@@ -905,39 +888,9 @@ export function GanttChart() {
             fixedCost,
             costPerHrs
           },
-          harvestCosts: _harvestCosts ? _harvestCosts : [{Team: "", harvesterCost: 0, forwarderCost: 0, travelingCost: 0}]
-          ,
-          production: {
-            gtk: _production ? _production['GTK'] : -1,
-            gtn: _production ? _production['GTN'] : -1,
-            ttk: _production ? _production['TTK'] : -1,
-            ttn: _production ? _production['TTN'] : -1,
-            asp: _production ? _production['ASP'] : -1,
-            bmb: _production ? _production['BMB'] : -1,
-            brv: _production ? _production['BRV'] : -1,
-            gm: _production ? _production['GM'] : -1,
-            grot: _production ? _production['GROT'] : -1,
-            lm: _production ? _production['LM'] : -1,
-            lt: _production ? _production['LT'] : -1
-          },
-          productivity: {
-            p1: _productivity ? _productivity['P1'] : 'n/a',
-            p2: _productivity ? _productivity['P2'] : 'n/a',
-            p3: _productivity ? _productivity['P3'] : 'n/a',
-            p4: _productivity ? _productivity['P4'] : 'n/a',
-            p5: _productivity ? _productivity['P5'] : 'n/a',
-            p6: _productivity ? _productivity['P6'] : 'n/a',
-            p7: _productivity ? _productivity['P7'] : 'n/a',
-            p8: _productivity ? _productivity['P8'] : 'n/a',
-            p9: _productivity ? _productivity['P9'] : 'n/a',
-            p10: _productivity ? _productivity['P10'] : 'n/a',
-            p11: _productivity ? _productivity['P11'] : 'n/a',
-            p12: _productivity ? _productivity['P12'] : 'n/a',
-            p13: _productivity ? _productivity['P13'] : 'n/a',
-            p14: _productivity ? _productivity['P14'] : 'n/a',
-            p15: _productivity ? _productivity['P15'] : 'n/a',
-            p16: _productivity ? _productivity['P16'] : 'n/a'
-          }
+          harvestCosts,
+          production,
+          productivity
         };
       });
 
@@ -968,7 +921,7 @@ export function GanttChart() {
 
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
-        for (const {task, start} of tasks) {
+        for (const {task, startHour} of tasks) {
           if (state.teams.some(item => item.id === team)) {
             dispatch({
               type: 'UPDATE_TASK_TEAM',
@@ -988,7 +941,7 @@ export function GanttChart() {
           const foundTask = _tasks.find(t => t.task.id === task);
           if (foundTask) {
             const effDur = effectiveDuration(foundTask as Task, team);
-            const clampedStart = clamp(start, 0, Math.max(0, totalHours - effDur));
+            const clampedStart = clamp(startHour, 0, Math.max(0, totalHours - effDur));
 
             dispatch({
               type: 'UPDATE_TASK_HOURS',
