@@ -4,7 +4,7 @@ import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
-import { findEarliestHour, effectiveDuration } from '../helper/taskUtils';
+import { findEarliestHour, effectiveDuration, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
@@ -466,7 +466,7 @@ export function WorldMap() {
             if (teamRow) {
               const teamId = teamRow.getAttribute('data-team-id');
 
-              if (teamId) {
+              if (teamId && !isDisallowed(task, teamId)) {
                 const timeline = ganttChart.querySelector('.timeline-content');
                 const timelineRect = timeline?.getBoundingClientRect();
 
@@ -505,6 +505,9 @@ export function WorldMap() {
                     alert(`❌ Unable to place task\n\nNo valid time slot found in this team.\nTry:\n• Removing or moving other tasks\n• Checking period restrictions\n• Using a different team`);
                   }
                 }
+              } 
+              else {
+                alert(`❌ Task not allowed in team ${teamId}`);
               }
             }
           }

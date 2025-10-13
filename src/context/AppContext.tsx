@@ -10,6 +10,7 @@ type AppAction =
   | { type: 'SET_SELECTED_TEAM'; teamId: string | null }
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
+
   | { type: 'SET_PERIODS'; periods: Period[]}
   | { type: 'SET_MONTHS'; months: Month[]}
   | { type: 'SET_TOTAL_HOURS'; totalHours: number }
@@ -21,7 +22,9 @@ type AppAction =
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
 
   | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'ADD_TEAMS'; teams: Team[] };
+  | { type: 'ADD_TEAMS'; teams: Team[] }
+
+  | { type: 'RESET_STATE' };
   
 // ----------------------
 // Initial Application State
@@ -41,6 +44,7 @@ const initialState: AppState = {
   teams: [],
   periods: [],
   months: [],
+  resources: [],
 };
 
 // ----------------------
@@ -117,6 +121,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'ADD_TEAMS':
       return { ...state, teams: [...state.teams, ...action.teams] };
+
+    case 'RESET_STATE':
+      return { ...state, tasks: [], teams: [], periods: [] }
 
     default:
       return state;

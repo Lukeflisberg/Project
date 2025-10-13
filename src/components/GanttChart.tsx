@@ -775,9 +775,7 @@ export function GanttChart() {
 
   // Handler for importing everything from one file
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    state.tasks = [];
-    state.teams = [];
-    state.periods = [];
+    dispatch({ type: 'RESET_STATE' });
     console.log("Reset state: ", state.tasks, state.teams, state.periods);
 
     const file = e.target.files?.[0];
@@ -843,9 +841,17 @@ export function GanttChart() {
       console.log("Imported Teams: ", formattedTeams);
     }
 
-    // Import tasksDetails + durations
-    if ((result.tasks && Array.isArray(result.tasks)) && 
-      (result.durations && Array.isArray(result.durations))) { 
+    // Import tasks
+    if (
+      (result.tasks && Array.isArray(result.tasks)) && 
+      (result.durations && Array.isArray(result.durations)) && 
+      (result.harvestCosts && Array.isArray(result.harvestCosts)) && 
+      (result.production && Array.isArray(result.production)) && 
+      (result.productivity && Array.isArray(result.productivity))
+    ) { 
+      console.log(result.harvestCosts);
+      console.log(result.production);
+      console.log(result.productivity);
 
       const formattedTasks = result.durations.map((t: any) => { 
         const id = t['Activity'];
@@ -861,20 +867,34 @@ export function GanttChart() {
         const teamId = null;
         const startHour = 0;
 
-        // Find matching task details
-        const entry = result.tasks.find((t: any) => t.id === id);
-        
-        if (!entry) {
+        // Find matching details
+        const _details = result.tasks.find((d: any) => d.id === id);
+        if (!_details) {
           console.warn(`No task details found for id: ${id}`);
+        }
+
+        const _harvestCosts = result.harvestCosts.find((h: any) => h['Activity'] === id)?.costs;
+        if (!_harvestCosts) {
+          console.warn(`No task harvesting costs found for id: ${id}`);
+        }
+
+        const _production = result.production.find((p: any) => p['Activity'] === id);
+        if (!_production) {
+          console.warn(`No task production found for id: ${id}`);
+        }
+
+        const _productivity = result.productivity.find((p: any) => p['Activity'] === id);
+        if (!_productivity) {
+          console.warn(`No task productivity found for id: ${id}`);
         }
 
         return {
           task: {
             id,
-            lat: entry ? entry.lat : 0,
-            lon: entry ? entry.lon : 0,
-            avvForm: entry ? entry.avvForm : 'n/a',
-            barighet: entry ? entry.barighet : 'n/a'
+            lat: _details ? _details['lat'] : 0,
+            lon: _details ? _details['lon'] : 0,
+            avvForm: _details ? _details['avvForm'] : 'n/a',
+            barighet: _details ? _details['barighet'] : 'n/a',
           },
           duration: {
             teamId,
@@ -884,6 +904,39 @@ export function GanttChart() {
             specialTeams,
             fixedCost,
             costPerHrs
+          },
+          harvestCosts: _harvestCosts ? _harvestCosts : [{Team: "", harvesterCost: 0, forwarderCost: 0, travelingCost: 0}]
+          ,
+          production: {
+            gtk: _production ? _production['GTK'] : -1,
+            gtn: _production ? _production['GTN'] : -1,
+            ttk: _production ? _production['TTK'] : -1,
+            ttn: _production ? _production['TTN'] : -1,
+            asp: _production ? _production['ASP'] : -1,
+            bmb: _production ? _production['BMB'] : -1,
+            brv: _production ? _production['BRV'] : -1,
+            gm: _production ? _production['GM'] : -1,
+            grot: _production ? _production['GROT'] : -1,
+            lm: _production ? _production['LM'] : -1,
+            lt: _production ? _production['LT'] : -1
+          },
+          productivity: {
+            p1: _productivity ? _productivity['P1'] : 'n/a',
+            p2: _productivity ? _productivity['P2'] : 'n/a',
+            p3: _productivity ? _productivity['P3'] : 'n/a',
+            p4: _productivity ? _productivity['P4'] : 'n/a',
+            p5: _productivity ? _productivity['P5'] : 'n/a',
+            p6: _productivity ? _productivity['P6'] : 'n/a',
+            p7: _productivity ? _productivity['P7'] : 'n/a',
+            p8: _productivity ? _productivity['P8'] : 'n/a',
+            p9: _productivity ? _productivity['P9'] : 'n/a',
+            p10: _productivity ? _productivity['P10'] : 'n/a',
+            p11: _productivity ? _productivity['P11'] : 'n/a',
+            p12: _productivity ? _productivity['P12'] : 'n/a',
+            p13: _productivity ? _productivity['P13'] : 'n/a',
+            p14: _productivity ? _productivity['P14'] : 'n/a',
+            p15: _productivity ? _productivity['P15'] : 'n/a',
+            p16: _productivity ? _productivity['P16'] : 'n/a'
           }
         };
       });

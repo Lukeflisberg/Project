@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Package, MapPin } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { findEarliestHour } from '../helper/taskUtils';
+import { findEarliestHour, isDisallowed } from '../helper/taskUtils';
 
 // UnassignedTasks Component: displays tasks not assigned to any team and handles drag-and-drop assignment
 export function UnassignedTasks() {
@@ -56,7 +56,11 @@ export function UnassignedTasks() {
     dispatch({ 
       type: 'TOGGLE_UNASSIGN_DROP',
       toggledDrop: true
-    })
+    });
+    dispatch({ 
+      type: 'SET_SELECTED_TASK', 
+      taskId, 
+      toggle_team: state.selectedTeamId });
 
     // Mouse move handler: update drag preview position so mouse stays centered
     const handleMouseMove = (e: MouseEvent) => {
@@ -83,13 +87,6 @@ export function UnassignedTasks() {
       });
       setDraggedTask(null);
 
-      // Get the latest task state
-      const currentTask = state.tasks.find(t => t.task.id === taskId);
-      if (!currentTask) {
-        cleanup();
-        return;
-      }
-
       // Check if dropped on the Gantt chart
       const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
       const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
@@ -101,7 +98,8 @@ export function UnassignedTasks() {
         if (teamRow) {
           const teamId = teamRow.getAttribute('data-team-id');
           
-          if (teamId) {
+          // First check if valid in that team
+          if (teamId && !isDisallowed(task, teamId)) {            
             // Calculate startHour based on mouse X position in the timeline
             const timeline = ganttChart.querySelector('.timeline-content');
             const timelineRect = timeline?.getBoundingClientRect();
@@ -130,8 +128,12 @@ export function UnassignedTasks() {
                   taskId: task.task.id,
                   newTeamId: teamId
                 });
+                dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: teamId });
               }
             }
+          } 
+          else {
+            alert(`❌ Task not allowed in team ${teamId}`);
           }
         }
       }
