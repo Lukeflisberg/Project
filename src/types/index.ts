@@ -108,22 +108,24 @@ export interface Resource {
   resource: string;
   costPerHrs: number;
   hrsPerWeek: number;
-  p1: number;
-  p2: number;
-  p3: number;
-  p4: number;
-  p5: number;
-  p6: number;
-  p7: number;
-  p8: number;
-  p9: number;
-  p10: number;
-  p11: number;
-  p12: number;
-  p13: number;
-  p14: number;
-  p15: number;
-  p16: number;
+  periods: {
+    p1: number;
+    p2: number;
+    p3: number;
+    p4: number;
+    p5: number;
+    p6: number;
+    p7: number;
+    p8: number;
+    p9: number;
+    p10: number;
+    p11: number;
+    p12: number;
+    p13: number;
+    p14: number;
+    p15: number;
+    p16: number;
+  }
 } // Here. Change the entry to be [p1, p2, p3...]
 
 export interface Demand {
@@ -137,7 +139,7 @@ export interface Demand {
   }[]
 } 
 
-export interface Distances {
+export interface Distance {
   fromTo: string;
   [key: `T${string}`]: number;
 } // Same here
@@ -171,4 +173,6 @@ export interface AppState {
   periods: Period[];  
   months: Month[];
   resources: Resource[];
+  demand: Demand[];
+  distances: Distance[];
 }

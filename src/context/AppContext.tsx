@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Team, Period, Month } from '../types';
+import { AppState, Task, Team, Period, Month, Resource, Demand, Distance } from '../types';
 
 // ----------------------
 // Action Types for State
@@ -11,12 +11,15 @@ type AppAction =
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
 
-  | { type: 'SET_PERIODS'; periods: Period[]}
-  | { type: 'SET_MONTHS'; months: Month[]}
+  | { type: 'SET_PERIODS'; periods: Period[] }
+  | { type: 'SET_MONTHS'; months: Month[] }
   | { type: 'SET_TOTAL_HOURS'; totalHours: number }
-  
+  | { type: 'SET_RESOURCES'; resources: Resource[] }
+  | { type: 'SET_DEMAND'; demand: Demand[] }
+  | { type: 'SET_DISTANCES'; distances: Distance[] }
+
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
-  | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean}
+  | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean }
 
   | { type: 'UPDATE_TASK_TEAM'; taskId: string; newTeamId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
@@ -45,6 +48,8 @@ const initialState: AppState = {
   periods: [],
   months: [],
   resources: [],
+  demand: [],
+  distances: [],
 };
 
 // ----------------------
@@ -82,6 +87,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SET_MONTHS':
       return { ...state, months: action.months };
+
+    case 'SET_RESOURCES':
+      return { ...state, resources: action.resources };
+
+    case 'SET_DEMAND':
+      return { ...state, demand: action.demand };
+
+    case 'SET_DISTANCES':
+      return { ...state, distances: action.distances };
 
 
     case 'TOGGLE_NULL':

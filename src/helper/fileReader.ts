@@ -1,4 +1,4 @@
-import { Period, Month, Task, Team, Resource, Demand, Distances, Solution, HarvestCosts } from "../types";
+import { Period, Month, Task, Team, Resource, Demand, Distance, Solution, HarvestCosts } from "../types";
 
 export async function importDataFromFile(
   file: File
@@ -12,9 +12,9 @@ export async function importDataFromFile(
   harvestCosts: HarvestCosts[];
   production: ({Activity: string} & Task.Production)[];
   Productivity: ({Activity: string} & Task.Productivity)[];
-  Resource: Resource[];
+  Resources: Resource[];
   Demand: Demand[];
-  Distances: Distances[];
+  Distances: Distance[];
 } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -22,7 +22,7 @@ export async function importDataFromFile(
       try {
         const text = e.target?.result as string;
         if (!text) {
-          resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resource: [], Demand: [], Distances: [] });
+          resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resources: [], Demand: [], Distances: [] });
           return;
         }
         const json = JSON.parse(text);
@@ -36,9 +36,9 @@ export async function importDataFromFile(
         let harvestCosts: HarvestCosts[] = [];
         let production: ({Activity: string} & Task.Production)[] = [];
         let Productivity: ({Activity: string} & Task.Productivity)[] = [];
-        let Resource: Resource[] = [];
+        let Resources: Resource[] = [];
         let Demand: Demand[] = [];
-        let Distances: Distances[] = [];
+        let Distances: Distance[] = [];
 
         if (Array.isArray(json)) {
           if (json.length > 0) {
@@ -56,7 +56,7 @@ export async function importDataFromFile(
             if (json[0]?.harvestCosts) harvestCosts = json[0].harvestCosts;
             if (json[0]?.production) production = json[0].production;
             if (json[0]?.Productivity) Productivity = json[0].Productivity;
-            if (json[0]?.Resource) Resource = json[0].Resource;
+            if (json[0]?.Resources) Resources = json[0].Resources;
             if (json[0]?.Demand) Demand = json[0].Demand;
             if (json[0]?.Distances) Distances = json[0].Distances;
           }
@@ -75,19 +75,19 @@ export async function importDataFromFile(
           harvestCosts = Array.isArray(json.harvestCosts) ? json.harvestCosts : [];
           production = Array.isArray(json.production) ? json.production : [];
           Productivity = Array.isArray(json.Productivity) ? json.Productivity : [];
-          Resource = Array.isArray(json.resource) ? json.resource : [];
-          Demand = Array.isArray(json.demand) ? json.demand : [];
-          Distances = Array.isArray(json.distances) ? json.distances : [];
+          Resources = Array.isArray(json.Resources) ? json.Resources : [];
+          Demand = Array.isArray(json.Demand) ? json.Demand : [];
+          Distances = Array.isArray(json.Distances) ? json.Distances : [];
         }
-        resolve({ periods, period_length, months, tasks, teams, durations, harvestCosts, production, Productivity, Resource, Demand, Distances });
+        resolve({ periods, period_length, months, tasks, teams, durations, harvestCosts, production, Productivity, Resources, Demand, Distances });
       } catch (err) {
         alert('Failed to parse import file.');
-        resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resource: [], Demand: [], Distances: [] });
+        resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resources: [], Demand: [], Distances: [] });
       }
     };
     reader.onerror = () => {
       alert('Failed to read file.');
-      resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resource: [], Demand: [], Distances: [] });
+      resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resources: [], Demand: [], Distances: [] });
     };
     reader.readAsText(file);
   });

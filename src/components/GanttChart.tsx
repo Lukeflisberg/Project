@@ -897,6 +897,58 @@ export function GanttChart() {
       dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
       console.log("Imported Tasks: ", formattedTasks);
     }
+
+    // Import Resources
+    if (result.Resources && Array.isArray(result.Resources)) {
+      const formattedResources = result.Resources.map((t: any) => {
+        return {
+          resource: t.Resource,
+          costPerHrs: t['Cost/hrs'],
+          hrsPerWeek: t['(hrs/week)'],
+          periods: {
+            p1: t.P1,
+            p2: t.P2,
+            p3: t.P3,
+            p4: t.P4,
+            p5: t.P5,
+            p6: t.P6,
+            p7: t.P7,
+            p8: t.P8,
+            p9: t.P9,
+            p10: t.P10,
+            p11: t.P11,
+            p12: t.P12,
+            p13: t.P13,
+            p14: t.P14,
+            p15: t.P15,
+            p16: t.P16,
+          }
+        }
+      })
+      dispatch({
+        type: 'SET_RESOURCES',
+        resources: formattedResources
+      });
+      console.log("Imported Resources: ", formattedResources);
+    }
+
+    // Import Demand
+    if (result.Demand && Array.isArray(result.Demand)) {
+      dispatch({
+        type: 'SET_DEMAND',
+        demand: result.Demand
+      });
+      console.log("Imported Demand: ", result.Demand);
+    }
+
+    // Import Distances
+    if (result.Distances && Array.isArray(result.Distances)) {
+      dispatch({
+        type: 'SET_DISTANCES',
+        distances: result.Distances
+      });
+      console.log("Imported Distances: ", result.Distances);
+    }
   };
 
   const handleImportSolution = async (e: React.ChangeEvent<HTMLInputElement>) => {
