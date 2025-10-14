@@ -3,13 +3,13 @@ import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 're
 import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Task } from '../types';
+import { Task, Team } from '../types';
 import { findEarliestHour, effectiveDuration, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
-const DEFAULT_POSITION = { x: 1277, y: 12};
-const DEFAULT_SIZE = { width: 632, height: 749 };
+const DEFAULT_POSITION: {x: number, y: number} = { x: 1277, y: 12};
+const DEFAULT_SIZE: {width: number, height: number} = { width: 632, height: 749 };
 
 // Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
@@ -50,9 +50,9 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
+  const containerRef: React.RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+  const wrapperRef: React.RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+  const mapRef: React.MutableRefObject<L.Map | null> = useRef<L.Map | null>(null);
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [position, setPosition] = useState(DEFAULT_POSITION);
@@ -76,7 +76,7 @@ export function WorldMap() {
     if (isMaximized || !containerRef.current) return;
 
     const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
+      const target: HTMLElement = e.target as HTMLElement;
       
       // Only allow dragging if not clicking on the map container itself
       if (target.closest('.leaflet-container')) return;
@@ -103,7 +103,7 @@ export function WorldMap() {
       document.addEventListener('mouseup', handleMouseUp);
     };
 
-    const container = containerRef.current;
+    const container: HTMLDivElement = containerRef.current;
     container.addEventListener('mousedown', handleMouseDown);
 
     return () => {
@@ -121,16 +121,16 @@ export function WorldMap() {
     e.preventDefault();
     e.stopPropagation();
 
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startWidth = size.width;
-    const startHeight = size.height;
-    const startPosX = position.x;
-    const startPosY = position.y;
+    const startX: number = e.clientX;
+    const startY: number = e.clientY;
+    const startWidth: number = size.width;
+    const startHeight: number = size.height;
+    const startPosX: number = position.x;
+    const startPosY: number = position.y;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const deltaX = e.clientX - startX;
-      const deltaY = e.clientY - startY;
+      const deltaX: number = e.clientX - startX;
+      const deltaY: number = e.clientY - startY;
 
       let newWidth = startWidth;
       let newHeight = startHeight;
@@ -170,9 +170,9 @@ export function WorldMap() {
   };
 
   const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
-    const size = isSelected ? 20 : 8;
+    const size: number = isSelected ? 20 : 8;
 
-    const iconHtml = `
+    const iconHtml: string = `
       <div style="
         background-color: ${color};
         width: ${size}px;
@@ -213,9 +213,9 @@ export function WorldMap() {
 
   // Home base triangle icon for teams
   const createHomeBaseIcon = (color: string, isSelected: boolean = false) => {
-    const size = isSelected ? 28 : 18;
-    const stroke = isSelected ? 2 : 1;
-    const iconHtml = `
+    const size: number = isSelected ? 28 : 18;
+    const stroke: number = isSelected ? 2 : 1;
+    const iconHtml: string = `
       <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
         <polygon points="12,2 22,22 2,22" fill="${color}" stroke="black" stroke-width="${stroke}" />
       </svg>
@@ -243,24 +243,24 @@ export function WorldMap() {
 
   const getVisibleTeams = () => {
     if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return state.teams;
-    const t = state.teams.find(t => t.id === state.selectedTeamId);
+    const t: Team | undefined = state.teams.find(t => t.id === state.selectedTeamId);
     return t ? [t] : [];
   };
 
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
 
-    const visibleTasks = getVisibleTasks().filter(task => task.duration.teamId === state.selectedTeamId);
-    const sortedTasks = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
+    const visibleTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId === state.selectedTeamId);
+    const sortedTasks: Task[] = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
 
     const lines = [];
     for (let i = 0; i < sortedTasks.length - 1; i++) {
-      const currentTask = sortedTasks[i];
-      const nextTask = sortedTasks[i + 1];
+      const currentTask: Task = sortedTasks[i];
+      const nextTask: Task = sortedTasks[i + 1];
 
       // Convert SWEREF99 to WGS84 for display
-      const currentPos = swerefToWGS84(currentTask.task.lat, currentTask.task.lon);
-      const nextPos = swerefToWGS84(nextTask.task.lat, nextTask.task.lon);
+      const currentPos: [number, number] = swerefToWGS84(currentTask.task.lat, currentTask.task.lon);
+      const nextPos: [number, number] = swerefToWGS84(nextTask.task.lat, nextTask.task.lon);
 
       lines.push({
         id: `${currentTask.task.id}-${nextTask.task.id}`,
@@ -276,7 +276,7 @@ export function WorldMap() {
 
   const getTeamColor = (teamId: string | null) => {
     if (!teamId) return '#6B7280';
-    const team = state.teams.find(p => p.id=== teamId);
+    const team: Team | undefined = state.teams.find(p => p.id=== teamId);
     return team?.color || '#6B7280';
   };
 
@@ -306,11 +306,11 @@ export function WorldMap() {
   }
 
   const ResizeHandler = () => {
-    const map = useMap();
-    const container = map.getContainer();
+    const map: L.Map = useMap();
+    const container: HTMLElement = map.getContainer();
 
     useEffect(() => {
-      const observer = new ResizeObserver(() => {
+      const observer: ResizeObserver = new ResizeObserver(() => {
         map.invalidateSize();
       });
 
@@ -324,20 +324,20 @@ export function WorldMap() {
   // MapController Component
   function MapController() {
     const { state } = useApp();
-    const map = useMap();
+    const map: L.Map = useMap();
 
     useEffect(() => {
       if (state.selectedTaskId) {
-        const task = state.tasks.find(t => t.task.id=== state.selectedTaskId);
+        const task: Task | undefined = state.tasks.find(t => t.task.id=== state.selectedTaskId);
         if (task) {
           try {
             // Convert SWEREF99 to WGS84
-            const [lat, lon] = swerefToWGS84(task.task.lat, task.task.lon);
+            const [lat, lon]: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
             if (isFinite(lat) && isFinite(lon)) {
               // Check if the marker is within the current map bounds
-              const bounds = map.getBounds();
-              const markerLatLng = L.latLng(lat, lon);
+              const bounds: L.LatLngBounds = map.getBounds();
+              const markerLatLng: L.LatLng = L.latLng(lat, lon);
 
               if (!bounds.contains(markerLatLng)) {
                 // Only move the map if the marker is outside the current view
@@ -361,7 +361,7 @@ export function WorldMap() {
 
   // PolyLine Component
   const PolyLine = ({ positions, color, weight, opacity }: any) => {
-    const map = useMap();
+    const map: L.Map = useMap();
 
     useEffect(() => {
       if (positions.length < 2) return;
@@ -382,13 +382,13 @@ export function WorldMap() {
   };
 
   function DraggableUnassignedMarker({ task }: { task: Task }) {
-    const map = useMap();
-    const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
-    const markerRef = useRef<L.Marker>(null);
+    const map: L.Map = useMap();
+    const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+    const markerRef: React.RefObject<L.Marker<any>> = useRef<L.Marker>(null);
     const [, setIsDragging] = useState(false);
 
     useEffect(() => {
-      const marker = markerRef.current;
+      const marker: L.Marker<any> | null = markerRef.current;
       if (!marker) return;
 
       let isDrag = false;
@@ -410,7 +410,7 @@ export function WorldMap() {
 
         if (map?.dragging?.disable) map.dragging.disable();
 
-        const markerElement = marker.getElement();
+        const markerElement: HTMLElement | undefined = marker.getElement();
         if (markerElement) {
           cloneElement = markerElement.cloneNode(true) as HTMLElement;
           cloneElement.style.position = 'fixed';
@@ -457,29 +457,29 @@ export function WorldMap() {
             handleMarkerClick(task.task.id);
           }
 
-          const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
-          const ganttChart = elementUnderMouse?.closest('.gantt-chart-container');
+          const elementUnderMouse: Element | null = document.elementFromPoint(e.clientX, e.clientY);
+          const ganttChart: Element | null | undefined = elementUnderMouse?.closest('.gantt-chart-container');
           
           if (ganttChart) {
-            const teamRow = elementUnderMouse?.closest('[data-team-row]');
+            const teamRow: Element | null | undefined = elementUnderMouse?.closest('[data-team-row]');
 
             if (teamRow) {
-              const teamId = teamRow.getAttribute('data-team-id');
+              const teamId: string | null = teamRow.getAttribute('data-team-id');
 
               if (teamId && !isDisallowed(task, teamId)) {
-                const timeline = ganttChart.querySelector('.timeline-content');
-                const timelineRect = timeline?.getBoundingClientRect();
+                const timeline: Element | null = ganttChart.querySelector('.timeline-content');
+                const timelineRect: DOMRect | undefined = timeline?.getBoundingClientRect();
 
                 if (timelineRect) {
-                  const totalHours = state.totalHours; 
-                  const filteredTasks = state.tasks
+                  const totalHours: number = state.totalHours; 
+                  const filteredTasks: Task[] = state.tasks
                     .filter(t => t.duration.teamId === teamId)
                     .sort((a, b) => a.duration.startHour - b.duration.startHour)
 
                   console.log(`Attempting to move task "${task.task.id}" to team ${teamId}`);
                   console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
                   
-                  const result = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
+                  const result: number | null = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
                   
                   if (result !== null) {
                     console.log(`SUCCESS: Task moved to hour ${result}`);
@@ -714,8 +714,8 @@ export function WorldMap() {
           ))}
 
           {getVisibleTeams().map(team => {
-            const isSelectedTeam = state.selectedTeamId === team.id;
-            const wgs84Pos = swerefToWGS84(team.lat, team.lon);
+            const isSelectedTeam: boolean = state.selectedTeamId === team.id;
+            const wgs84Pos: [number, number] = swerefToWGS84(team.lat, team.lon);
             return (
               <Marker
                 key={`homebase-${team.id}`}
@@ -739,17 +739,17 @@ export function WorldMap() {
 
           {(() => {
             if (state.selectedTeamId === 'all') {
-              const assignedTasks = getVisibleTasks().filter(task => task.duration.teamId !== null);
-              const unassignedTasks = state.toggledNull
+              const assignedTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId !== null);
+              const unassignedTasks: Task[] = state.toggledNull
                 ? getVisibleTasks().filter(task => task.duration.teamId === null)
                 : [];
 
               return (
                 <>
                 {assignedTasks.map((task) => {
-                  const isSelected = state.selectedTaskId === task.task.id;
-                  const teamColor = getTeamColor(task.duration.teamId);
-                  const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
+                  const isSelected: boolean = state.selectedTaskId === task.task.id;
+                  const teamColor: string = getTeamColor(task.duration.teamId);
+                  const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
                   return (
                   <Marker
@@ -798,7 +798,7 @@ export function WorldMap() {
               )
             }
 
-            const assignedTasks = getVisibleTasks()
+            const assignedTasks: Task[] = getVisibleTasks()
               .filter(task => task.duration.teamId === state.selectedTeamId)
               .sort((a, b) => a.duration.startHour - b.duration.startHour);
 
@@ -809,10 +809,10 @@ export function WorldMap() {
             return (
               <>
                 {assignedTasks.map((task, index) => {
-                  const isSelected = state.selectedTaskId === task.task.id;
-                  const teamColor = getTeamColor(task.duration.teamId);
-                  const markerIndex = index + 1;
-                  const wgs84Pos = swerefToWGS84(task.task.lat, task.task.lon);
+                  const isSelected: boolean = state.selectedTaskId === task.task.id;
+                  const teamColor: string = getTeamColor(task.duration.teamId);
+                  const markerIndex: number = index + 1;
+                  const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
                   return (
                     <Marker

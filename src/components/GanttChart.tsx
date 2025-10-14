@@ -5,32 +5,13 @@ import { useApp } from '../context/AppContext';
 import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
-import { effectiveDuration, isDisallowed, clamp, endHour } from '../helper/taskUtils';
-import { isInValidPeriod } from '../helper/taskUtils';
+import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod } from '../helper/taskUtils';
 
 // ----------------------
 // Period Configuration
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
 const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
-
-// ----------------------
-// Invalid Period Helpers
-// ----------------------
-// Checks if a task's scheduled time overlaps with any invalid period.
-function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: Period[], periodOffsets: number[]): boolean {
-  if (!task.duration.invalidPeriods || !task.duration.invalidPeriods.length) return false;
-
-  for (const invalidPeriod of task.duration.invalidPeriods) {
-    const idx = periods.findIndex(p => p.id === invalidPeriod)
-    if (idx === -1) continue;
-    const periodStart = periodOffsets[idx];
-    const periodEnd = periodStart + periods[idx].length_h;
-    // If any overlap
-    if (startHour < periodEnd && endHour > periodStart) return true;
-  }
-  return false;
-}
 
 // ----------------------
 // Task Color Mapping

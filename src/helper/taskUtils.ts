@@ -1,25 +1,25 @@
 import { Task, Period } from '../types';
 
-export const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+export const clamp = (v: number, min: number, max: number): number => Math.max(min, Math.min(max, v));
 
-export const setupOf = (t: Task) => {
+export const setupOf = (t: Task): number => {
   const n = t.duration.defaultSetup ?? 0;
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
-export const effectiveDuration = (t: Task, teamId?: string | null) => {
+export const effectiveDuration = (t: Task, teamId?: string | null): number => {
   const pid = teamId !== undefined ? teamId : t.duration.teamId;
   const ov = pid ? t.duration.specialTeams?.[pid] : undefined;
   return typeof ov === 'number' ? Math.max(1, ov + setupOf(t)) : Math.max(1, t.duration.defaultDuration + setupOf(t));
 };
 
-export const isDisallowed = (t: Task, teamId?: string | null) => {
+export const isDisallowed = (t: Task, teamId?: string | null): boolean => {
   const pid = teamId !== undefined ? teamId : t.duration.teamId;
   const ov = pid ? t.duration.specialTeams?.[pid] : undefined;
   return ov === 'X';
 };
 
-export const endHour = (t: Task) => t.duration.startHour + effectiveDuration(t);
+export const endHour = (t: Task): number => t.duration.startHour + effectiveDuration(t);
 
 export const findEarliestHour = (
   // Takes a task and a list of the other tasks. Then find the earliest starthour possible for that task where it doesnt overlap with any of the other tasks and doesnt lie in a invalid period
@@ -28,7 +28,7 @@ export const findEarliestHour = (
   totalHour: number, 
   periods: Array<Period>,
   future_teamId: string
-) => {  
+): number | null => {  
   const taskDuration = effectiveDuration(t, future_teamId);
   console.log(`\nFinding earliest hour for task (duration: ${taskDuration}h, total available: ${totalHour}h)`);
   
@@ -136,5 +136,20 @@ for (const { id, length_h } of periods) {
   cumulativeHour += length_h;
 }
 
-return true; // DOesnt overlap with any invalid periods
+return true; // Doesn't overlap with any invalid periods
 };
+
+// Checks if a task's scheduled time overlaps with any invalid period.
+export function isInInvalidPeriod(task: Task, startHour: number, endHour: number, periods: Period[], periodOffsets: number[]): boolean {
+  if (!task.duration.invalidPeriods || !task.duration.invalidPeriods.length) return false;
+
+  for (const invalidPeriod of task.duration.invalidPeriods) {
+    const idx: number = periods.findIndex(p => p.id === invalidPeriod)
+    if (idx === -1) continue;
+    const periodStart: number = periodOffsets[idx];
+    const periodEnd: number = periodStart + periods[idx].length_h;
+    // If any overlap
+    if (startHour < periodEnd && endHour > periodStart) return true;
+  }
+  return false;
+}

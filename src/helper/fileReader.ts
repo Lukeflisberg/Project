@@ -17,15 +17,15 @@ export async function importDataFromFile(
   Distances: Distance[];
 } | null> {
   return new Promise((resolve) => {
-    const reader = new FileReader();
+    const reader: FileReader = new FileReader();
     reader.onload = (e) => {
       try {
-        const text = e.target?.result as string;
+        const text: string = e.target?.result as string;
         if (!text) {
           resolve({ periods: [], period_length: [], months: [], tasks: [], teams: [], durations: [], harvestCosts: [], production: [], Productivity: [], Resources: [], Demand: [], Distances: [] });
           return;
         }
-        const json = JSON.parse(text);
+        const json: any = JSON.parse(text);
 
         let periods: string[] = [];
         let period_length: Period[] = [];
@@ -99,15 +99,15 @@ export async function importSolutionFromFile(
   solution: Solution[];
 } | null> {
   return new Promise((resolve) => {
-    const reader = new FileReader();
+    const reader: FileReader = new FileReader();
     reader.onload = (e) => {
       try {
-        const text = e.target?.result as string;
+        const text: string = e.target?.result as string;
         if (!text) {
           resolve({ solution: [] });
           return;
         }
-        const json = JSON.parse(text);
+        const json: any = JSON.parse(text);
 
         let solution: Solution[] = [];
 
