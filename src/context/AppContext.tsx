@@ -107,7 +107,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 
     case 'UPDATE_TASK_TEAM': {
-      const updatedTasks: Task[] = state.tasks.map(task =>
+      const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
           ? { ...task, duration: { ...task.duration, teamId: action.newTeamId } }
           : task
@@ -120,7 +120,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'UPDATE_TASK_HOURS': {
-      const updatedTasks: Task[] = state.tasks.map(task =>
+      const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
           ? { ...task, duration: { ...task.duration, startHour: action.startHour, defaultDuration: action.defaultDuration } }
           : task

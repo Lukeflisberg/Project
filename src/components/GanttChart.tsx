@@ -6,6 +6,7 @@ import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod } from '../helper/taskUtils';
+import { calcDurationOf } from '../helper/chartUtils';
 
 // ----------------------
 // Period Configuration
@@ -19,8 +20,7 @@ const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
 // Returns a color based on the task's avvForm value
 function getTaskColor(avvForm: string, teamColor: string): string {
   const colorMap: Record<string, string> = {
-    'GA': '#ef4444', // red-500
-    'SA': '#f59e0b', // amber-500
+    '�A': '#f59e0b', // amber-500
     'n/a': teamColor, // fallback to team color
   };
   
@@ -954,7 +954,7 @@ export function GanttChart() {
 
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
-        for (const {task, startHour} of tasks) {
+        for (const {task, start} of tasks) {
           if (state.teams.some(item => item.id === team)) {
             dispatch({
               type: 'UPDATE_TASK_TEAM',
@@ -974,7 +974,7 @@ export function GanttChart() {
           const foundTask = _tasks.find(t => t.task.id === task);
           if (foundTask) {
             const effDur = effectiveDuration(foundTask as Task, team);
-            const clampedStart = clamp(startHour, 0, Math.max(0, totalHours - effDur));
+            const clampedStart = clamp(start, 0, Math.max(0, totalHours - effDur));
 
             dispatch({
               type: 'UPDATE_TASK_HOURS',
@@ -1226,9 +1226,7 @@ export function GanttChart() {
               
               const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
               const rowTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-              const totalDuration = rowTasks
-                .reduce((sum, task) => sum + effectiveDuration(task), 0)
-                .toFixed(1);
+              const totalDuration = calcDurationOf(rowTasks).toFixed(2);
               const isSelected = state.selectedTeamId === team.id;
               
               return (

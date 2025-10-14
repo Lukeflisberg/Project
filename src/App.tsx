@@ -4,6 +4,7 @@ import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getCumulativeDemandByProduct, getCumulativeProductionByProduct, totalHarvesterCost } from './helper/chartUtils';
 
 function AppContent() {
   const { state, dispatch} = useApp();
@@ -17,35 +18,110 @@ function AppContent() {
               <Trees className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">Forest Stuff</h1>
-              <p className="text-gray-600 text-sm">Description & Stuff</p>
+              <h1 className="text-2xl font-bold text-gray-800">Forest Operations Manager</h1>
+              <p className="text-gray-600 text-sm">Plan, schedule & optimize forestry tasks</p>
             </div>
           </div>
         </div>
         
-        {/* Reset Page */}
-        {import.meta.env.DEV && (
-        <button 
-          onClick={() => window.location.reload()}
-          className="text-blue-500"
-        >
-          Reset Page
-        </button>
-      )}
-        
+        <div className="mt-3 flex flex-wrap gap-2">
+          {import.meta.env.DEV && (
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Reset Page
+          </button>
+          )}
+
+          <button 
+            onClick={() => console.log(getCumulativeDemandByProduct(state.demand))}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            Demand Calc
+          </button>
+          
+          <button 
+            onClick={() => console.log(getCumulativeProductionByProduct(state.tasks, createPeriodBoundaries(state.periods)))}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            Production Calc
+          </button>
+          
+          <button 
+            onClick={() => console.log(totalHarvesterCost(state.tasks.find(t => t.task.id === state.selectedTaskId)!))}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            Harvesting Cost Calc
+          </button>
+          
+          <button 
+            onClick={() => {
+              state.teams.forEach(team => {
+                const teamTasks = state.tasks.filter(t => t.duration.teamId === team.id);
+                const duration = calcDurationOf(teamTasks);
+                const total = state.totalHours;
+                const efficiency = (duration / total * 100);
+
+                console.log(`
+                  Team: ${team.id}
+                  Duration used: ${duration.toFixed(2)}
+                  Total available: ${total}
+                  % Efficiency: ${efficiency.toFixed(2)}%\n
+                `);
+              
+                state.months.forEach(month => {
+                  const monthlyDuration = calcMonthlyDurations(month, teamTasks, createPeriodBoundaries(state.periods))
+                  const monthlyTotal = state.periods.reduce(
+                    (sum, period) => sum + (month.periods.includes(period.id) ? period.length_h : 0), 
+                    0
+                  );
+                  const monthlyEfficiency = (monthlyDuration / monthlyTotal * 100);
+
+                  console.log(`
+                    Month: ${month.monthID}
+                    Duration used: ${monthlyDuration.toFixed(2)}
+                    Total available: ${monthlyTotal}
+                    % Efficiency ${monthlyEfficiency.toFixed(2)}%
+                  `);
+                });
+              });
+            }}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            Team Utilisation Calc
+          </button>
+        </div>
+
         {/* Quick Stats */}
         <div className="flex flex-wrap gap-4 mt-4">
-          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
+          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2 hover:shadow-md transition-shadow">
             <Users size={16} className="text-blue-600" />
-            <span className="text-sm font-medium text-gray-700"> {`Teams: ${state.teams.length ? state.teams.length : 'n/a'}`} </span>
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Teams</span>
+              <span className="text-lg font-bold text-gray-800">{state.teams.length || 0}</span>
+            </div>
           </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
+          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2 hover:shadow-md transition-shadow">
             <CheckCircle2 size={16} className="text-green-600" />
-            <span className="text-sm font-medium text-gray-700"> {`Active: ${state.tasks.filter(t => t.duration.teamId !== null).length ? state.tasks.filter(t => t.duration.teamId !== null).length : 'n/a'}`} </span>
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Active Tasks</span>
+              <span className="text-lg font-bold text-gray-800">{state.tasks.filter(t => t.duration.teamId !== null).length || 0}</span>
+            </div>
           </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2">
+          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2 hover:shadow-md transition-shadow">
             <AlertCircle size={16} className="text-slate-600" />
-            <span className="text-sm font-medium text-gray-700"> {`Unassigned: ${state.tasks.filter(t => t.duration.teamId === null).length ? state.tasks.filter(t => t.duration.teamId === null).length : 'n/a'}`} </span>
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Unassigned</span>
+              <span className="text-lg font-bold text-gray-800">{state.tasks.filter(t => t.duration.teamId === null).length || 0}</span>
+            </div>
+          </div>
+          <div className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-2 hover:shadow-md transition-shadow">
+            <Trees size={16} className="text-green-600" />
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Total Tasks</span>
+              <span className="text-lg font-bold text-gray-800">{state.tasks.length || 0}</span>
+            </div>
           </div>
         </div>
       </header>

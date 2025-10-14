@@ -5,8 +5,8 @@ export interface Period {
 }
 
 export interface Month {
-  monthId: string;
-  periods: Period[];
+  monthID: string;
+  periods: string[];
 }
 
 export interface Task {
@@ -129,7 +129,7 @@ export interface Resource {
 } // Here. Change the entry to be [p1, p2, p3...]
 
 export interface Demand {
-  product: string;
+  Product: string;
   value_prod: number;
   demand: {
     period: string;
@@ -148,7 +148,7 @@ export interface Solution {
   team: string;
   tasks: {
     task: string;
-    startHour: number;
+    start: number;
   }[];
 }
 
