@@ -3,8 +3,9 @@ import { AppProvider, useApp } from './context/AppContext';
 import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
+import { ChartsPanel } from './components/ChartsPanel';
 import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getCumulativeDemandByProduct, getCumulativeProductionByProduct, totalHarvesterCost } from './helper/chartUtils';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getDemandByProduct, getProductionByProduct, totalHarvesterCost } from './helper/chartUtils';
 
 function AppContent() {
   const { state, dispatch} = useApp();
@@ -35,14 +36,14 @@ function AppContent() {
           )}
 
           <button 
-            onClick={() => console.log(getCumulativeDemandByProduct(state.demand))}
+            onClick={() => console.log(getDemandByProduct(state.demand))}
             className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
           >
             Demand Calc
           </button>
           
           <button 
-            onClick={() => console.log(getCumulativeProductionByProduct(state.tasks, createPeriodBoundaries(state.periods)))}
+            onClick={() => console.log(getProductionByProduct(state.tasks, createPeriodBoundaries(state.periods)))}
             className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
           >
             Production Calc
@@ -137,14 +138,19 @@ function AppContent() {
         {/* Right Sidebar */}
         <div className="space-y-6 h-full overflow-y-auto">
 
-          {/* World Map */}
-          <div className="h-1/2 min-h-[600px]">
-            <WorldMap />
+          {/* Charts Panel */}
+          <div className="h-auto">
+            <ChartsPanel />
           </div>
 
           {/* Unassigned Tasks */}
           <div className="h-auto">
             <UnassignedTasks />
+          </div>
+
+          {/* World Map */}
+          <div className="h-1/2 min-h-[600px]">
+            <WorldMap />
           </div>
         </div>
       </div>

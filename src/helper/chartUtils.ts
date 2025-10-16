@@ -16,14 +16,14 @@ export function createPeriodBoundaries(periods: Period[]): PeriodBoundary[] {
     return periodBoundaries;
 }
 
-interface CumulativeProduction {
+interface ProductionByPeriod {
     [productName: string]: number[];
 }
 
-export function getCumulativeProductionByProduct(
+export function getProductionByProduct(
     tasks: Task[],
     periodBoundaries: PeriodBoundary[]
-): CumulativeProduction {
+): ProductionByPeriod {
     const periodCount = Math.max(0, periodBoundaries.length - 1);
 
     // Build the product set dynamically based on actual tasks to avoid missing keys
@@ -31,7 +31,7 @@ export function getCumulativeProductionByProduct(
         new Set(tasks.flatMap(t => Object.keys(t.production ?? {})))
     );
 
-    const result: CumulativeProduction = {};
+    const result: ProductionByPeriod = {};
     for (const product of productKeys) {
         result[product] = new Array(periodCount).fill(0);
     }
@@ -70,38 +70,29 @@ export function getCumulativeProductionByProduct(
         }
     }
 
-    // Convert to cumulative totals
-    for (const product of Object.keys(result)) {
-        for (let i = 1; i < result[product].length; i++) {
-            result[product][i] += result[product][i - 1];
-        }
-    }
-
     return result;
 }
 
-interface CumulativeDemands {
+interface DemandsByPeriod {
     [productName: string]: number[];
 }
 
-export function getCumulativeDemandByProduct(demand: Demand[]): CumulativeDemands {
-    const result: CumulativeDemands = {};
+export function getDemandByProduct(demand: Demand[]): DemandsByPeriod {
+    const result: DemandsByPeriod = {};
 
     // Process each product's demand
     for (const d of demand) {
         const productName: string = d.Product;
         const demands: Demand["demand"] = d.demand;
 
-        const cumulative: number[] = [];
-        let runningTotal = 0;
+        const periodDemands: number[] = [];
 
-        // Calculate cumulative demand
+        // Get demand for each period
         for (const period of demands) {
-            runningTotal += period.demand;
-            cumulative.push(runningTotal);
+            periodDemands.push(period.demand);
         }
 
-        result[productName] = cumulative;
+        result[productName] = periodDemands;
     }
 
     return result;
