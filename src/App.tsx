@@ -57,7 +57,7 @@ function AppContent() {
           </button>
 
           <button 
-            onClick={() => console.log(calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods))}
+            onClick={() => console.log(calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances))}
             className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
           >
             Calc Total Costs

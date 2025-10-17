@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, BarProps } from 'recharts';
+import { removeRadiusAxis } from 'recharts/types/state/polarAxisSlice';
 
 // Color palette
 const COLORS = {
   demand: '#6B7280', // gray-500
   production: '#10B981', // emerald-500
-  total: '#EF4444', // red-500
+  surplus: '#EF4444', // red-500
   grid: '#E5E7EB', // gray-200
 };
 
@@ -17,14 +18,14 @@ function usePeriods() {
   return periodIds;
 }
 
-// Demand vs Production with Total line for a selected resource
+// Demand vs Production with surplus carryover to next period
 function DemandProductionChart({ resource }: { resource: string | null }) {
   const { state } = useApp();
   const periodIds = usePeriods();
 
   const series = useMemo(() => {
     const n = periodIds.length;
-    if (!n) return [] as { name: string; production: number; demand: number; total: number }[];
+    if (!n) return [] as { name: string; production: number; demand: number; productionSurplus: number; demandSurplus: number }[];
 
     const boundaries = createPeriodBoundaries(state.periods);
     const prodMap = getProductionByProduct(state.tasks, boundaries); 
@@ -38,56 +39,65 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
     const prod = prodMap[res] ?? [];
     const dem = demMap[res] ?? [];
 
-    // Map periods to their data
-    // Skip P0 (the initial boundary) and map actual periods
-    return periodIds.map((pid, i) => {
+    // Calculate surpluses and build series
+    const result = [];
+
+    for (let i = 0; i < periodIds.length; i++) {
       const p = prod[i] || 0;
       const d = dem[i] || 0;
+      
+      // Calculate surplus from the PREVIOUS period
+      let prevSurplus = 0;
+      if (i > 0) {
+        const prevP = prod[i - 1] || 0;
+        const prevD = dem[i - 1] || 0;
+        prevSurplus = prevP - prevD;
+      }
 
-      return {
-        name: pid.toUpperCase(),
-        production: p,           // positive
-        demandOffset: -p,        // negative offset to bring us back to 0
-        demand: -d,              // negative for demand below axis
-        total: p - d,
-      };
-    });
+      // Determine where to stack the surplus based on which was larger in the PREVIOUS period
+      const prevProductionLarger = i === 0 ? true : (prod[i - 1] || 0) >= (dem[i - 1] || 0);
+
+      result.push({
+        name: periodIds[i].toUpperCase(),
+        production: p,
+        demand: d,
+        productionSurplus: prevProductionLarger && prevSurplus > 0 ? prevSurplus : 0,
+        demandSurplus: !prevProductionLarger && prevSurplus < 0 ? Math.abs(prevSurplus) : 0,
+      });
+    }
+
+    return result;
   }, [periodIds, state.periods, state.tasks, state.demand, resource]);
 
   if (!series.length) {
     return <div className="flex items-center justify-center h-64 text-sm text-gray-500">No period/demand/production data available.</div>;
   }
 
-  // Symmetric domain across all values with padding
-  const maxAbs = series.reduce((m, r) => Math.max(m, Math.abs(r.production), Math.abs(r.demand), Math.abs(r.total)), 1);
-  const paddedMax = Math.ceil(maxAbs); // Add 10% padding and round up
-  const domain: [number, number] = [-paddedMax, paddedMax];
+  // Find max value for domain
+  const maxVal = series.reduce((m, r) => Math.max(m, r.production + r.productionSurplus, r.demand + r.demandSurplus), 1);
+  const paddedMax = Math.ceil(maxVal * 1.1);
 
   return (
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }} barCategoryGap="10%">
+        <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis 
-            domain={domain} 
+            domain={[0, paddedMax]} 
             allowDataOverflow={false} 
             tick={{ fontSize: 11 }}
-            ticks={[-paddedMax, -paddedMax/2, 0, paddedMax/2, paddedMax]} 
           />
           <Tooltip
-            formatter={(value: any, name: any) => {
-              const v = Number(value);
-              if (name === 'Demand') return [Math.abs(v).toFixed(2), name];
-              return [v.toFixed(2), name];
-            }}
+            formatter={(value: any) => Number(value).toFixed(2)}
           />
           <Legend />
-
-          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={25} stackId="stack" />
-          <Bar dataKey="demandOffset" fill="transparent" barSize={25} stackId="stack" />
-          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={25} stackId="stack" />
-          <Line type="monotone" dataKey="total" name="Total (Prod - Dem)" stroke={COLORS.total} strokeWidth={2} dot={{ r: 4 }} />
+          
+          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={20} stackId="production" />
+          <Bar dataKey="productionSurplus" name="Surplus (to Prod)" fill={COLORS.grid} barSize={20} stackId="production" />
+          
+          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={20} stackId="demand" />
+          <Bar dataKey="demandSurplus" name="Surplus (to Dem)" fill={COLORS.grid} barSize={20} stackId="demand" />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

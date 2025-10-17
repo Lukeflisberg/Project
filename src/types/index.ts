@@ -140,9 +140,9 @@ export interface Demand {
 } 
 
 export interface Distance {
-  fromTo: string;
-  [key: `T${string}`]: number;
-} // Same here
+  "From/To": string;
+  [key: string]: string | number;
+} 
 
 export interface Solution {
   team: string;

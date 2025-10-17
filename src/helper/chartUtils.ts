@@ -1,4 +1,4 @@
-import { Demand, Task, Period, Month, Team } from "../types";
+import { Demand, Task, Period, Month, Team, Distance } from "../types";
 import { effectiveDuration, endHour } from "./taskUtils";
 
 // Shared type for period boundaries
@@ -183,7 +183,7 @@ export function calcMonthlyDurations(
     return duration;
 }
 
-export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[]) {
+export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]) {
     // Harvest Costs
     const harvestCosts = tasks.reduce((total, task) => {
         const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
@@ -197,11 +197,42 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
     }, 0);
     console.log("Total Harvest Costs: ", harvestCosts);
 
-    const wheelingCost = 0;
-    console.log("Total Wheeling Cost: ", wheelingCost);
+    // Wheeling Costs and Trailer Costs
+    let wheelingCosts: number = 0;
+    let trailerCosts: number = 0;
 
-    const trailerCost = 0;
-    console.log("Total Trailer Cost: ", trailerCost);
+    for (const team of teams) {
+        const teamTasks: Task[] = tasks.filter(t => t.duration.teamId === team.id);
+       
+        // Iterate through consecutive pairs of tasks
+        for (let i = 0; i < teamTasks.length - 1; i++) {
+            const fromId: string = teamTasks[i].task.id;
+            const toId: string = teamTasks[i + 1].task.id;
+
+            // Find the distance object from the fromTask
+            const distanceEntry: Distance | undefined = distances.find(d => d["From/To"] === fromId);
+            if (!distanceEntry) {
+                console.error(`No distance data found for task ${fromId}`);
+                continue;
+            }
+            
+            const distance: number = distanceEntry[toId] as number;
+            if (distance === undefined) {
+                console.error(`No distance from ${fromId} to ${toId}`);
+                continue;
+            }
+            
+            if (distance > team.maxWheelingDist_km) {
+                const excessDistance: number = distance - team.maxWheelingDist_km;
+                trailerCosts += excessDistance * team.fixMovingCostWithTrailer;
+                wheelingCosts += team.maxWheelingDist_km * team.fixMovingCostWithoutTrailer;
+            } else {
+                wheelingCosts += distance * team.fixMovingCostWithoutTrailer
+            }
+        }
+    }
+    console.log("Total Wheeling Cost: ", wheelingCosts);
+    console.log("Total Trailer Cost: ", trailerCosts);
 
     // Demand Costs
     // Get inventory balance
