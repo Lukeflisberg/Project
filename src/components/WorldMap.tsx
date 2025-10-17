@@ -7,6 +7,7 @@ import { Task, Team } from '../types';
 import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
+import { createPeriodBoundaries } from '../helper/chartUtils';
 
 const DEFAULT_POSITION: {x: number, y: number} = { x: 1277, y: 12};
 const DEFAULT_SIZE: {width: number, height: number} = { width: 632, height: 749 };
@@ -292,7 +293,25 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
 
-    const visibleTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId === state.selectedTeamId);
+    // Get the first month's period IDs
+    const firstMonth = state.months[0];
+    if (!firstMonth) return [];
+
+    // Get periods that belong to the first month
+    const firstMonthPeriods = state.periods.filter(p => firstMonth.periods.includes(p.id));
+    
+    // Get the boundaries for the first month
+    const firstMonthStart = 0;
+    const firstMonthEnd = firstMonthPeriods.reduce((sum, period) => sum + period.length_h, 0);
+
+    console.log(firstMonthStart, firstMonthEnd);
+
+    const visibleTasks: Task[] = getVisibleTasks().filter(task => 
+      task.duration.teamId === state.selectedTeamId && 
+      task.duration.startHour >= firstMonthStart && 
+      task.duration.startHour < firstMonthEnd
+    );
+
     const sortedTasks: Task[] = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
 
     const lines = [];
@@ -854,7 +873,7 @@ export function WorldMap() {
                     <Marker
                       key={task.task.id}
                       position={wgs84Pos}
-                      icon={createUnassignedMarkerIcon(teamColor, isSelected, markerIndex)}
+                      icon={createMarkerIcon(teamColor, isSelected, markerIndex)}
                       eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                     >
                       <Popup>
