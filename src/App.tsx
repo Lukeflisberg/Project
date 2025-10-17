@@ -5,7 +5,7 @@ import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { ChartsPanel } from './components/ChartsPanel';
 import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getDemandByProduct, getProductionByProduct, totalHarvesterCost } from './helper/chartUtils';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getDemandByProduct, getProductionByProduct, getProductionByTeam, totalHarvesterCost } from './helper/chartUtils';
 
 function AppContent() {
   const { state, dispatch} = useApp();
@@ -47,6 +47,13 @@ function AppContent() {
             className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
           >
             Production Calc
+          </button>
+
+          <button 
+            onClick={() => console.log(getProductionByTeam(state.tasks))}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            Production By Team Calc
           </button>
           
           <button 

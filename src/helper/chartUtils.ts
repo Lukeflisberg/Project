@@ -1,4 +1,4 @@
-import { Demand, Task, Period, Month } from "../types";
+import { Demand, Task, Period, Month, Team } from "../types";
 import { effectiveDuration, endHour } from "./taskUtils";
 
 // Shared type for period boundaries
@@ -19,7 +19,6 @@ export function createPeriodBoundaries(periods: Period[]): PeriodBoundary[] {
 interface ProductionByPeriod {
     [productName: string]: number[];
 }
-
 export function getProductionByProduct(
     tasks: Task[],
     periodBoundaries: PeriodBoundary[]
@@ -69,6 +68,52 @@ export function getProductionByProduct(
             }
         }
     }
+
+    return result;
+}
+
+interface ProductionByTeam {
+    teamId: string;
+    products: Record<string, number>; //name, quantity
+}
+export function getProductionByTeam(tasks: Task[]): ProductionByTeam[] {
+    // Group tasks by team
+    const teamMap = new Map<string, Task[]>();
+
+    for (const task of tasks) {
+        if (!task.duration.teamId) continue; // Skip tasks without a team
+
+        if (!teamMap.has(task.duration.teamId)) {
+            teamMap.set(task.duration.teamId, []);
+        }
+        teamMap.get(task.duration.teamId)!.push(task);
+    }
+
+    // Calculate production for each team
+    const result: ProductionByTeam[] = [];
+
+    for (const [teamId, teamTasks] of teamMap.entries()) {
+        const products: Record<string, number> = {};
+
+        for (const task of teamTasks) {
+            if (!task.production) continue;
+
+            // Add all products from this task
+            for (const [productName, quantity] of Object.entries(task.production)) {
+                if (!products[productName]) {
+                    products[productName] = 0;
+                }
+                products[productName] += quantity;
+            }
+        }
+
+        result.push({
+            teamId,
+            products
+        });
+    }
+
+    console.log("Results: ", result);
 
     return result;
 }
@@ -148,4 +193,8 @@ export function calcMonthlyDurations(
     }
 
     return duration;
+}
+
+export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[]) {
+    return null;
 }

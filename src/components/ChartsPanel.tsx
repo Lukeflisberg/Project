@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam } from '../helper/chartUtils';
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
 
 // Color palette
 const COLORS = {
@@ -159,6 +159,65 @@ function WorkEfficiencyChart() {
   );
 }
 
+function TeamProductionChart({ teamId }: { teamId: string | null }) {
+  const { state } = useApp();
+
+  const data = useMemo(() => {
+    const productionByTeam = getProductionByTeam(state.tasks);
+    
+    if (!productionByTeam || productionByTeam.length === 0) {
+      return [];
+    }
+
+    // Find the selected team or use the first one
+    const selectedTeam = productionByTeam.find(t => t.teamId === teamId) || productionByTeam[0];
+    
+    if (!selectedTeam) return [];
+
+    // Transform the team's products into chart data with product names on x-axis
+    return Object.entries(selectedTeam.products).map(([productName, quantity]) => ({
+      name: productName,
+      quantity: quantity
+    }));
+  }, [state.tasks, teamId]);
+
+  if (!data.length) {
+    return (
+      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
+        No production data available for this team.
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 10, right: 20, bottom: 60, left: 0 }}>
+          <CartesianGrid stroke={COLORS.grid} />
+          <XAxis 
+            dataKey="name" 
+            tick={{ fontSize: 11 }}
+            interval={0}
+            angle={-45}
+            textAnchor="end"
+            height={80}
+          />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip 
+            formatter={(value: any) => Number(value).toFixed(2)}
+          />
+          <Legend />
+          <Bar 
+            dataKey="quantity" 
+            name="Production Quantity"
+            fill="#10B981"
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function MonthlyEfficiencyChart() {
   const { state } = useApp();
   const boundaries = createPeriodBoundaries(state.periods);
@@ -259,11 +318,11 @@ function MonthlyEfficiencyChart() {
 
 export function ChartsPanel() {
   const { state } = useApp();
-  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart'>('DemandProductionChart');
+  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart' | 'TeamProductionChart'>('DemandProductionChart');
 
   const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
 
-  // Resource dropdown options derived from cumulative maps
+  // Resource dropdown options derived from cumulative maps (for DemandProductionChart)
   const boundaries = useMemo(() => createPeriodBoundaries(state.periods), [state.periods]);
   const prodMap = useMemo(() => getProductionByProduct(state.tasks, boundaries), [state.tasks, boundaries]);
   const demMap = useMemo(() => getDemandByProduct(state.demand), [state.demand]);
@@ -277,6 +336,20 @@ export function ChartsPanel() {
     }
   }, [resources, selectedResource]);
 
+  // Team dropdown options (for TeamProductionChart)
+  const teams = useMemo(() => {
+    const productionByTeam = getProductionByTeam(state.tasks);
+    return productionByTeam.map(t => t.teamId).sort();
+  }, [state.tasks]);
+
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  useEffect(() => {
+    // Default to first team when options change
+    if (!selectedTeam || !teams.includes(selectedTeam)) {
+      setSelectedTeam(teams[0] ?? null);
+    }
+  }, [teams, selectedTeam]);
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       <div className="flex items-center justify-between px-4 py-2 border-b">
@@ -286,6 +359,12 @@ export function ChartsPanel() {
             className={`px-3 py-1.5 text-sm rounded ${tab === 'DemandProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Demand vs Production
+          </button>
+          <button
+            onClick={() => setTab('TeamProductionChart')}
+            className={`px-3 py-1.5 text-sm rounded ${tab === 'TeamProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+          >
+            Team Production
           </button>
           <button
             onClick={() => setTab('WorkEfficiencyChart')}
@@ -300,18 +379,37 @@ export function ChartsPanel() {
             Monthly Efficiency
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500">Resource:</label>
-          <select
-            value={selectedResource ?? ''}
-            onChange={e => setSelectedResource(e.target.value || null)}
-            className="px-2 py-1 text-sm border rounded"
-          >
-            {resources.map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
+        
+        {/* Conditional dropdown based on active tab */}
+        {tab === 'DemandProductionChart' && resources.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Resource:</label>
+            <select
+              value={selectedResource ?? ''}
+              onChange={e => setSelectedResource(e.target.value || null)}
+              className="px-2 py-1 text-sm border rounded"
+            >
+              {resources.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        
+        {tab === 'TeamProductionChart' && teams.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Team:</label>
+            <select
+              value={selectedTeam ?? ''}
+              onChange={e => setSelectedTeam(e.target.value || null)}
+              className="px-2 py-1 text-sm border rounded"
+            >
+              {teams.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="p-2">
@@ -323,6 +421,8 @@ export function ChartsPanel() {
           <WorkEfficiencyChart />
         ) : tab === 'MonthlyEfficiencyChart' ? (
           <MonthlyEfficiencyChart />
+        ) : tab === 'TeamProductionChart' ? (
+          <TeamProductionChart teamId={selectedTeam} />
         ) : null}
       </div>
     </div>
