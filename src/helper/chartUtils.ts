@@ -41,7 +41,7 @@ export function getProductionByProduct(
         const taskEnd = endHour(task);
         const taskDuration = effectiveDuration(task);
 
-        if (taskDuration <= 0) continue;
+        if (task.duration.teamId === null || taskDuration <= 0) continue; // skip
 
         // Distribute production across periods based on overlap
         for (let i = 1; i < periodBoundaries.length; i++) {
@@ -113,8 +113,6 @@ export function getProductionByTeam(tasks: Task[]): ProductionByTeam[] {
         });
     }
 
-    console.log("Results: ", result);
-
     return result;
 }
 
@@ -142,16 +140,6 @@ export function getDemandByProduct(demand: Demand[]): DemandsByPeriod {
 
     return result;
 }
-
-export const totalHarvesterCost = (task: Task): number | null => {
-    const costs: Task.Costs | undefined = task.harvestCosts.find(t => t.Team === task.duration.teamId);
-    console.log(costs);
-    if (costs) {
-        return (costs.harvesterCost + costs.forwarderCost + costs.travelingCost);
-    } else {
-        return null;
-    }
-};
 
 export const calcDurationOf = (tasks: Task[]): number => {
     return tasks.reduce((sum, task) => sum + effectiveDuration(task), 0);
@@ -195,6 +183,57 @@ export function calcMonthlyDurations(
     return duration;
 }
 
-export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[]) {
-    return null;
+export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[]) {
+    // Harvest Costs
+    const harvestCosts = tasks.reduce((total, task) => {
+        const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
+        // Only include cost if the team matches the task's assigned team
+        if (cost.Team === task.duration.teamId) {
+            return taskTotal + cost.harvesterCost + cost.forwarderCost + cost.travelingCost;
+        }
+        return taskTotal;
+        }, 0);
+        return total + taskCost;
+    }, 0);
+    console.log("Total Harvest Costs: ", harvestCosts);
+
+    const wheelingCost = 0;
+    console.log("Total Wheeling Cost: ", wheelingCost);
+
+    const trailerCost = 0;
+    console.log("Total Trailer Cost: ", trailerCost);
+
+    // Demand Costs
+    // Get inventory balance
+    const prodMap = getProductionByProduct(tasks, createPeriodBoundaries(periods)); 
+    const demMap = getDemandByProduct(demands); 
+    const balance: { [key: string]: number } = {};
+
+    Object.keys(prodMap).forEach(product => {
+        const prodTotal = prodMap[product].reduce((sum, val) => sum + val, 0);
+        const demandTotal = demMap[product].reduce((sum, val) => sum + val, 0);
+        const diff = prodTotal - demandTotal;
+
+        balance[product] = diff;
+    })
+
+    const demandCost = demands.map(d => {
+        if (balance[d.Product] > 0) {
+            return balance[d.Product] * d.demand[0].costAboveAckumGoal;
+        } else {
+            return balance[d.Product] * d.demand[0].costBelowAckumGoal;
+        }
+    }).reduce((sum, val) => sum + val, 0);
+    console.log("Total Demand cost: ", demandCost);
+    
+    // Industry Value
+    // Only use positive results??
+    const industryValue = demands.map(d => {
+        if (balance[d.Product] > 0) {
+            return balance[d.Product] * d.value_prod;
+        } else {
+            return 0;
+        }
+    }).reduce((sum, val) => sum + val, 0);
+    console.log("Total Industry Value: ", industryValue);
 }

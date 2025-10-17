@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
-import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod } from '../helper/taskUtils';
+import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor } from '../helper/taskUtils';
 import { calcDurationOf } from '../helper/chartUtils';
 
 // ----------------------
@@ -13,19 +13,6 @@ import { calcDurationOf } from '../helper/chartUtils';
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
 const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
-
-// ----------------------
-// Task Color Mapping
-// ----------------------
-// Returns a color based on the task's avvForm value
-function getTaskColor(avvForm: string, teamColor: string): string {
-  const colorMap: Record<string, string> = {
-    '�A': '#f59e0b', // amber-500
-    'n/a': teamColor, // fallback to team color
-  };
-  
-  return colorMap[avvForm] || teamColor;
-}
 
 const occStart = (t: Task) => t.duration.startHour;
 const occEnd = (t: Task) => endHour(t);
@@ -1226,7 +1213,7 @@ export function GanttChart() {
               
               const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
               const rowTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-              const totalDuration = calcDurationOf(rowTasks).toFixed(2);
+              const totalDuration: number = calcDurationOf(rowTasks);
               const isSelected = state.selectedTeamId === team.id;
               
               return (
@@ -1257,7 +1244,7 @@ export function GanttChart() {
                   {/* Duration info */}
                   <div className="flex items-center justify-center h-full">
                     <span className="text-xs font-medium text-gray-600 text-center">
-                      {totalDuration}
+                      {Math.round((totalDuration / state.totalHours) * 100)}%
                     </span>
                   </div>
                 </div>
@@ -1456,7 +1443,7 @@ export function GanttChart() {
                         ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                         ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                       `}
-                      style={{ backgroundColor: getTaskColor(task.task.avvForm, team.color), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
+                      style={{ backgroundColor: getTaskColor(task, team.color), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
                       onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
                     >
                       {/* Setup visual indicator */}

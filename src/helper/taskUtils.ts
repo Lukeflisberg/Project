@@ -153,3 +153,17 @@ export function isInInvalidPeriod(task: Task, startHour: number, endHour: number
   }
   return false;
 }
+
+// ----------------------
+// Task Color Mapping
+// ----------------------
+// Returns a color based on the task's avvForm value
+export function getTaskColor(task: Task, teamColorEntry: string | undefined): string {
+  const teamColor = teamColorEntry ?? "#5F8A8B";
+  const colorMap: Record<string, string> = {
+    '�A': '#f59e0b', // amber-500
+    'n/a': teamColor, // fallback to team color
+  };
+  
+  return colorMap[task.task.avvForm] || teamColor;
+}

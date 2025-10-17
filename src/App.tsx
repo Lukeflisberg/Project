@@ -5,7 +5,7 @@ import { WorldMap } from './components/WorldMap';
 import { UnassignedTasks } from './components/UnassignedTasks';
 import { ChartsPanel } from './components/ChartsPanel';
 import { Trees, Users, CheckCircle2, AlertCircle } from 'lucide-react'; 
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getDemandByProduct, getProductionByProduct, getProductionByTeam, totalHarvesterCost } from './helper/chartUtils';
+import { calcDurationOf, calcMonthlyDurations, calcTotalCostDistribution, createPeriodBoundaries, getDemandByProduct, getProductionByProduct, getProductionByTeam } from './helper/chartUtils';
 
 function AppContent() {
   const { state, dispatch} = useApp();
@@ -55,12 +55,12 @@ function AppContent() {
           >
             Production By Team Calc
           </button>
-          
+
           <button 
-            onClick={() => console.log(totalHarvesterCost(state.tasks.find(t => t.task.id === state.selectedTaskId)!))}
+            onClick={() => console.log(calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods))}
             className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
           >
-            Harvesting Cost Calc
+            Calc Total Costs
           </button>
           
           <button 

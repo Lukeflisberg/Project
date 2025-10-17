@@ -4,7 +4,7 @@ import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task, Team } from '../types';
-import { findEarliestHour, effectiveDuration, isDisallowed } from '../helper/taskUtils';
+import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
@@ -169,7 +169,7 @@ export function WorldMap() {
     setIsMaximized(!isMaximized);
   };
 
-  const createCustomIcon = (color: string, isSelected: boolean = false, index?: number) => {
+  const createMarkerIcon = (color: string, isSelected: boolean = false, index?: number) => {
     const size: number = isSelected ? 20 : 8;
 
     const iconHtml: string = `
@@ -178,6 +178,48 @@ export function WorldMap() {
         width: ${size}px;
         height: ${size}px;
         border-radius: 50%;
+        border: ${isSelected ? '4px' : '1px'} ${isSelected ? 'solid white' : 'solid black'};
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        ${isSelected ? 'animation: pulse 2s infinite;' : ''}
+      ">
+        <span style="
+          position: absolute;
+          top: -10px;
+          right: -5px;
+          color: white;
+          font-weight: bold;
+          font-size: ${isSelected ? 16 : 12}px;
+          text-shadow: 
+            -1px -1px 0 black,  
+            1px -1px 0 black,
+            -1px  1px 0 black,
+            1px  1px 0 black;
+        ">
+          ${index !== undefined ? index : ''}
+        </span>
+      </div>
+    `;
+
+    return L.divIcon({
+      html: iconHtml,
+      className: 'custom-marker',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
+    });
+  };
+
+  const createUnassignedMarkerIcon = (color: string, isSelected: boolean = false, index?: number) => {
+    const size: number = isSelected ? 20 : 8;
+
+    const iconHtml: string = `
+      <div style="
+        background-color: ${color};
+        width: ${size}px;
+        height: ${size}px;
+        border-radius: 0;
         border: ${isSelected ? '4px' : '1px'} ${isSelected ? 'solid white' : 'solid black'};
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         display: flex;
@@ -265,19 +307,13 @@ export function WorldMap() {
       lines.push({
         id: `${currentTask.task.id}-${nextTask.task.id}`,
         positions: [currentPos, nextPos],
-        color: getTeamColor(currentTask.duration.teamId),
+        color: getTaskColor(currentTask, state.teams.find(t => t.id === currentTask.duration.teamId)?.color),
         weight: 2.5,
         opacity: 0.8
       });
     }
 
     return lines;
-  };
-
-  const getTeamColor = (teamId: string | null) => {
-    if (!teamId) return '#6B7280';
-    const team: Team | undefined = state.teams.find(p => p.id=== teamId);
-    return team?.color || '#6B7280';
   };
 
   const handleMarkerClick = (taskId: string | null) => {
@@ -530,8 +566,8 @@ export function WorldMap() {
         key={task.task.id}
         ref={markerRef}
         position={wgs84Pos}
-        icon={createCustomIcon(
-          getTeamColor(task.duration.teamId), 
+        icon={createUnassignedMarkerIcon(
+          getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color), 
           state.selectedTaskId === task.task.id
         )}
       >
@@ -748,14 +784,14 @@ export function WorldMap() {
                 <>
                 {assignedTasks.map((task) => {
                   const isSelected: boolean = state.selectedTaskId === task.task.id;
-                  const teamColor: string = getTeamColor(task.duration.teamId);
+                  const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
                   const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
                   return (
                   <Marker
                     key={task.task.id}
                     position={wgs84Pos}
-                    icon={createCustomIcon(teamColor, isSelected)} 
+                    icon={createMarkerIcon(teamColor, isSelected)} 
                     eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                   >
                     <Popup>
@@ -810,7 +846,7 @@ export function WorldMap() {
               <>
                 {assignedTasks.map((task, index) => {
                   const isSelected: boolean = state.selectedTaskId === task.task.id;
-                  const teamColor: string = getTeamColor(task.duration.teamId);
+                  const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
                   const markerIndex: number = index + 1;
                   const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
@@ -818,7 +854,7 @@ export function WorldMap() {
                     <Marker
                       key={task.task.id}
                       position={wgs84Pos}
-                      icon={createCustomIcon(teamColor, isSelected, markerIndex)}
+                      icon={createUnassignedMarkerIcon(teamColor, isSelected, markerIndex)}
                       eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                     >
                       <Popup>
