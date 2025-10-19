@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, BarProps } from 'recharts';
-import { removeRadiusAxis } from 'recharts/types/state/polarAxisSlice';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam, calcTotalCostDistribution } from '../helper/chartUtils';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, PieChart, Pie, Cell } from 'recharts';
 
 // Color palette
 const COLORS = {
@@ -11,6 +10,9 @@ const COLORS = {
   surplus: '#EF4444', // red-500
   grid: '#E5E7EB', // gray-200
 };
+
+// Pie chart colors
+const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
 function usePeriods() {
   const { state } = useApp();
@@ -326,9 +328,113 @@ function MonthlyEfficiencyChart() {
   );
 }
 
+function CostDistributionChart() {
+  const { state } = useApp();
+
+  const data = useMemo(() => {
+    // Calculate cost data from state
+    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
+    
+    if (!costData) {
+      return [];
+    }
+
+    const { harvestCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
+
+    // Calculate absolute values for pie chart (showing cost contributions)
+    const costs = [
+      { name: 'Harvest Costs', value: Math.abs(harvestCosts), displayValue: harvestCosts },
+      { name: 'Wheeling Costs', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
+      { name: 'Trailer Costs', value: Math.abs(trailerCosts), displayValue: trailerCosts },
+      { name: 'Demand Costs', value: Math.abs(demandCosts), displayValue: demandCosts },
+      { name: 'Industry Value', value: Math.abs(industryValue), displayValue: industryValue }
+    ].filter(item => item.value > 0); // Only show non-zero items
+
+    return costs;
+  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
+
+  if (!data.length) {
+    return (
+      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
+        No cost data available.
+      </div>
+    );
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const total = payload[0].payload.total || data.value;
+      const percentage = ((data.value / total) * 100).toFixed(1);
+      return (
+        <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
+          <p className="font-semibold mb-1">{data.name}</p>
+          <p className="text-sm">{formatCurrency(data.displayValue)}</p>
+          <p className="text-sm text-gray-600">{percentage}% of total costs</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const renderLabel = ({ name, percent }: any) => {
+    if (percent < 0.05) return ''; // Don't show label if less than 5%
+    return `${name}: ${(percent * 100).toFixed(0)}%`;
+  };
+
+  // Calculate total for display
+  const total = useMemo(() => {
+    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
+    return costData 
+      ? costData.harvestCosts + costData.wheelingCosts + costData.trailerCosts + costData.demandCosts - costData.industryValue
+      : 0;
+  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
+
+  return (
+    <div className="w-full h-80">
+      <div className="text-center mb-2">
+        <p className="text-sm text-gray-600">Total Cost: {formatCurrency(total)}</p>
+      </div>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            label={renderLabel}
+            outerRadius={100}
+            fill="#8884d8"
+            dataKey="value"
+          >
+            {data.map((_, index) => (
+              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+          <Legend 
+            verticalAlign="bottom" 
+            height={36}
+            formatter={(value, entry: any) => `${value}: ${formatCurrency(entry.payload.displayValue)}`}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function ChartsPanel() {
   const { state } = useApp();
-  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart' | 'TeamProductionChart'>('DemandProductionChart');
+  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart' | 'TeamProductionChart' | 'CostDistributionChart'>('DemandProductionChart');
 
   const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
 
@@ -388,6 +494,12 @@ export function ChartsPanel() {
           >
             Monthly Efficiency
           </button>
+          <button
+            onClick={() => setTab('CostDistributionChart')}
+            className={`px-3 py-1.5 text-sm rounded ${tab === 'CostDistributionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+          >
+            Cost Distribution
+          </button>
         </div>
         
         {/* Conditional dropdown based on active tab */}
@@ -433,6 +545,8 @@ export function ChartsPanel() {
           <MonthlyEfficiencyChart />
         ) : tab === 'TeamProductionChart' ? (
           <TeamProductionChart teamId={selectedTeam} />
+        ) : tab === 'CostDistributionChart' ? (
+          <CostDistributionChart />
         ) : null}
       </div>
     </div>

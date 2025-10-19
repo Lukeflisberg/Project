@@ -184,25 +184,38 @@ export function calcMonthlyDurations(
 }
 
 export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]) {
+    const assignedTasks = tasks.filter(t => t.duration.teamId !== null);
+    let harvestCostCalculations: string[] = [];
+
     // Harvest Costs
-    const harvestCosts = tasks.reduce((total, task) => {
+    const harvestCosts = assignedTasks.reduce((total, task) => {
         const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
-        // Only include cost if the team matches the task's assigned team
-        if (cost.Team === task.duration.teamId) {
-            return taskTotal + cost.harvesterCost + cost.forwarderCost + cost.travelingCost;
-        }
-        return taskTotal;
+            // Only include cost if the team matches the task's assigned team
+            if (cost.Team === task.duration.teamId) {
+                return taskTotal + cost.harvesterCost + cost.forwarderCost + cost.travelingCost;
+            }
+            return taskTotal;
         }, 0);
+
+        harvestCostCalculations.push(taskCost.toFixed(2));
         return total + taskCost;
     }, 0);
+    
     console.log("Total Harvest Costs: ", harvestCosts);
+    console.groupCollapsed("Harvest Cost Calcs")
+    console.log(harvestCostCalculations.join('\n'));
+    console.groupEnd();
+
+    console.log("");
 
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
     let trailerCosts: number = 0;
+    let trailerCalcs: string[] = [`team.fixMovingCostWithTrailer * (distance / team.trailerAverageSpeed) * team.trailerCost`];
+    let wheelingCalcs: string[] = [`distance * team.fixMovingCostWithoutTrailer`];
 
     for (const team of teams) {
-        const teamTasks: Task[] = tasks.filter(t => t.duration.teamId === team.id);
+        const teamTasks: Task[] = assignedTasks.filter(t => t.duration.teamId === team.id);
        
         // Iterate through consecutive pairs of tasks
         for (let i = 0; i < teamTasks.length - 1; i++) {
@@ -223,22 +236,32 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
             }
             
             if (distance > team.maxWheelingDist_km) {
-                const excessDistance: number = distance - team.maxWheelingDist_km;
-                trailerCosts += excessDistance * team.fixMovingCostWithTrailer;
-                wheelingCosts += team.maxWheelingDist_km * team.fixMovingCostWithoutTrailer;
+                trailerCosts += team.fixMovingCostWithTrailer * (distance / team.trailerAverageSpeed) * team.trailerCost;
+                trailerCalcs.push(`${team.fixMovingCostWithTrailer} * (${distance} / ${team.trailerAverageSpeed}) * ${team.trailerCost}`);
             } else {
                 wheelingCosts += distance * team.fixMovingCostWithoutTrailer
+                wheelingCalcs.push(`${distance} * ${team.fixMovingCostWithoutTrailer}`);
             }
         }
     }
     console.log("Total Wheeling Cost: ", wheelingCosts);
+    console.groupCollapsed("Wheeling Cost Calcs")
+    console.log(wheelingCalcs.join('\n'));
+    console.groupEnd();
+    
     console.log("Total Trailer Cost: ", trailerCosts);
+    console.groupCollapsed("Trailer Cost Calcs")
+    console.log(trailerCalcs.join('\n'));
+    console.groupEnd();
+
+    console.log("");
 
     // Demand Costs
     // Get inventory balance
-    const prodMap = getProductionByProduct(tasks, createPeriodBoundaries(periods)); 
-    const demMap = getDemandByProduct(demands); 
+    const prodMap = getProductionByProduct(assignedTasks, createPeriodBoundaries(periods)); 
+    const demMap = getDemandByProduct(demands);
     const balance: { [key: string]: number } = {};
+    let demandCostCalc: string[] = [`result * goal`];
 
     Object.keys(prodMap).forEach(product => {
         const prodTotal = prodMap[product].reduce((sum, val) => sum + val, 0);
@@ -248,23 +271,52 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         balance[product] = diff;
     })
 
-    const demandCost = demands.map(d => {
-        if (balance[d.Product] > 0) {
-            return balance[d.Product] * d.demand[0].costAboveAckumGoal;
+    const demandCosts = demands.map(d => {
+        const result = balance[d.Product] - demMap[d.Product].reduce((sum, val) => sum + val, 0);
+        if (result > 0) {
+            demandCostCalc.push(`>0: ${result} * ${d.demand[0].costAboveAckumGoal}`);
+            return result * d.demand[0].costAboveAckumGoal;
         } else {
-            return balance[d.Product] * d.demand[0].costBelowAckumGoal;
+            demandCostCalc.push(`<0: ${result} * ${d.demand[0].costBelowAckumGoal}`);
+            return result * d.demand[0].costBelowAckumGoal;
         }
     }).reduce((sum, val) => sum + val, 0);
-    console.log("Total Demand cost: ", demandCost);
+    
+    console.log("Total Demand cost: ", demandCosts);
+    console.groupCollapsed("Demand Cost Calcs");
+    console.log(demandCostCalc.join('\n'));
+    console.groupEnd();
+
+    console.groupCollapsed("Balance");
+    console.log(balance);
+    console.groupEnd();
+
+    console.log("");    
+
+    let industryValueCalcs: string[] = [`balance[p.Product] * d.value_prod or just 0`];
     
     // Industry Value
-    // Only use positive results??
     const industryValue = demands.map(d => {
         if (balance[d.Product] > 0) {
+            industryValueCalcs.push(`${balance[d.Product]} * ${d.value_prod}`)
             return balance[d.Product] * d.value_prod;
         } else {
+            industryValueCalcs.push(`0`);
             return 0;
         }
     }).reduce((sum, val) => sum + val, 0);
+
     console.log("Total Industry Value: ", industryValue);
+    console.groupCollapsed("Industry Value Calc");
+    console.log(industryValueCalcs.join('\n'));
+    console.groupEnd();
+
+    return {
+        harvestCosts: harvestCosts,
+        wheelingCosts: wheelingCosts,
+        trailerCosts: trailerCosts,
+        demandCosts: demandCosts,
+        industryValue: industryValue,
+        total: harvestCosts + wheelingCosts + trailerCosts + demandCosts - industryValue
+    }
 }

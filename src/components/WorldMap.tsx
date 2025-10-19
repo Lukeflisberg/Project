@@ -7,7 +7,6 @@ import { Task, Team } from '../types';
 import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
-import { createPeriodBoundaries } from '../helper/chartUtils';
 
 const DEFAULT_POSITION: {x: number, y: number} = { x: 1277, y: 12};
 const DEFAULT_SIZE: {width: number, height: number} = { width: 632, height: 749 };
