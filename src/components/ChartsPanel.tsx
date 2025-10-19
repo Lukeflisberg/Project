@@ -12,7 +12,7 @@ const COLORS = {
 };
 
 // Pie chart colors
-const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
 function usePeriods() {
   const { state } = useApp();
@@ -339,11 +339,13 @@ function CostDistributionChart() {
       return [];
     }
 
-    const { harvestCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
+    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
 
     // Calculate absolute values for pie chart (showing cost contributions)
     const costs = [
-      { name: 'Harvest Costs', value: Math.abs(harvestCosts), displayValue: harvestCosts },
+      { name: 'Harvester Costs', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
+      { name: 'Forwarder Costs', value: Math.abs(forwarderCosts), displayValue: forwarderCosts },
+      { name: 'Traveling Costs', value: Math.abs(travelingCosts), displayValue: travelingCosts },
       { name: 'Wheeling Costs', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
       { name: 'Trailer Costs', value: Math.abs(trailerCosts), displayValue: trailerCosts },
       { name: 'Demand Costs', value: Math.abs(demandCosts), displayValue: demandCosts },
@@ -362,9 +364,9 @@ function CostDistributionChart() {
   }
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('sv-SE', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'SEK',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(value);
@@ -373,8 +375,7 @@ function CostDistributionChart() {
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      const total = payload[0].payload.total || data.value;
-      const percentage = ((data.value / total) * 100).toFixed(1);
+      const percentage = ((data.value / total) * 100).toFixed(2);
       return (
         <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
           <p className="font-semibold mb-1">{data.name}</p>
@@ -386,17 +387,10 @@ function CostDistributionChart() {
     return null;
   };
 
-  const renderLabel = ({ name, percent }: any) => {
-    if (percent < 0.05) return ''; // Don't show label if less than 5%
-    return `${name}: ${(percent * 100).toFixed(0)}%`;
-  };
-
-  // Calculate total for display
+  // Calculate total for display (use total from costData directly)
   const total = useMemo(() => {
     const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
-    return costData 
-      ? costData.harvestCosts + costData.wheelingCosts + costData.trailerCosts + costData.demandCosts - costData.industryValue
-      : 0;
+    return costData?.total ?? 0;
   }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
 
   return (
@@ -410,8 +404,6 @@ function CostDistributionChart() {
             data={data}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={renderLabel}
             outerRadius={100}
             fill="#8884d8"
             dataKey="value"

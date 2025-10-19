@@ -185,25 +185,63 @@ export function calcMonthlyDurations(
 
 export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]) {
     const assignedTasks = tasks.filter(t => t.duration.teamId !== null);
-    let harvestCostCalculations: string[] = [];
+    let harvesterCostCalculations: string[] = [];
+    let forwarderCostCalculations: string[] = [];
+    let travelingCostCalculations: string[] = [];
 
-    // Harvest Costs
-    const harvestCosts = assignedTasks.reduce((total, task) => {
+    // Harvester Costs
+    const harvesterCosts = assignedTasks.reduce((total, task) => {
         const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
-            // Only include cost if the team matches the task's assigned team
             if (cost.Team === task.duration.teamId) {
-                return taskTotal + cost.harvesterCost + cost.forwarderCost + cost.travelingCost;
+                return taskTotal + cost.harvesterCost;
             }
             return taskTotal;
         }, 0);
 
-        harvestCostCalculations.push(taskCost.toFixed(2));
+        harvesterCostCalculations.push(taskCost.toFixed(2));
+        return total + taskCost;
+    }, 0);
+
+    // Forwarder Costs
+    const forwarderCosts = assignedTasks.reduce((total, task) => {
+        const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
+            if (cost.Team === task.duration.teamId) {
+                return taskTotal + cost.forwarderCost;
+            }
+            return taskTotal;
+        }, 0);
+
+        forwarderCostCalculations.push(taskCost.toFixed(2));
+        return total + taskCost;
+    }, 0);
+
+    // Traveling Costs
+    const travelingCosts = assignedTasks.reduce((total, task) => {
+        const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
+            if (cost.Team === task.duration.teamId) {
+                return taskTotal + cost.travelingCost;
+            }
+            return taskTotal;
+        }, 0);
+
+        travelingCostCalculations.push(taskCost.toFixed(2));
         return total + taskCost;
     }, 0);
     
-    console.log("Total Harvest Costs: ", harvestCosts);
-    console.groupCollapsed("Harvest Cost Calcs")
-    console.log(harvestCostCalculations.join('\n'));
+    console.log("Total Harvester Costs: ", harvesterCosts);
+    console.log("Total Forwarder Costs: ", forwarderCosts);
+    console.log("Total Traveling Costs: ", travelingCosts);
+
+    console.groupCollapsed("Harvester Cost Calcs");
+    console.log(harvesterCostCalculations.join('\n'));
+    console.groupEnd();
+
+    console.groupCollapsed("Forwarder Cost Calcs");
+    console.log(forwarderCostCalculations.join('\n'));
+    console.groupEnd();
+
+    console.groupCollapsed("Traveling Cost Calcs");
+    console.log(travelingCostCalculations.join('\n'));
     console.groupEnd();
 
     console.log("");
@@ -278,7 +316,7 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
             return result * d.demand[0].costAboveAckumGoal;
         } else {
             demandCostCalc.push(`<0: ${result} * ${d.demand[0].costBelowAckumGoal}`);
-            return result * d.demand[0].costBelowAckumGoal;
+            return (-1 * result) * d.demand[0].costBelowAckumGoal;
         }
     }).reduce((sum, val) => sum + val, 0);
     
@@ -312,11 +350,13 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
     console.groupEnd();
 
     return {
-        harvestCosts: harvestCosts,
+        harvesterCosts: harvesterCosts,
+        forwarderCosts: forwarderCosts,
+        travelingCosts: travelingCosts,
         wheelingCosts: wheelingCosts,
         trailerCosts: trailerCosts,
         demandCosts: demandCosts,
         industryValue: industryValue,
-        total: harvestCosts + wheelingCosts + trailerCosts + demandCosts - industryValue
+        total: harvesterCosts + forwarderCosts + travelingCosts + wheelingCosts + trailerCosts + demandCosts - industryValue
     }
 }
