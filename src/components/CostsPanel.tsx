@@ -25,6 +25,8 @@ export function CostsPanel() {
   const firstMonthTasks: Task[] = state.tasks.filter(t => t.duration.startHour >= start && endHour(t) <= end);
   const firstMonthTaskSnapshot: Task[] = state.taskSnapshot.filter(t => t.duration.startHour >= start && endHour(t) <= end);
 
+  const hasSnapshot = state.taskSnapshot.length > 0;
+
   // Calculate costs
   const newCost = useMemo(() => 
     calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances).total,
@@ -35,24 +37,24 @@ export function CostsPanel() {
     [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]
   );
 
-  const previousCost = useMemo(() => 
+  const baseCost = useMemo(() => 
     calcTotalCostDistribution(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
     [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]
   );
-  const previousCost_m0 = useMemo(() => 
+  const baseCost_m0 = useMemo(() => 
     calcTotalCostDistribution(firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
     [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]
   );
 
-  const costDifference = newCost - previousCost;
-  const percentageChange = previousCost > 0
-    ? ((costDifference / previousCost) * 100).toFixed(0)
+  const costDifference = newCost - baseCost;
+  const percentageChange = baseCost > 0
+    ? ((costDifference / baseCost) * 100).toFixed(0)
     : 'inf';
   const isImprovement = costDifference < 0;
 
-  const costDifference_m0 = newCost_m0 - previousCost_m0;
-  const percentageChange_m0 = previousCost_m0 > 0
-    ? ((costDifference_m0 / previousCost_m0) * 100).toFixed(0)
+  const costDifference_m0 = newCost_m0 - baseCost_m0;
+  const percentageChange_m0 = baseCost_m0 > 0
+    ? ((costDifference_m0 / baseCost_m0) * 100).toFixed(0)
     : 'inf';
   const isImprovement_m0 = costDifference_m0 < 0;
 
@@ -79,8 +81,8 @@ export function CostsPanel() {
 
   const pieDataNew = useMemo(() => getPieData(state.tasks), [state.tasks, state.teams, state.demand, state.periods, state.distances]);
   const pieDataNew_m0 = useMemo(() => getPieData(firstMonthTasks), [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]);
-  const pieDataPrevious = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]);
-  const pieDataPrevious_m0 = useMemo(() => getPieData(firstMonthTaskSnapshot), [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]);
+  const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]);
+  const pieDatabase_m0 = useMemo(() => getPieData(firstMonthTaskSnapshot), [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]);
 
   // Handlers
   function onAccept() {
@@ -128,9 +130,9 @@ export function CostsPanel() {
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Cost Type</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Previous (M0)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (M0)</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (M0)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Previous (All)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (All)</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (All)</th>
                     </tr>
                   </thead>
@@ -138,20 +140,27 @@ export function CostsPanel() {
                     {['Harvester Costs', 'Forwarder Costs', 'Traveling Costs', 'Wheeling Costs', 'Trailer Costs', 'Demand Costs', 'Industry Value'].map((costName, idx) => {
                       const newItem = pieDataNew.find(item => item.name === costName);
                       const newM0Item = pieDataNew_m0.find(item => item.name === costName);
-                      const prevItem = pieDataPrevious.find(item => item.name === costName);
-                      const prevM0Item = pieDataPrevious_m0.find(item => item.name === costName);
+                      const prevItem = pieDatabase.find(item => item.name === costName);
+                      const prevM0Item = pieDatabase_m0.find(item => item.name === costName);
                       
-                      const prevM0Value = prevM0Item?.displayValue ?? 0;
-                      const newM0Value = newM0Item?.displayValue ?? 0;
-                      const prevAllValue = prevItem?.displayValue ?? 0;
-                      const newAllValue = newItem?.displayValue ?? 0;
+                      // When no snapshot, show current values in base columns
+                      const baseM0Value = hasSnapshot ? (prevM0Item?.displayValue ?? 0) : (newM0Item?.displayValue ?? 0);
+                      const baseAllValue = hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0);
+                      const newM0Value = hasSnapshot ? (newM0Item?.displayValue ?? 0) : 0;
+                      const newAllValue = hasSnapshot ? (newItem?.displayValue ?? 0) : 0;
                       
-                      const hasSnapshot = state.taskSnapshot.length > 0;
-                      const m0Diff = hasSnapshot ? newM0Value - prevM0Value : 0;
-                      const allDiff = hasSnapshot ? newAllValue - prevAllValue : 0;
+                      const m0Diff = hasSnapshot ? newM0Value - baseM0Value : 0;
+                      const allDiff = hasSnapshot ? newAllValue - baseAllValue : 0;
                       
-                      const m0IsImprovement = m0Diff < 0;
-                      const allIsImprovement = allDiff < 0;
+                      // Industry Value has inverse logic: increase is good, decrease is bad
+                      const isIndustryValue = costName === 'Industry Value';
+                      const m0IsImprovement = isIndustryValue ? m0Diff > 0 : m0Diff < 0;
+                      const allIsImprovement = isIndustryValue ? allDiff > 0 : allDiff < 0;
+                      
+                      // For display: costs should show - for decrease (good), + for increase (bad)
+                      // Industry value should show + for increase (good), - for decrease (bad)
+                      const m0Sign = isIndustryValue ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+');
+                      const allSign = isIndustryValue ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+');
                       
                       return (
                         <tr key={costName} className="hover:bg-gray-50">
@@ -165,36 +174,30 @@ export function CostsPanel() {
                             </div>
                           </td>
                           <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
-                            {prevM0Item ? formatCurrency(prevM0Item.displayValue) : '—'}
+                            {baseM0Value !== 0 ? formatCurrency(baseM0Value) : '—'}
                           </td>
                           <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
-                            m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                            !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
-                            {newM0Item ? (
+                            {hasSnapshot && newM0Value !== 0 ? (
                               <div>
-                                <div>{formatCurrency(newM0Item.displayValue)}</div>
-                                {hasSnapshot && m0Diff !== 0 && (
-                                  <div className="text-xs">
-                                    {m0IsImprovement ? '-' : '+'}{formatCurrency(Math.abs(m0Diff))}
-                                  </div>
-                                )}
+                                <div className="text-xs">
+                                  {m0Sign}{formatCurrency(Math.abs(m0Diff))}
+                                </div>
                               </div>
                             ) : '—'}
                           </td>
                           <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
-                            {prevItem ? formatCurrency(prevItem.displayValue) : '—'}
+                            {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
                           </td>
                           <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
-                            allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                            !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
-                            {newItem ? (
+                            {hasSnapshot && newAllValue !== 0 ? (
                               <div>
-                                <div>{formatCurrency(newItem.displayValue)}</div>
-                                {hasSnapshot && allDiff !== 0 && (
-                                  <div className="text-xs">
-                                    {allIsImprovement ? '-' : '+'}{formatCurrency(Math.abs(allDiff))}
-                                  </div>
-                                )}
+                                <div className="text-xs">
+                                  {allSign}{formatCurrency(Math.abs(allDiff))}
+                                </div>
                               </div>
                             ) : '—'}
                           </td>
@@ -204,30 +207,34 @@ export function CostsPanel() {
                     <tr className="bg-gray-100 font-bold">
                       <td className="border border-gray-300 px-3 py-2 text-gray-900">Total Cost</td>
                       <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
-                        {formatCurrency(previousCost_m0)}
+                        {formatCurrency(hasSnapshot ? baseCost_m0 : newCost_m0)}
                       </td>
                       <td className={`border border-gray-300 px-3 py-2 text-center ${
-                        state.taskSnapshot.length > 0 && isImprovement_m0 ? 'text-green-700 bg-green-100' : state.taskSnapshot.length > 0 && !isImprovement_m0 ? 'text-red-700 bg-red-100' : 'text-gray-900 bg-gray-50'
+                        !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
                       }`}>
-                        <div>{formatCurrency(newCost_m0)}</div>
-                        {state.taskSnapshot.length > 0 && (
-                          <div className="text-xs font-normal">
-                            {isImprovement_m0 ? '-' : '+'}{formatCurrency(Math.abs(costDifference_m0))} ({percentageChange_m0}%)
+                        {hasSnapshot ? (
+                          <div>
+                            <div>{formatCurrency(newCost_m0)}</div>
+                            <div className="text-xs font-normal">
+                              {isImprovement_m0 ? '-' : '+'}{formatCurrency(Math.abs(costDifference_m0))} ({percentageChange_m0}%)
+                            </div>
                           </div>
-                        )}
+                        ) : '—'}
                       </td>
                       <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
-                        {formatCurrency(previousCost)}
+                        {formatCurrency(hasSnapshot ? baseCost : newCost)}
                       </td>
                       <td className={`border border-gray-300 px-3 py-2 text-center ${
-                        state.taskSnapshot.length > 0 && isImprovement ? 'text-green-700 bg-green-100' : state.taskSnapshot.length > 0 && !isImprovement ? 'text-red-700 bg-red-100' : 'text-gray-900 bg-gray-50'
+                        !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
                       }`}>
-                        <div>{formatCurrency(newCost)}</div>
-                        {state.taskSnapshot.length > 0 && (
-                          <div className="text-xs font-normal">
-                            {isImprovement ? '-' : '+'}{formatCurrency(Math.abs(costDifference))} ({percentageChange}%)
+                        {hasSnapshot ? (
+                          <div>
+                            <div>{formatCurrency(newCost)}</div>
+                            <div className="text-xs font-normal">
+                              {isImprovement ? '-' : '+'}{formatCurrency(Math.abs(costDifference))} ({percentageChange}%)
+                            </div>
                           </div>
-                        )}
+                        ) : '—'}
                       </td>
                     </tr>
                   </tbody>
