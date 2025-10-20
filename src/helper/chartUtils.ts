@@ -235,23 +235,23 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         return total + taskCost;
     }, 0);
     
-    console.log("Total Harvester Costs: ", harvesterCosts);
-    console.log("Total Forwarder Costs: ", forwarderCosts);
-    console.log("Total Traveling Costs: ", travelingCosts);
+    // console.log("Total Harvester Costs: ", harvesterCosts);
+    // console.log("Total Forwarder Costs: ", forwarderCosts);
+    // console.log("Total Traveling Costs: ", travelingCosts);
 
-    console.groupCollapsed("Harvester Cost Calcs");
-    console.log(harvesterCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Harvester Cost Calcs");
+    // console.log(harvesterCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.groupCollapsed("Forwarder Cost Calcs");
-    console.log(forwarderCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Forwarder Cost Calcs");
+    // console.log(forwarderCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.groupCollapsed("Traveling Cost Calcs");
-    console.log(travelingCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Traveling Cost Calcs");
+    // console.log(travelingCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.log("");
+    // console.log("");
 
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
@@ -289,17 +289,17 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
             }
         }
     }
-    console.log("Total Wheeling Cost: ", wheelingCosts);
-    console.groupCollapsed("Wheeling Cost Calcs")
-    console.log(wheelingCalcs.join('\n'));
-    console.groupEnd();
+    // console.log("Total Wheeling Cost: ", wheelingCosts);
+    // console.groupCollapsed("Wheeling Cost Calcs")
+    // console.log(wheelingCalcs.join('\n'));
+    // console.groupEnd();
     
-    console.log("Total Trailer Cost: ", trailerCosts);
-    console.groupCollapsed("Trailer Cost Calcs")
-    console.log(trailerCalcs.join('\n'));
-    console.groupEnd();
+    // console.log("Total Trailer Cost: ", trailerCosts);
+    // console.groupCollapsed("Trailer Cost Calcs")
+    // console.log(trailerCalcs.join('\n'));
+    // console.groupEnd();
 
-    console.log("");
+    // console.log("");
 
     // Demand Costs
     // Get inventory balance
@@ -327,16 +327,16 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         }
     }).reduce((sum, val) => sum + val, 0);
     
-    console.log("Total Demand cost: ", demandCosts);
-    console.groupCollapsed("Demand Cost Calcs");
-    console.log(demandCostCalc.join('\n'));
-    console.groupEnd();
+    // console.log("Total Demand cost: ", demandCosts);
+    // console.groupCollapsed("Demand Cost Calcs");
+    // console.log(demandCostCalc.join('\n'));
+    // console.groupEnd();
 
-    console.groupCollapsed("Balance");
-    console.log(balance);
-    console.groupEnd();
+    // console.groupCollapsed("Balance");
+    // console.log(balance);
+    // console.groupEnd();
 
-    console.log("");    
+    // console.log("");    
 
     let industryValueCalcs: string[] = [`balance[p.Product] * d.value_prod or just 0`];
     
@@ -351,10 +351,10 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         }
     }).reduce((sum, val) => sum + val, 0);
 
-    console.log("Total Industry Value: ", industryValue);
-    console.groupCollapsed("Industry Value Calc");
-    console.log(industryValueCalcs.join('\n'));
-    console.groupEnd();
+    // console.log("Total Industry Value: ", industryValue);
+    // console.groupCollapsed("Industry Value Calc");
+    // console.log(industryValueCalcs.join('\n'));
+    // console.groupEnd();
 
     return {
         harvesterCosts: harvesterCosts,

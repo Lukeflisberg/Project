@@ -161,7 +161,7 @@ export function isInInvalidPeriod(task: Task, startHour: number, endHour: number
 export function getTaskColor(task: Task, teamColorEntry: string | undefined): string {
   const teamColor = teamColorEntry ?? "#5F8A8B";
   const colorMap: Record<string, string> = {
-    '�A': '#f59e0b', // amber-500
+    // '�A': '#f59e0b', // amber-500
     'n/a': teamColor, // fallback to team color
   };
   

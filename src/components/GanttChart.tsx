@@ -1201,7 +1201,7 @@ export function GanttChart() {
 
           {/* Sticky total duration heading */}
           <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
-            d
+            eff
           </div>
 
           {/* Scrollable duration rows */}
@@ -1472,9 +1472,6 @@ export function GanttChart() {
                           width: `${100 - (((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`
                         }}
                       >
-                        <span className="truncate w-full text-center text-[10px] leading-none">
-                          {task.task.id}
-                        </span>
                       </div>
 
                       {/* Tooltip with fade + upward slide */}

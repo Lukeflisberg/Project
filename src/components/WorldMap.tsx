@@ -8,8 +8,8 @@ import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from 
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
-const DEFAULT_POSITION: {x: number, y: number} = { x: 1156, y: 66};
-const DEFAULT_SIZE: {width: number, height: number} = { width: 750, height: 475 };
+const DEFAULT_POSITION: { x: number, y: number } = { x: 1156, y: 66 };
+const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 475 };
 
 // Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
@@ -75,7 +75,7 @@ export function WorldMap() {
     setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 300);
-    
+
   }, [isMaximized, size]);
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export function WorldMap() {
 
     const handleMouseDown = (e: MouseEvent) => {
       const target: HTMLElement = e.target as HTMLElement;
-      
+
       // Only allow dragging if not clicking on the map container itself
       if (target.closest('.leaflet-container')) return;
 
@@ -99,7 +99,7 @@ export function WorldMap() {
           y: e.clientY - dragStartRef.current.y
         });
       };
-      
+
       const handleMouseUp = () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
@@ -316,16 +316,16 @@ export function WorldMap() {
 
     // Get periods that belong to the first month
     const firstMonthPeriods = state.periods.filter(p => firstMonth.periods.includes(p.id));
-    
+
     // Get the boundaries for the first month
     const firstMonthStart = 0;
     const firstMonthEnd = firstMonthPeriods.reduce((sum, period) => sum + period.length_h, 0);
 
     console.log(firstMonthStart, firstMonthEnd);
 
-    const visibleTasks: Task[] = getVisibleTasks().filter(task => 
-      task.duration.teamId === state.selectedTeamId && 
-      task.duration.startHour >= firstMonthStart && 
+    const visibleTasks: Task[] = getVisibleTasks().filter(task =>
+      task.duration.teamId === state.selectedTeamId &&
+      task.duration.startHour >= firstMonthStart &&
       task.duration.startHour < firstMonthEnd
     );
 
@@ -355,8 +355,8 @@ export function WorldMap() {
   const handleMarkerClick = (taskId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_TASK',
-      taskId, 
-      toggle_team: state.selectedTeamId 
+      taskId,
+      toggle_team: state.selectedTeamId
     });
     console.log(`Click on marker ${taskId}`);
   };
@@ -398,8 +398,8 @@ export function WorldMap() {
 
   // Toggle avvForm filter
   const toggleAvvForm = (form: string) => {
-    setSelectedAvvForm(prev => 
-      prev.includes(form) 
+    setSelectedAvvForm(prev =>
+      prev.includes(form)
         ? prev.filter(f => f !== form)
         : [...prev, form]
     );
@@ -407,8 +407,8 @@ export function WorldMap() {
 
   // Toggle barighet filter
   const toggleBarighet = (barighet: string) => {
-    setSelectedBarighet(prev => 
-      prev.includes(barighet) 
+    setSelectedBarighet(prev =>
+      prev.includes(barighet)
         ? prev.filter(b => b !== barighet)
         : [...prev, barighet]
     );
@@ -451,7 +451,7 @@ export function WorldMap() {
 
     useEffect(() => {
       if (state.selectedTaskId) {
-        const task: Task | undefined = state.tasks.find(t => t.task.id=== state.selectedTaskId);
+        const task: Task | undefined = state.tasks.find(t => t.task.id === state.selectedTaskId);
         if (task) {
           try {
             // Convert SWEREF99 to WGS84
@@ -469,7 +469,7 @@ export function WorldMap() {
               } else {
                 console.log(`Task ${task.task.id} is already in view, not moving map`);
               }
-            }            
+            }
           } catch (error) {
             console.error('Error navigating to task:', error);
           }
@@ -516,19 +516,25 @@ export function WorldMap() {
 
       let isDrag = false;
       let cloneElement: HTMLElement | null = null;
+      let hasMoved = false;
+      let startX = 0;
+      let startY = 0;
 
       const handleMouseDown = (e: L.LeafletMouseEvent) => {
         e.originalEvent.stopPropagation();
         e.originalEvent.preventDefault();
 
         if (state.selectedTaskId !== task.task.id) {
-          dispatch({ 
-            type: 'SET_DRAGGING_TO_GANTT', 
+          dispatch({
+            type: 'SET_DRAGGING_TO_GANTT',
             taskId: task.task.id
           });
         }
 
         isDrag = false;
+        hasMoved = false;
+        startX = e.originalEvent.clientX;
+        startY = e.originalEvent.clientY;
         setIsDragging(true);
 
         if (map?.dragging?.disable) map.dragging.disable();
@@ -541,15 +547,22 @@ export function WorldMap() {
           cloneElement.style.pointerEvents = 'none';
           cloneElement.style.opacity = '0.7';
           cloneElement.style.transform = 'none';
-          
+
           cloneElement.style.left = `${e.originalEvent.clientX}px`;
           cloneElement.style.top = `${e.originalEvent.clientY}px`;
-          
+
           document.body.appendChild(cloneElement);
         }
 
         const handleMouseMove = (e: MouseEvent) => {
-          isDrag = true;
+          const dx = Math.abs(e.clientX - startX);
+          const dy = Math.abs(e.clientY - startY);
+          
+          // Consider it a drag if moved more than 5 pixels
+          if (dx > 5 || dy > 5) {
+            isDrag = true;
+            hasMoved = true;
+          }
 
           if (cloneElement) {
             cloneElement.style.left = `${e.clientX}px`;
@@ -561,7 +574,7 @@ export function WorldMap() {
           setIsDragging(false);
           dispatch({
             type: 'SET_DRAGGING_TO_GANTT',
-            taskId: null 
+            taskId: null
           });
 
           if (cloneElement && cloneElement.parentNode) {
@@ -576,61 +589,72 @@ export function WorldMap() {
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseup', handleMouseUp);
 
-          if (!isDrag) {
+          // If it wasn't a drag (just a click), open the popup
+          if (!hasMoved) {
             handleMarkerClick(task.task.id);
-          }
+            // Manually open the popup
+            marker.openPopup();
+          } else {
+            // It was a drag, handle the drop logic
+            const elementUnderMouse: Element | null = document.elementFromPoint(e.clientX, e.clientY);
+            const ganttChart: Element | null | undefined = elementUnderMouse?.closest('.gantt-chart-container');
 
-          const elementUnderMouse: Element | null = document.elementFromPoint(e.clientX, e.clientY);
-          const ganttChart: Element | null | undefined = elementUnderMouse?.closest('.gantt-chart-container');
-          
-          if (ganttChart) {
-            const teamRow: Element | null | undefined = elementUnderMouse?.closest('[data-team-row]');
+            if (ganttChart) {
+              const teamRow: Element | null | undefined = elementUnderMouse?.closest('[data-team-row]');
 
-            if (teamRow) {
-              const teamId: string | null = teamRow.getAttribute('data-team-id');
+              if (teamRow) {
+                const teamId: string | null = teamRow.getAttribute('data-team-id');
 
-              if (teamId && !isDisallowed(task, teamId)) {
-                const timeline: Element | null = ganttChart.querySelector('.timeline-content');
-                const timelineRect: DOMRect | undefined = timeline?.getBoundingClientRect();
+                if (teamId && !isDisallowed(task, teamId)) {
+                  const timeline: Element | null = ganttChart.querySelector('.timeline-content');
+                  const timelineRect: DOMRect | undefined = timeline?.getBoundingClientRect();
 
-                if (timelineRect) {
-                  const totalHours: number = state.totalHours; 
-                  const filteredTasks: Task[] = state.tasks
-                    .filter(t => t.duration.teamId === teamId)
-                    .sort((a, b) => a.duration.startHour - b.duration.startHour)
+                  if (timelineRect) {
+                    const totalHours: number = state.totalHours;
+                    const filteredTasks: Task[] = state.tasks
+                      .filter(t => t.duration.teamId === teamId)
+                      .sort((a, b) => a.duration.startHour - b.duration.startHour)
 
-                  console.log(`Attempting to move task "${task.task.id}" to team ${teamId}`);
-                  console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
-                  
-                  const result: number | null = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
-                  
-                  if (result !== null) {
-                    console.log(`SUCCESS: Task moved to hour ${result}`);
-                    dispatch({
-                      type: 'UPDATE_TASK_TEAM',
-                      taskId: task.task.id,
-                      newTeamId: teamId
-                    });
-                    dispatch({
-                      type: 'UPDATE_TASK_HOURS',
-                      taskId: task.task.id,
-                      startHour: result,
-                      defaultDuration: task.duration.defaultDuration
-                    });
+                    console.log(`Attempting to move task "${task.task.id}" to team ${teamId}`);
+                    console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
 
-                    // Success popup
-                    alert(`✅ Task successfully placed at hour ${result}`);
-                  } else {
-                    console.log(`FAILED: No valid slot found for task in team ${teamId}`);
-                    console.log(`Reason: No gaps large enough or all slots conflict with invalid periods`);
+                    const result: number | null = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
 
-                    // Failure popup
-                    alert(`❌ Unable to place task\n\nNo valid time slot found in this team.\nTry:\n• Removing or moving other tasks\n• Checking period restrictions\n• Using a different team`);
+                    if (result !== null) {
+                      dispatch({
+                        type: 'UPDATE_TASK_TEAM',
+                        taskId: task.task.id,
+                        newTeamId: teamId
+                      });
+                      dispatch({
+                        type: 'UPDATE_TASK_HOURS',
+                        taskId: task.task.id,
+                        startHour: result,
+                        defaultDuration: task.duration.defaultDuration
+                      });
+                      dispatch({
+                        type: 'TOGGLE_COMPARISON_MODAL',
+                        toggledModal: true
+                      });
+
+                      if (state.taskSnapshot.length === 0) {
+                        dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
+                      }
+
+                      // Success
+                      console.log(`✅ Task successfully placed at hour ${result}`);
+                    } else {
+                      console.log(`FAILED: No valid slot found for task in team ${teamId}`);
+                      console.log(`Reason: No gaps large enough or all slots conflict with invalid periods`);
+
+                      // Failure
+                      console.log(`❌ Unable to place task\n\nNo valid time slot found in this team.\nTry:\n• Removing or moving other tasks\n• Checking period restrictions\n• Using a different team`);
+                    }
                   }
                 }
-              } 
-              else {
-                alert(`❌ Task not allowed in team ${teamId}`);
+                else {
+                  console.log(`❌ Task not allowed in team ${teamId}`);
+                }
               }
             }
           }
@@ -654,14 +678,16 @@ export function WorldMap() {
         ref={markerRef}
         position={wgs84Pos}
         icon={createUnassignedMarkerIcon(
-          getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color), 
+          getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color),
           state.selectedTaskId === task.task.id
         )}
       >
         <Popup>
           <div className="p-2">
             <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
-            <p className="text-sm text-gray-600">Team: Unassigned</p>
+            <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
+            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <MapPin size={12} />
               N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
@@ -679,8 +705,8 @@ export function WorldMap() {
       className={`${isMaximized ? 'fixed inset-0 z-50' : 'absolute z-10'}`}
       style={
         isMaximized
-        ? {}
-        : {
+          ? {}
+          : {
             left: `${position.x}px`,
             top: `${position.y}px`,
             width: `${size.width}px`,
@@ -688,335 +714,313 @@ export function WorldMap() {
           }
       }
     >
-    
-    {/* Resize Handles */}
-    {!isMaximized && (
-      <>
-        {/* Corner handles */}
-        <div
-          onMouseDown={(e) => handleResize(e, 'nw')}
-          className="absolute -top-1 -left-1 w-3 h-3 cursor-nw-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 'ne')}
-          className="absolute -top-1 -right-1 w-3 h-3 cursor-ne-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 'sw')}
-          className="absolute -bottom-1 -left-1 w-3 h-3 cursor-sw-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 'se')}
-          className="absolute -bottom-1 -right-1 w-3 h-3 cursor-se-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        
-        {/* Edge handles */}
-        <div
-          onMouseDown={(e) => handleResize(e, 'n')}
-          className="absolute -top-1 left-8 right-8 h-2 cursor-n-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 's')}
-          className="absolute -bottom-1 left-8 right-8 h-2 cursor-s-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 'w')}
-          className="absolute -left-1 top-8 bottom-8 w-2 cursor-w-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-        <div
-          onMouseDown={(e) => handleResize(e, 'e')}
-          className="absolute -right-1 top-8 bottom-8 w-2 cursor-e-resize z-10 hover:bg-blue-200 transition-colors"
-        />
-      </>
-    )}
-    
-    {/* Heading */}
-    <div
-      ref={containerRef}
-      className="world-map-container bg-white rounded-lg shadow-lg p-4 h-full flex flex-col"
-      style={{ cursor: !isMaximized ? 'move' : 'default' }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <MapIcon className="text-blue-600" width="24" height="24" />
-          <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
-        </div>
-    
-        <div className="flex items-center gap-2 control-buttons">
-          <button
-            onClick={toggleMaximized}
-            className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-            title={isMaximized ? 'Restore' : 'Maximize'}
-          >
-            {isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-          </button>
 
-          <button
-            onClick={handleReset}
-            className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-            title="Reset map size"
-          >
-            <RotateCcw size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Sub Heading */}
-      {/* Team Filters */}
-      <div className="mb-4">
-        <h3 className="text-xs font-semibold text-gray-600 mb-2">Filters</h3>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => handleTeamToggle('all')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              state.selectedTeamId === 'all'
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            All Teams
-          </button>
-          
-          {/* Unassigned Button */}
-          <button 
-            onClick={() => handleNullToggle()}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
-              state.toggledNull === true
-                ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
-                : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
-            }`}
-          >
-            Unassigned
-          </button>
-
-          {/* AvvForm Filter Button */}
-          <div className="relative">
-            <button 
-              onClick={() => {
-                setShowAvvFormPopup(!showAvvFormPopup);
-                setShowBarighetPopup(false);
-              }}
-              className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
-            >
-              AvvForm ({selectedAvvForm.length})
-            </button>
-            
-            {showAvvFormPopup && (
-              <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] z-50 style={{ zIndex: 9999 }}">
-                <div className="space-y-2">
-                  {['�A', 'GA', 'SA'].map(form => (
-                    <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                      <input
-                        type="checkbox"
-                        checked={selectedAvvForm.includes(form)}
-                        onChange={() => toggleAvvForm(form)}
-                        className="w-4 h-4 cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-700">{form}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Barighet Filter Button */}
-          <div className="relative">
-            <button 
-              onClick={() => {
-                setShowBarighetPopup(!showBarighetPopup);
-                setShowAvvFormPopup(false);
-              }}
-              className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-teal-500 text-white hover:bg-teal-600 flex items-center gap-1"
-            >
-              Barighet ({selectedBarighet.length})
-            </button>
-            
-            {showBarighetPopup && (
-              <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] max-h-[300px] overflow-y-auto z-50 style={{ zIndex: 9999 }}">
-                <div className="space-y-2">
-                  {getUniqueBarighet().map(barighet => (
-                    <label key={barighet} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                      <input
-                        type="checkbox"
-                        checked={selectedBarighet.includes(barighet)}
-                        onChange={() => toggleBarighet(barighet)}
-                        className="w-4 h-4 cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-700">{barighet}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Map Container */}
-      <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default', zIndex: 1 }}>
-        <MapContainer
-          ref={mapRef}
-          center={[62.0, 15.0]}
-          zoom={5}
-          maxZoom={19}
-          style={{ height: '100%', width: '100%' }}
-          className="rounded-lg"
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      {/* Resize Handles */}
+      {!isMaximized && (
+        <>
+          {/* Corner handles */}
+          <div
+            onMouseDown={(e) => handleResize(e, 'nw')}
+            className="absolute -top-1 -left-1 w-3 h-3 cursor-nw-resize z-10 hover:bg-blue-200 transition-colors"
           />
-          <ResizeHandler />
-          <MapController />
-          <DeselectOnMapClick onDeselect={() => handleMarkerClick(null)} />
-          
-          {getTaskConnectionLines().map(line => (
-            <PolyLine
-              key={line.id}
-              positions={line.positions}
-              color={line.color}
-              weight={line.weight}
-              opacity={line.opacity}
-            />
-          ))}
+          <div
+            onMouseDown={(e) => handleResize(e, 'ne')}
+            className="absolute -top-1 -right-1 w-3 h-3 cursor-ne-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+          <div
+            onMouseDown={(e) => handleResize(e, 'sw')}
+            className="absolute -bottom-1 -left-1 w-3 h-3 cursor-sw-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+          <div
+            onMouseDown={(e) => handleResize(e, 'se')}
+            className="absolute -bottom-1 -right-1 w-3 h-3 cursor-se-resize z-10 hover:bg-blue-200 transition-colors"
+          />
 
-          {getVisibleTeams().map(team => {
-            const isSelectedTeam: boolean = state.selectedTeamId === team.id;
-            const wgs84Pos: [number, number] = swerefToWGS84(team.lat, team.lon);
-            return (
-              <Marker
-                key={`homebase-${team.id}`}
-                position={wgs84Pos}
-                icon={createHomeBaseIcon(team.color, isSelectedTeam)}
-                eventHandlers={{ click: () => handleTeamToggle(team.id) }}
+          {/* Edge handles */}
+          <div
+            onMouseDown={(e) => handleResize(e, 'n')}
+            className="absolute -top-1 left-8 right-8 h-2 cursor-n-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+          <div
+            onMouseDown={(e) => handleResize(e, 's')}
+            className="absolute -bottom-1 left-8 right-8 h-2 cursor-s-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+          <div
+            onMouseDown={(e) => handleResize(e, 'w')}
+            className="absolute -left-1 top-8 bottom-8 w-2 cursor-w-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+          <div
+            onMouseDown={(e) => handleResize(e, 'e')}
+            className="absolute -right-1 top-8 bottom-8 w-2 cursor-e-resize z-10 hover:bg-blue-200 transition-colors"
+          />
+        </>
+      )}
+
+      {/* Heading */}
+      <div
+        ref={containerRef}
+        className="world-map-container bg-white rounded-lg shadow-lg p-4 h-full flex flex-col"
+        style={{ cursor: !isMaximized ? 'move' : 'default' }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <MapIcon className="text-blue-600" width="24" height="24" />
+            <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
+          </div>
+
+          <div className="flex items-center gap-2 control-buttons">
+            <button
+              onClick={toggleMaximized}
+              className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+              title={isMaximized ? 'Restore' : 'Maximize'}
+            >
+              {isMaximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="p-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+              title="Reset map size"
+            >
+              <RotateCcw size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Sub Heading */}
+        {/* Team Filters */}
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-gray-600 mb-2">Filters</h3>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleTeamToggle('all')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${state.selectedTeamId === 'all'
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+            >
+              All Teams
+            </button>
+
+            {/* Unassigned Button */}
+            <button
+              onClick={() => handleNullToggle()}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${state.toggledNull === true
+                  ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
+                  : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
+                }`}
+            >
+              Unassigned
+            </button>
+
+            {/* AvvForm Filter Button */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowAvvFormPopup(!showAvvFormPopup);
+                  setShowBarighetPopup(false);
+                }}
+                className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
               >
-                <Popup>
-                  <div className="p-2">
-                    <h3 className="font-semibold text-gray-800">Team {team.id}</h3>
-                    <p className="text-xs text-gray-600">Home base</p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                      <MapPin size={12} />
-                      N: {team.lat.toFixed(2)}, E: {team.lon.toFixed(2)}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+                AvvForm ({selectedAvvForm.length})
+              </button>
 
-          {(() => {
-            if (state.selectedTeamId === 'all') {
-              const assignedTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId !== null);
-              const unassignedTasks: Task[] = state.toggledNull
+              {showAvvFormPopup && (
+                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] z-50 style={{ zIndex: 9999 }}">
+                  <div className="space-y-2">
+                    {['�A', 'GA', 'SA'].map(form => (
+                      <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedAvvForm.includes(form)}
+                          onChange={() => toggleAvvForm(form)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-sm text-gray-700">{form}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Barighet Filter Button */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowBarighetPopup(!showBarighetPopup);
+                  setShowAvvFormPopup(false);
+                }}
+                className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-teal-500 text-white hover:bg-teal-600 flex items-center gap-1"
+              >
+                Barighet ({selectedBarighet.length})
+              </button>
+
+              {showBarighetPopup && (
+                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] max-h-[300px] overflow-y-auto z-50 style={{ zIndex: 9999 }}">
+                  <div className="space-y-2">
+                    {getUniqueBarighet().map(barighet => (
+                      <label key={barighet} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedBarighet.includes(barighet)}
+                          onChange={() => toggleBarighet(barighet)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-sm text-gray-700">{barighet}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Map Container */}
+        <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default', zIndex: 1 }}>
+          <MapContainer
+            ref={mapRef}
+            center={[62.0, 15.0]}
+            zoom={5}
+            maxZoom={19}
+            style={{ height: '100%', width: '100%' }}
+            className="rounded-lg"
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <ResizeHandler />
+            <MapController />
+            <DeselectOnMapClick onDeselect={() => handleMarkerClick(null)} />
+
+            {getTaskConnectionLines().map(line => (
+              <PolyLine
+                key={line.id}
+                positions={line.positions}
+                color={line.color}
+                weight={line.weight}
+                opacity={line.opacity}
+              />
+            ))}
+
+            {getVisibleTeams().map(team => {
+              const isSelectedTeam: boolean = state.selectedTeamId === team.id;
+              const wgs84Pos: [number, number] = swerefToWGS84(team.lat, team.lon);
+              return (
+                <Marker
+                  key={`homebase-${team.id}`}
+                  position={wgs84Pos}
+                  icon={createHomeBaseIcon(team.color, isSelectedTeam)}
+                  eventHandlers={{ click: () => handleTeamToggle(team.id) }}
+                >
+                  <Popup>
+                    <div className="p-2">
+                      <h3 className="font-semibold text-gray-800">Team {team.id}</h3>
+                      <p className="text-xs text-gray-600">Home base</p>
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                        <MapPin size={12} />
+                        N: {team.lat.toFixed(2)}, E: {team.lon.toFixed(2)}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+
+            {(() => {
+              if (state.selectedTeamId === 'all') {
+                const assignedTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId !== null);
+                const unassignedTasks: Task[] = state.toggledNull
+                  ? getVisibleTasks().filter(task => task.duration.teamId === null)
+                  : [];
+
+                return (
+                  <>
+                    {assignedTasks.map((task) => {
+                      const isSelected: boolean = state.selectedTaskId === task.task.id;
+                      const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
+                      const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+
+                      return (
+                        <Marker
+                          key={task.task.id}
+                          position={wgs84Pos}
+                          icon={createMarkerIcon(teamColor, isSelected)}
+                          eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
+                        >
+                          <Popup>
+                            <div className="p-2">
+                              <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                              <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
+                              <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                              <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                <MapPin size={12} />
+                                N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                              </div>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
+
+                    {unassignedTasks.map(task => (
+                      <DraggableUnassignedMarker key={task.task.id} task={task} />
+                    ))}
+                  </>
+                )
+              }
+
+              const assignedTasks: Task[] = getVisibleTasks()
+                .filter(task => task.duration.teamId === state.selectedTeamId)
+                .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
+              const unassignedTasks = state.toggledNull
                 ? getVisibleTasks().filter(task => task.duration.teamId === null)
                 : [];
 
               return (
                 <>
-                {assignedTasks.map((task) => {
-                  const isSelected: boolean = state.selectedTaskId === task.task.id;
-                  const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
-                  const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+                  {assignedTasks.map((task, index) => {
+                    const isSelected: boolean = state.selectedTaskId === task.task.id;
+                    const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
+                    const markerIndex: number = index + 1;
+                    const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
-                  return (
-                  <Marker
-                    key={task.task.id}
-                    position={wgs84Pos}
-                    icon={createMarkerIcon(teamColor, isSelected)} 
-                    eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
-                  >
-                    <Popup>
-                      <div className="p-2 space-y-1">
-                        <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
-                        <div className="text-xs text-gray-700">
-                          <div><span className="font-medium">Task ID:</span> {task.task.id}</div>
-                          <div><span className="font-medium">Team:</span> {task.duration.teamId ? (state.teams.find(p => p.id=== task.duration.teamId)?.id|| task.duration.teamId) : 'Unassigned'}</div>
-                          <div><span className="font-medium">Start Hour:</span> {task.duration.startHour}</div>
-                          <div><span className="font-medium">Default Duration:</span> {task.duration.defaultDuration}h</div>
-                          <div><span className="font-medium">Active Duration:</span> {
-                              task.duration.teamId && typeof task.duration.specialTeams?.[task.duration.teamId] === 'number'
-                                ? task.duration.specialTeams[task.duration.teamId]
-                                : task.duration.defaultDuration
-                            }h</div>
-                          <div><span className="font-medium">Setup Duration:</span> {task.duration.defaultSetup}h</div>
-                          <div><span className="font-medium">Total Duration:</span> {
-                              task.duration.teamId && typeof task.duration.specialTeams?.[task.duration.teamId] === 'number'
-                                ? (task.duration.specialTeams[task.duration.teamId] as number) + task.duration.defaultSetup
-                                : task.duration.defaultDuration + task.duration.defaultSetup
-                            }h</div>
-                          <div><span className="font-medium">Special Teams:</span> {
-                              task.duration.specialTeams
-                                ? Object.entries(task.duration.specialTeams).map(([team, val]) => `${team}: ${val}`).join(', ')
-                                : 'None'
-                            }</div>
-                          <div><span className="font-medium">Coordinates:</span> N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}</div>
-                          <div><span className="font-medium">Invalid Periods:</span> {task.duration.invalidPeriods?.length ? task.duration.invalidPeriods.join(', ') : 'None'}</div>
-                        </div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                  );
-                })}
-
-                {unassignedTasks.map(task => (
-                  <DraggableUnassignedMarker key={task.task.id} task={task} />
-                ))}
-                </>
-              )
-            }
-
-            const assignedTasks: Task[] = getVisibleTasks()
-              .filter(task => task.duration.teamId === state.selectedTeamId)
-              .sort((a, b) => a.duration.startHour - b.duration.startHour);
-
-            const unassignedTasks = state.toggledNull
-              ? getVisibleTasks().filter(task => task.duration.teamId === null)
-              : [];
-
-            return (
-              <>
-                {assignedTasks.map((task, index) => {
-                  const isSelected: boolean = state.selectedTaskId === task.task.id;
-                  const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
-                  const markerIndex: number = index + 1;
-                  const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
-
-                  return (
-                    <Marker
-                      key={task.task.id}
-                      position={wgs84Pos}
-                      icon={createMarkerIcon(teamColor, isSelected, markerIndex)}
-                      eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
-                    >
-                      <Popup>
-                        <div className="p-2">
-                          <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
-                          <p className="text-sm text-gray-600">
-                            Team:{' '}
-                            {task.duration.teamId
-                              ? state.teams.find(p => p.id=== task.duration.teamId)?.id|| 'Unknown'
-                              : 'Unassigned'}
-                          </p>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                            <MapPin size={12} />
-                            N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                    return (
+                      <Marker
+                        key={task.task.id}
+                        position={wgs84Pos}
+                        icon={createMarkerIcon(teamColor, isSelected, markerIndex)}
+                        eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
+                      >
+                        <Popup>
+                          <div className="p-2">
+                            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                            <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
+                            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <MapPin size={12} />
+                              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                            </div>
                           </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
 
-                {unassignedTasks.map(task => (
-                  <DraggableUnassignedMarker key={task.task.id} task={task} />
-                ))}
-              </>
-            );
-          })()}
-        </MapContainer>
+                  {unassignedTasks.map(task => (
+                    <DraggableUnassignedMarker key={task.task.id} task={task} />
+                  ))}
+                </>
+              );
+            })()}
+          </MapContainer>
+        </div>
       </div>
     </div>
-  </div>
   );
 }
