@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam } from '../helper/chartUtils';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam, getMonthStartEnd } from '../helper/chartUtils';
 import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
 
 // Color palette
@@ -260,7 +260,8 @@ function MonthlyEfficiencyChart() {
 
       state.teams.forEach(team => {
         const teamTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-        const used = calcMonthlyDurations(month, teamTasks, boundaries);
+        const monthStartEnd = getMonthStartEnd(month, createPeriodBoundaries(state.periods));
+        const used = calcMonthlyDurations(monthStartEnd, teamTasks);
         const efficiency = (used / totalAvailable) * 100;
         
         totalEfficiency += efficiency;

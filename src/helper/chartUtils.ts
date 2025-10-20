@@ -145,30 +145,37 @@ export const calcDurationOf = (tasks: Task[]): number => {
     return tasks.reduce((sum, task) => sum + effectiveDuration(task), 0);
 };
 
-export function calcMonthlyDurations(
-    month: Month,
-    tasks: Task[],
-    periodBoundaries: PeriodBoundary[]
-): number {
-    // Guard: if month has no periods, total duration is zero
-    if (!month.periods || month.periods.length === 0) return 0;
+export const getMonthStartEnd = (month: Month, periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
+    if (!month || !month.periods || month.periods.length === 0) {
+        return { start: 0, end: 0 };
+    }
 
     // Identify the first and last period IDs for the month
-    const firstId: string = month.periods[0];
-    const lastId: string = month.periods[month.periods.length - 1];
+    const firstId = month.periods[0];
+    const lastId = month.periods[month.periods.length - 1];
 
     const firstIdx: number = periodBoundaries.findIndex(item => item.id === firstId);
     const lastIdx: number = periodBoundaries.findIndex(item => item.id === lastId);
 
     // Validate lookups (firstIdx must be >= 1 to allow access to the start boundary)
     if (firstIdx <= 0 || lastIdx < 0) {
-        console.warn("calcMonthlyDurations: invalid period IDs for month", { firstId, lastId });
-        return 0;
+        console.warn("cost panel: invalid period IDs for month", { firstId, lastId });
+        return { start: 0, end: 0 };
     }
 
+    return {
+        start: periodBoundaries[firstIdx - 1].total, // start of first period in month
+        end: periodBoundaries[lastIdx].total        // end of last period in month
+    };
+}
+
+export function calcMonthlyDurations(
+    monthStartEnd: { start: number, end: number },
+    tasks: Task[],
+): number {
     // Compute the month window [monthStart, monthEnd)
-    const monthStart: number = periodBoundaries[firstIdx - 1].total; // start of first period in month
-    const monthEnd: number = periodBoundaries[lastIdx].total;        // end of last period in month
+    const monthStart: number = monthStartEnd.start;
+    const monthEnd: number = monthStartEnd.end;
 
     // Sum overlap durations for tasks intersecting with the month window
     let duration = 0;
@@ -249,7 +256,7 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
     let trailerCosts: number = 0;
-    let trailerCalcs: string[] = [`team.fixMovingCostWithTrailer * (distance / team.trailerAverageSpeed) * team.trailerCost`];
+    let trailerCalcs: string[] = [`team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost`];
     let wheelingCalcs: string[] = [`distance * team.fixMovingCostWithoutTrailer`];
 
     for (const team of teams) {
@@ -274,8 +281,8 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
             }
             
             if (distance > team.maxWheelingDist_km) {
-                trailerCosts += team.fixMovingCostWithTrailer * (distance / team.trailerAverageSpeed) * team.trailerCost;
-                trailerCalcs.push(`${team.fixMovingCostWithTrailer} * (${distance} / ${team.trailerAverageSpeed}) * ${team.trailerCost}`);
+                trailerCosts += team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost;
+                trailerCalcs.push(`${team.fixMovingCostWithTrailer} + (${distance} / ${team.trailerAverageSpeed}) * ${team.trailerCost}`);
             } else {
                 wheelingCosts += distance * team.fixMovingCostWithoutTrailer
                 wheelingCalcs.push(`${distance} * ${team.fixMovingCostWithoutTrailer}`);

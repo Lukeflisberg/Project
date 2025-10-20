@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam, calcTotalCostDistribution } from '../helper/chartUtils';
+import { calcTotalCostDistribution, createPeriodBoundaries, getMonthStartEnd } from '../helper/chartUtils';
 import { ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, Check, X } from 'lucide-react';
+import { endHour } from '../helper/taskUtils';
+import { Task } from '../types';
 
 // Pie chart colors
 const PIE_COLORS = [
@@ -17,18 +19,31 @@ const PIE_COLORS = [
 
 export function CostsPanel() {
   const { state, dispatch } = useApp();
+  const [selectedView, setSelectedView] = useState<'new' | 'new_m0' | 'previous' | 'previous_m0'>('new');
 
-  const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
+  const isEmpty: boolean = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
+  const { start, end } = getMonthStartEnd(state.months[0], createPeriodBoundaries(state.periods));
+
+  const firstMonthTasks: Task[] = state.tasks.filter(t => t.duration.startHour >= start && endHour(t) <= end);
+  const firstMonthTaskSnapshot: Task[] = state.taskSnapshot.filter(t => t.duration.startHour >= start && endHour(t) <= end);
 
   // Calculate costs
   const newCost = useMemo(() => 
     calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances).total,
     [state.tasks, state.teams, state.demand, state.periods, state.distances]
   );
+  const newCost_m0 = useMemo(() => 
+    calcTotalCostDistribution(firstMonthTasks, state.teams, state.demand, state.periods, state.distances).total,
+    [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]
+  );
 
   const previousCost = useMemo(() => 
     calcTotalCostDistribution(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
     [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]
+  );
+  const previousCost_m0 = useMemo(() => 
+    calcTotalCostDistribution(firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
+    [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]
   );
 
   const costDifference = newCost - previousCost;
@@ -37,9 +52,15 @@ export function CostsPanel() {
     : 'inf';
   const isImprovement = costDifference < 0;
 
-  // Pie chart data
-  const pieData = useMemo(() => {
-    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
+  const costDifference_m0 = newCost_m0 - previousCost_m0;
+  const percentageChange_m0 = previousCost_m0 > 0
+    ? ((costDifference_m0 / previousCost_m0) * 100).toFixed(0)
+    : 'inf';
+  const isImprovement_m0 = costDifference_m0 < 0;
+
+  // Pie chart data for all views
+  const getPieData = (tasks: Task[]) => {
+    const costData = calcTotalCostDistribution(tasks, state.teams, state.demand, state.periods, state.distances);
     
     if (!costData) return [];
 
@@ -56,12 +77,28 @@ export function CostsPanel() {
     ].filter(item => item.value > 0);
 
     return costs;
-  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
+  };
 
-  const total = useMemo(() => {
-    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
-    return costData?.total ?? 0;
-  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
+  const pieDataNew = useMemo(() => getPieData(state.tasks), [state.tasks, state.teams, state.demand, state.periods, state.distances]);
+  const pieDataNew_m0 = useMemo(() => getPieData(firstMonthTasks), [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]);
+  const pieDataPrevious = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]);
+  const pieDataPrevious_m0 = useMemo(() => getPieData(firstMonthTaskSnapshot), [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]);
+
+  // Get current view data
+  const getCurrentViewData = () => {
+    switch (selectedView) {
+      case 'new':
+        return { pieData: pieDataNew, total: newCost, label: 'New Configuration (All Periods)' };
+      case 'new_m0':
+        return { pieData: pieDataNew_m0, total: newCost_m0, label: 'New Configuration (First Month)' };
+      case 'previous':
+        return { pieData: pieDataPrevious, total: previousCost, label: 'Previous Configuration (All Periods)' };
+      case 'previous_m0':
+        return { pieData: pieDataPrevious_m0, total: previousCost_m0, label: 'Previous Configuration (First Month)' };
+    }
+  };
+
+  const { pieData, total, label } = getCurrentViewData();
 
   // Handlers
   function onAccept() {
@@ -127,24 +164,66 @@ export function CostsPanel() {
         ) : (
           <div className="flex gap-2">
 
-            {/* Left: Cost Distribution Chart */}
+            {/* Left: Cost Distribution Chart with View Selector */}
             <div className="flex-1">
+              {/* View Selector Tabs */}
+              <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setSelectedView('new')}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                    selectedView === 'new'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  New (All)
+                </button>
+                <button
+                  onClick={() => setSelectedView('new_m0')}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                    selectedView === 'new_m0'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  New (M0)
+                </button>
+                <button
+                  onClick={() => setSelectedView('previous')}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                    selectedView === 'previous'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Previous (All)
+                </button>
+                <button
+                  onClick={() => setSelectedView('previous_m0')}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                    selectedView === 'previous_m0'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Previous (M0)
+                </button>
+              </div>
+
+              {/* Current View Label */}
+              <div className="text-sm font-medium text-gray-700 mb-2 px-1">
+                {label}
+              </div>
+
               {pieData.length === 0 ? (
                 <div className="flex items-center justify-center h-64 text-sm text-gray-500">
                   No cost data available.
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
+                  
                   {/* Legend */}
                   <div className="flex-shrink-0 w-42">
-                    <div className="flex items-center gap-2 text-sm mb-2">
-                      <div className="w-4 h-4 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-gray-900">Total Cost</div>
-                        <div className="font-bold text-gray-900">{formatCurrency(total)}</div>
-                        <div className="mt-1 pt-1 border-t border-gray-300"></div>
-                      </div>
-                    </div>
                     {pieData.map((item, index) => (
                       <div key={item.name} className="flex items-center gap-2 text-sm mb-1">
                         <div 
@@ -157,29 +236,15 @@ export function CostsPanel() {
                         </div>
                       </div>
                     ))}
-                  </div>
-                  
-                  {/* Pie Chart */}
-                  <div className="flex-1 h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={100}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name }) => `${name}`}
-                          labelLine={true}
-                        >
-                          {pieData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<CustomTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="mt-2 pt-2 border-t border-gray-300">
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="w-4 h-4 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-gray-900">Total Cost</div>
+                          <div className="font-bold text-gray-900">{formatCurrency(total)}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -188,31 +253,43 @@ export function CostsPanel() {
             {/* Right: Cost Comparison */}
             <div className="flex-shrink-0 w-72">
               <div className="space-y-3">
-                {/* Previous Cost */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-sm text-gray-600">Previous Configuration</div>
-                  <div className="text-2xl font-bold text-gray-800">
-                    {formatCurrency(previousCost)}
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-gray-50 rounded-lg p-2">
+                    <div className="text-xs text-gray-600">Previous (All)</div>
+                    <div className="text-lg font-bold text-gray-800">
+                      {formatCurrency(previousCost)}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2">
+                    <div className="text-xs text-gray-600">Previous (M0)</div>
+                    <div className="text-lg font-bold text-gray-800">
+                      {formatCurrency(previousCost_m0)}
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-2 ${isImprovement ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <div className="text-xs text-gray-600">New (All)</div>
+                    <div className={`text-lg font-bold ${isImprovement ? 'text-green-700' : 'text-red-700'}`}>
+                      {formatCurrency(newCost)}
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-2 ${isImprovement_m0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <div className="text-xs text-gray-600">New (M0)</div>
+                    <div className={`text-lg font-bold ${isImprovement_m0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {formatCurrency(newCost_m0)}
+                    </div>
                   </div>
                 </div>
 
-                {/* New Cost */}
-                <div className={`rounded-lg p-2 ${isImprovement ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <div className="text-sm text-gray-600">New Configuration</div>
-                  <div className={`text-2xl font-bold ${isImprovement ? 'text-green-700' : 'text-red-700'}`}>
-                    {formatCurrency(newCost)}
-                  </div>
-                </div>
-
-                {/* Cost Difference */}
+                {/* Cost Difference - All Periods */}
                 <div className={`rounded-lg p-3 border-2 ${
                   isImprovement 
                     ? 'border-green-500 bg-green-50' 
                     : 'border-red-500 bg-red-50'
                 }`}>
-                  <div className="text-sm font-medium text-gray-700">Cost Change</div>
+                  <div className="text-sm font-medium text-gray-700">Cost Change (All Periods)</div>
                   <div className="flex items-baseline gap-2">
-                    <span className={`text-3xl font-bold ${
+                    <span className={`text-2xl font-bold ${
                       isImprovement ? 'text-green-700' : 'text-red-700'
                     }`}>
                       {isImprovement ? '-' : '+'}{formatCurrency(Math.abs(costDifference)).replace('−', '')}
@@ -223,16 +300,27 @@ export function CostsPanel() {
                       ({isImprovement ? '' : '+'}{percentageChange}%)
                     </span>
                   </div>
-                  {isImprovement && (
-                    <div className="text-sm text-green-700 font-medium">
-                      ✓ This change will reduce costs
-                    </div>
-                  )}
-                  {!isImprovement && (
-                    <div className="text-sm text-red-700 font-medium">
-                      ⚠ This change will increase costs
-                    </div>
-                  )}
+                </div>
+
+                {/* Cost Difference - First Month */}
+                <div className={`rounded-lg p-3 border-2 ${
+                  isImprovement_m0 
+                    ? 'border-green-500 bg-green-50' 
+                    : 'border-red-500 bg-red-50'
+                }`}>
+                  <div className="text-sm font-medium text-gray-700">Cost Change (First Month)</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-2xl font-bold ${
+                      isImprovement_m0 ? 'text-green-700' : 'text-red-700'
+                    }`}>
+                      {isImprovement_m0 ? '-' : '+'}{formatCurrency(Math.abs(costDifference_m0)).replace('−', '')}
+                    </span>
+                    <span className={`text-lg font-semibold ${
+                      isImprovement_m0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      ({isImprovement_m0 ? '' : '+'}{percentageChange_m0}%)
+                    </span>
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
