@@ -67,13 +67,13 @@ export function CostsPanel() {
     const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
 
     const costs = [
-      { name: 'Harvester Costs', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
-      { name: 'Forwarder Costs', value: Math.abs(forwarderCosts), displayValue: forwarderCosts },
-      { name: 'Traveling Costs', value: Math.abs(travelingCosts), displayValue: travelingCosts },
-      { name: 'Wheeling Costs', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
-      { name: 'Trailer Costs', value: Math.abs(trailerCosts), displayValue: trailerCosts },
-      { name: 'Demand Costs', value: Math.abs(demandCosts), displayValue: demandCosts },
-      { name: 'Industry Value', value: Math.abs(industryValue), displayValue: industryValue }
+      { name: 'Harvester', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
+      { name: 'Forwarder', value: Math.abs(forwarderCosts), displayValue: forwarderCosts },
+      { name: 'Traveling', value: Math.abs(travelingCosts), displayValue: travelingCosts },
+      { name: 'Wheeling', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
+      { name: 'Trailer', value: Math.abs(trailerCosts), displayValue: trailerCosts },
+      { name: 'Demand', value: Math.abs(demandCosts), displayValue: demandCosts },
+      { name: 'Industry_v', value: Math.abs(industryValue), displayValue: industryValue }
     ].filter(item => item.value > 0);
 
     return costs;
@@ -137,7 +137,7 @@ export function CostsPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {['Harvester Costs', 'Forwarder Costs', 'Traveling Costs', 'Wheeling Costs', 'Trailer Costs', 'Demand Costs', 'Industry Value'].map((costName, idx) => {
+                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Demand', 'Industry_v'].map((costName, idx) => {
                       const newItem = pieDataNew.find(item => item.name === costName);
                       const newM0Item = pieDataNew_m0.find(item => item.name === costName);
                       const prevItem = pieDatabase.find(item => item.name === costName);

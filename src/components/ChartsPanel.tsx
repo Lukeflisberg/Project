@@ -7,7 +7,8 @@ import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, T
 const COLORS = {
   demand: '#6B7280', // gray-500
   production: '#10B981', // emerald-500
-  surplus: '#EF4444', // red-500
+  shortage: '#ff8d8dff', // red-500
+  surplus: '#E5E7EB',
   grid: '#E5E7EB', // gray-200
 };
 
@@ -38,31 +39,36 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
     const prod = prodMap[res] ?? [];
     const dem = demMap[res] ?? [];
 
-    // Calculate surpluses and build series
+    // Calculate surpluses and build series with accumulation
     const result = [];
+    let cumulativeSurplus = 0;
 
     for (let i = 0; i < periodIds.length; i++) {
       const p = prod[i] || 0;
       const d = dem[i] || 0;
       
-      // Calculate surplus from the PREVIOUS period
-      let prevSurplus = 0;
-      if (i > 0) {
-        const prevP = prod[i - 1] || 0;
-        const prevD = dem[i - 1] || 0;
-        prevSurplus = prevP - prevD;
-      }
-
-      // Determine where to stack the surplus based on which was larger in the PREVIOUS period
-      const prevProductionLarger = i === 0 ? true : (prod[i - 1] || 0) >= (dem[i - 1] || 0);
+      // Add cumulative surplus from previous periods to current production
+      const effectiveProduction = p + Math.max(0, cumulativeSurplus);
+      const effectiveDemand = d + Math.max(0, -cumulativeSurplus);
+      
+      // Calculate new surplus for this period
+      const currentSurplus = p - d;
+      const newCumulativeSurplus = cumulativeSurplus + currentSurplus;
+      
+      // Determine how to display surplus in stacked chart
+      const productionSurplus = Math.max(0, cumulativeSurplus);
+      const demandSurplus = Math.max(0, -cumulativeSurplus);
 
       result.push({
         name: periodIds[i].toUpperCase(),
         production: p,
         demand: d,
-        productionSurplus: prevProductionLarger && prevSurplus > 0 ? prevSurplus : 0,
-        demandSurplus: !prevProductionLarger && prevSurplus < 0 ? Math.abs(prevSurplus) : 0,
+        productionSurplus: productionSurplus,
+        demandSurplus: demandSurplus,
       });
+
+      // Update cumulative surplus for next iteration
+      cumulativeSurplus = newCumulativeSurplus;
     }
 
     return result;
@@ -97,10 +103,10 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
           />
           <Legend />
           
-          <Bar dataKey="productionSurplus" name="Surplus (to Prod)" fill={COLORS.grid} barSize={20} stackId="production" />
+          <Bar dataKey="productionSurplus" name="Surplus" fill={COLORS.surplus} barSize={20} stackId="production" />
           <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={20} stackId="production" />
           
-          <Bar dataKey="demandSurplus" name="Surplus (to Dem)" fill={COLORS.grid} barSize={20} stackId="demand" />
+          <Bar dataKey="demandSurplus" name="Shortage" fill={COLORS.shortage} barSize={20} stackId="demand" />
           <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={20} stackId="demand" />
         </ComposedChart>
       </ResponsiveContainer>
