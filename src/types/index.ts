@@ -167,6 +167,7 @@ export interface AppState {
   
   toggledNull: boolean;
   toggledDrop: boolean;
+  toggledModal: boolean;
 
   tasks: Task[];
   teams: Team[];
@@ -175,4 +176,5 @@ export interface AppState {
   resources: Resource[];
   demand: Demand[];
   distances: Distance[];
+  taskSnapshot: Task[];
 }

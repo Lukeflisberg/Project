@@ -10,6 +10,7 @@ type AppAction =
   | { type: 'SET_SELECTED_TEAM'; teamId: string | null }
   | { type: 'SET_DRAGGING_FROM_GANTT'; taskId: string | null }
   | { type: 'SET_DRAGGING_TO_GANTT'; taskId: string | null }
+  | { type: 'SET_TASKSNAPSHOT'; taskSnapshot: Task[] }
 
   | { type: 'SET_PERIODS'; periods: Period[] }
   | { type: 'SET_MONTHS'; months: Month[] }
@@ -20,12 +21,13 @@ type AppAction =
 
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean }
+  | { type: 'TOGGLE_COMPARISON_MODAL'; toggledModal: boolean }
 
   | { type: 'UPDATE_TASK_TEAM'; taskId: string; newTeamId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
 
-  | { type: 'ADD_TASKS'; tasks: Task[] }
-  | { type: 'ADD_TEAMS'; teams: Team[] }
+  | { type: 'UPDATE_TASKS'; tasks: Task[] }
+  | { type: 'UPDATE_TEAMS'; teams: Team[] }
 
   | { type: 'RESET_STATE' };
   
@@ -42,6 +44,7 @@ const initialState: AppState = {
 
   toggledNull: false,
   toggledDrop: false,
+  toggledModal: false,
 
   tasks: [],
   teams: [],
@@ -50,6 +53,7 @@ const initialState: AppState = {
   resources: [],
   demand: [],
   distances: [],
+  taskSnapshot: [],
 };
 
 // ----------------------
@@ -78,6 +82,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_DRAGGING_TO_GANTT': 
       return { ...state, dragging_to_gantt: action.taskId };    
+    
+    case 'SET_TASKSNAPSHOT':
+      return { ...state, taskSnapshot: action.taskSnapshot}
 
     case 'SET_TOTAL_HOURS':
       return { ...state, totalHours: action.totalHours };
@@ -104,6 +111,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'TOGGLE_UNASSIGN_DROP':
       return { ...state, toggledDrop: action.toggledDrop };
 
+    case 'TOGGLE_COMPARISON_MODAL':
+      return { ...state, toggledModal: action.toggledModal };
 
 
     case 'UPDATE_TASK_TEAM': {
@@ -130,11 +139,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 
     
-    case 'ADD_TASKS':
-      return { ...state, tasks: [...state.tasks, ...action.tasks] };
+    case 'UPDATE_TASKS':
+      return { ...state, tasks: action.tasks };
     
-    case 'ADD_TEAMS':
-      return { ...state, teams: [...state.teams, ...action.teams] };
+    case 'UPDATE_TEAMS':
+      return { ...state, teams: action.teams };
 
     case 'RESET_STATE':
       return { ...state, tasks: [], teams: [], periods: [] }

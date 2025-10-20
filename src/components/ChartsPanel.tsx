@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam, calcTotalCostDistribution } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, PieChart, Pie, Cell } from 'recharts';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam } from '../helper/chartUtils';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
 
 // Color palette
 const COLORS = {
@@ -10,9 +10,6 @@ const COLORS = {
   surplus: '#EF4444', // red-500
   grid: '#E5E7EB', // gray-200
 };
-
-// Pie chart colors
-const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
 function usePeriods() {
   const { state } = useApp();
@@ -82,7 +79,12 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
   return (
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+        <ComposedChart 
+          data={series} 
+          margin={{ top: 10, right: 20, bottom: 10, left: 0 }}
+          barCategoryGap="40%"
+          barGap={2} 
+        >
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis 
@@ -95,11 +97,11 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
           />
           <Legend />
           
-          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={20} stackId="production" />
           <Bar dataKey="productionSurplus" name="Surplus (to Prod)" fill={COLORS.grid} barSize={20} stackId="production" />
+          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={20} stackId="production" />
           
-          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={20} stackId="demand" />
           <Bar dataKey="demandSurplus" name="Surplus (to Dem)" fill={COLORS.grid} barSize={20} stackId="demand" />
+          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={20} stackId="demand" />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -159,7 +161,6 @@ function WorkEfficiencyChart() {
             interval={0}
             angle={-45}
             textAnchor="end"
-            height={60}  // Give more space for angled labels
           />
           <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
           <Tooltip content={<CustomTooltip />} />
@@ -204,7 +205,7 @@ function TeamProductionChart({ teamId }: { teamId: string | null }) {
   return (
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 10, right: 20, bottom: 60, left: 0 }}>
+        <BarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
@@ -212,7 +213,6 @@ function TeamProductionChart({ teamId }: { teamId: string | null }) {
             interval={0}
             angle={-45}
             textAnchor="end"
-            height={80}
           />
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip 
@@ -311,7 +311,7 @@ function MonthlyEfficiencyChart() {
   return (
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 10, right: 20, bottom: 60, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
@@ -323,102 +323,6 @@ function MonthlyEfficiencyChart() {
           <Legend />
           <Bar dataKey="value" name="Avg Efficiency" fill="#10B981" />
         </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function CostDistributionChart() {
-  const { state } = useApp();
-
-  const data = useMemo(() => {
-    // Calculate cost data from state
-    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
-    
-    if (!costData) {
-      return [];
-    }
-
-    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
-
-    // Calculate absolute values for pie chart (showing cost contributions)
-    const costs = [
-      { name: 'Harvester Costs', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
-      { name: 'Forwarder Costs', value: Math.abs(forwarderCosts), displayValue: forwarderCosts },
-      { name: 'Traveling Costs', value: Math.abs(travelingCosts), displayValue: travelingCosts },
-      { name: 'Wheeling Costs', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
-      { name: 'Trailer Costs', value: Math.abs(trailerCosts), displayValue: trailerCosts },
-      { name: 'Demand Costs', value: Math.abs(demandCosts), displayValue: demandCosts },
-      { name: 'Industry Value', value: Math.abs(industryValue), displayValue: industryValue }
-    ].filter(item => item.value > 0); // Only show non-zero items
-
-    return costs;
-  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
-
-  if (!data.length) {
-    return (
-      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
-        No cost data available.
-      </div>
-    );
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const percentage = ((data.value / total) * 100).toFixed(2);
-      return (
-        <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
-          <p className="font-semibold mb-1">{data.name}</p>
-          <p className="text-sm">{formatCurrency(data.displayValue)}</p>
-          <p className="text-sm text-gray-600">{percentage}% of total costs</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Calculate total for display (use total from costData directly)
-  const total = useMemo(() => {
-    const costData = calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances);
-    return costData?.total ?? 0;
-  }, [state.tasks, state.teams, state.demand, state.periods, state.distances]);
-
-  return (
-    <div className="w-full h-80">
-      <div className="text-center mb-2">
-        <p className="text-sm text-gray-600">Total Cost: {formatCurrency(total)}</p>
-      </div>
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            outerRadius={100}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {data.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip content={<CustomTooltip />} />
-          <Legend 
-            verticalAlign="bottom" 
-            height={36}
-            formatter={(value, entry: any) => `${value}: ${formatCurrency(entry.payload.displayValue)}`}
-          />
-        </PieChart>
       </ResponsiveContainer>
     </div>
   );
@@ -486,12 +390,6 @@ export function ChartsPanel() {
           >
             Monthly Efficiency
           </button>
-          <button
-            onClick={() => setTab('CostDistributionChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'CostDistributionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
-          >
-            Cost Distribution
-          </button>
         </div>
         
         {/* Conditional dropdown based on active tab */}
@@ -537,8 +435,6 @@ export function ChartsPanel() {
           <MonthlyEfficiencyChart />
         ) : tab === 'TeamProductionChart' ? (
           <TeamProductionChart teamId={selectedTeam} />
-        ) : tab === 'CostDistributionChart' ? (
-          <CostDistributionChart />
         ) : null}
       </div>
     </div>

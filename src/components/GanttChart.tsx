@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Calendar, Check, DollarSign, Upload, X } from 'lucide-react';
+import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor } from '../helper/taskUtils';
-import { calcDurationOf, calcTotalCostDistribution } from '../helper/chartUtils';
+import { calcDurationOf } from '../helper/chartUtils';
 
 // ----------------------
 // Period Configuration
@@ -121,111 +121,6 @@ function planSequentialLayoutHours(
   return { updates, unassign };
 }
 
-// Cost Comparison Modal Component
-function CostComparisonModal({
-  previousCost,
-  newCost,
-  onAccept,
-  onDecline
-}: {
-  previousCost: number;
-  newCost: number;
-  onAccept: () => void;
-  onDecline: () => void;
-}) {
-  const costDifference = newCost - previousCost;
-  const percentageChange = previousCost > 0
-    ? ((costDifference / previousCost) * 100).toFixed(0)
-    : 'inf';
-
-  const isImprovement = costDifference < 0;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-        <div className="flex items-center gap-3 mb-4">
-          <DollarSign className="text-blue-600" size={28} />
-          <h3 className="text-xl font-semibold text-gray-800">Cost Impact</h3>
-        </div>
-
-        <div className="space-y-4">
-          {/* Previous Cost */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm text-gray-600 mb-1">Previous Configuration</div>
-            <div className="text-2xl font-bold text-gray-800">
-              ${previousCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-          </div>
-
-          {/* New Cost */}
-          <div className={`rounded-lg p-4 ${isImprovement ? 'bg-green-50' : 'bg-red-50'}`}>
-            <div className="text-sm text-gray-600 mb-1">New Configuration</div>
-            <div className={`text-2xl font-bold ${isImprovement ? 'text-green-700' : 'text-red-700'}`}>
-              ${newCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-          </div>
-
-          {/* Cost Difference */}
-          <div className={`rounded-lg p-4 border-2 ${
-            isImprovement 
-              ? 'border-green-500 bg-green-50' 
-              : 'border-red-500 bg-red-50'
-          }`}>
-            <div className="text-sm font-medium text-gray-700 mb-2">Cost Change</div>
-            <div className="flex items-baseline gap-2">
-              <span className={`text-3xl font-bold ${
-                isImprovement ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {isImprovement ? '-' : '+'}${Math.abs(costDifference).toLocaleString('en-US', { 
-                  minimumFractionDigits: 2, 
-                  maximumFractionDigits: 2 
-                })}
-              </span>
-              <span className={`text-lg font-semibold ${
-                isImprovement ? 'text-green-600' : 'text-red-600'
-              }`}>
-                ({isImprovement ? '' : '+'}{percentageChange}%)
-              </span>
-            </div>
-            {isImprovement && (
-              <div className="mt-2 text-sm text-green-700 font-medium">
-                ✓ This change will reduce costs
-              </div>
-            )}
-            {!isImprovement && (
-              <div className="mt-2 text-sm text-red-700 font-medium">
-                ⚠ This change will increase costs
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onDecline}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors"
-          >
-            <X size={20} />
-            Decline
-          </button>
-          <button
-            onClick={onAccept}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-semibold rounded-lg transition-colors ${
-              isImprovement
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-          >
-            <Check size={20} />
-            Accept
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-} 
-
 // ----------------------
 // Main GanttChart Component
 // ----------------------
@@ -239,9 +134,6 @@ export function GanttChart() {
   const [, setSnapLeftPct] = useState<number | null>(null);
   const [, setDragOffsetOcc] = useState(0);
   const ganttRef = useRef<HTMLDivElement>(null);
-
-  const [showCostModal, setShowCostModal] = useState(false);
-  const [tasksSnapshot, setTasksSnapshot] = useState<Task[]>([]);
 
   // Calculate periods, offsets, and total hours for the timeline
   const periods = state.periods?.length ? state.periods : [PERIOD_FALLBACK];
@@ -345,8 +237,8 @@ export function GanttChart() {
     e.preventDefault();
     e.stopPropagation();
 
-    if (tasksSnapshot.length === 0) {
-      setTasksSnapshot(state.tasks);
+    if (state.taskSnapshot.length === 0) {
+      dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
     } 
 
     dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_team: state.selectedTeamId });
@@ -839,7 +731,7 @@ export function GanttChart() {
         }
 
         // A move has been made
-        setShowCostModal(true);
+        dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
       } else {
         // Click (no real drag)
         const teamId = state.tasks.find(t => t.task.id === taskId)?.duration.teamId ?? 'all';
@@ -856,19 +748,6 @@ export function GanttChart() {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
-
-  const handleAcceptChanges = () => {
-    // Clear snapshot
-    setTasksSnapshot([]);
-    setShowCostModal(false);
-  }
-
-  const handleDeclineChanges = () => {
-    // Revert to snapshot
-    state.tasks = tasksSnapshot;
-    setTasksSnapshot([]);
-    setShowCostModal(false);
-  }
 
   // Handler for importing data from a file
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -934,7 +813,7 @@ export function GanttChart() {
     // Import teams 
     if (result.teams && Array.isArray(result.teams)) {
       const formattedTeams = result.teams;
-      dispatch({ type: 'ADD_TEAMS', teams: formattedTeams });
+      dispatch({ type: 'UPDATE_TEAMS', teams: formattedTeams });
       console.log("Imported Teams: ", formattedTeams);
     }
 
@@ -991,7 +870,7 @@ export function GanttChart() {
         };
       });
 
-      dispatch({ type: 'ADD_TASKS', tasks: formattedTasks });
+      dispatch({ type: 'UPDATE_TASKS', tasks: formattedTasks });
       console.log("Imported Tasks: ", formattedTasks);
     }
 
@@ -1215,12 +1094,12 @@ export function GanttChart() {
   return (
     <div 
       ref={ganttRef}
-      className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-6 h-full overflow-hidden"
+      className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-4 h-full overflow-hidden"
     >
       {/* Header: Title and Import Buttons */}
       <div className="flex items-center gap-2 mb-4">
         <Calendar className="text-green-600" size={24} />
-        <h2 className="text-xl font-semibold text-gray-800">Planning</h2>
+        <h2 className="text-xl font-semibold text-gray-800">Schedule</h2>
 
         {/* Import buttons */}
         <div className="ml-auto flex items-center gap-4">
@@ -1243,11 +1122,6 @@ export function GanttChart() {
             />
           </label>
         </div>
-      </div>
-      
-      {/* Instructions */}
-      <div className="mb-2 text-xs text-gray-500 text-center">
-        Drag tasks horizontally to adjust timing, vertically to change teams
       </div>
 
       {/* Main Gantt Body */}
@@ -1658,20 +1532,6 @@ export function GanttChart() {
                   </div>
                 </div>
               </div>
-          )}
-
-          {/* Cost Comparison Modal */}
-          {showCostModal && (
-            <CostComparisonModal
-              previousCost={
-                tasksSnapshot.length !== 0 
-                  ? calcTotalCostDistribution(tasksSnapshot, state.teams, state.demand, state.periods, state.distances).total
-                  : 0
-              }
-              newCost={calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances).total}
-              onAccept={handleAcceptChanges}
-              onDecline={handleDeclineChanges}
-            />
           )}
         </div>
       </div>

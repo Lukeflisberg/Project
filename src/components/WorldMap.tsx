@@ -8,8 +8,8 @@ import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from 
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
-const DEFAULT_POSITION: {x: number, y: number} = { x: 1277, y: 12};
-const DEFAULT_SIZE: {width: number, height: number} = { width: 632, height: 749 };
+const DEFAULT_POSITION: {x: number, y: number} = { x: 1156, y: 66};
+const DEFAULT_SIZE: {width: number, height: number} = { width: 750, height: 475 };
 
 // Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
@@ -255,7 +255,7 @@ export function WorldMap() {
 
   // Home base triangle icon for teams
   const createHomeBaseIcon = (color: string, isSelected: boolean = false) => {
-    const size: number = isSelected ? 28 : 18;
+    const size: number = isSelected ? 20 : 8;
     const stroke: number = isSelected ? 2 : 1;
     const iconHtml: string = `
       <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
@@ -664,7 +664,7 @@ export function WorldMap() {
     {/* Heading */}
     <div
       ref={containerRef}
-      className="world-map-container bg-white rounded-lg shadow-lg p-6 h-full flex flex-col"
+      className="world-map-container bg-white rounded-lg shadow-lg p-4 h-full flex flex-col"
       style={{ cursor: !isMaximized ? 'move' : 'default' }}
     >
       <div className="flex items-center justify-between mb-4">
@@ -693,6 +693,7 @@ export function WorldMap() {
       </div>
 
       {/* Sub Heading */}
+      {/* All Button */}
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => handleTeamToggle('all')}
@@ -704,29 +705,8 @@ export function WorldMap() {
         >
           All
         </button>
-        {state.teams.map(team => (
-          <button
-            key={team.id}
-            onClick={() => handleTeamToggle(team.id)}
-            className={`relative px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              state.selectedTeamId === team.id
-                ? 'text-white'
-                : 'text-gray-700 hover:opacity-80'
-            }`}
-            style={{
-              backgroundColor: 
-                state.selectedTeamId === team.id
-                ? team.color
-                : `color-mix(in srgb, ${team.color} 20%, transparent)`,
-              borderColor: team.color,
-              borderWidth: '1px',
-              borderStyle: 'solid'
-            }}
-          >
-            {team.id}
-          </button>
-        ))}
         
+        {/* Unassigned Button */}
         <button 
           onClick={() => handleNullToggle()}
           className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
