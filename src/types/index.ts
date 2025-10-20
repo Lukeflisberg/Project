@@ -24,6 +24,7 @@ export namespace Task {
     lon: number;
     avvForm: string;
     barighet: string;
+    color: string;
   }
 
   export interface Duration {
@@ -91,7 +92,6 @@ export interface Team {
   fixTrailerTime: number;
   trailerCost: number;
   trailerAverageSpeed: number;
-  color: string;
 }
 
 export interface HarvestCosts {
@@ -164,6 +164,7 @@ export interface AppState {
   dragging_from_gantt: string | null;
   dragging_to_gantt: string | null; 
   totalHours: number;   
+  defaultColor: string;
   
   toggledNull: boolean;
   toggledDrop: boolean;

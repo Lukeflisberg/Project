@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { calcTotalCostDistribution, createPeriodBoundaries, getMonthStartEnd } from '../helper/chartUtils';
-import { DollarSign, Check, X } from 'lucide-react';
+import { Check, X, Landmark } from 'lucide-react';
 import { endHour } from '../helper/taskUtils';
 import { Task } from '../types';
 
@@ -98,8 +98,6 @@ export function CostsPanel() {
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(value);
@@ -109,8 +107,8 @@ export function CostsPanel() {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       <div className="flex items-center justify-between px-4 py-2 border-b">
         <div className="flex items-center gap-2">
-          <DollarSign className="text-emerald-600" size={20} />
-          <h2 className="font-semibold text-gray-800">Cost Analysis</h2>
+          <Landmark className="text-emerald-600" size={20} />
+          <h2 className="font-semibold text-gray-800">Cost Analysis (kr)</h2>
         </div>
       </div>
 
@@ -131,8 +129,8 @@ export function CostsPanel() {
                     <tr className="bg-gray-100">
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Cost Type</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (M0)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (M0)</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (All)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (M0)</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (All)</th>
                     </tr>
                   </thead>
@@ -152,13 +150,13 @@ export function CostsPanel() {
                       const m0Diff = hasSnapshot ? newM0Value - baseM0Value : 0;
                       const allDiff = hasSnapshot ? newAllValue - baseAllValue : 0;
                       
-                      // Industry Value has inverse logic: increase is good, decrease is bad
-                      const isIndustryValue = costName === 'Industry Value';
+                      // Industry_v has inverse logic: increase is good, decrease is bad
+                      const isIndustryValue = costName === 'Industry_v';
                       const m0IsImprovement = isIndustryValue ? m0Diff > 0 : m0Diff < 0;
                       const allIsImprovement = isIndustryValue ? allDiff > 0 : allDiff < 0;
                       
                       // For display: costs should show - for decrease (good), + for increase (bad)
-                      // Industry value should show + for increase (good), - for decrease (bad)
+                      // Industry_v should show + for increase (good), - for decrease (bad)
                       const m0Sign = isIndustryValue ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+');
                       const allSign = isIndustryValue ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+');
                       
@@ -176,6 +174,9 @@ export function CostsPanel() {
                           <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
                             {baseM0Value !== 0 ? formatCurrency(baseM0Value) : '—'}
                           </td>
+                          <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
+                            {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
+                          </td>
                           <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
                             !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
@@ -186,9 +187,6 @@ export function CostsPanel() {
                                 </div>
                               </div>
                             ) : '—'}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
-                            {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
                           </td>
                           <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
                             !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
@@ -209,6 +207,9 @@ export function CostsPanel() {
                       <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
                         {formatCurrency(hasSnapshot ? baseCost_m0 : newCost_m0)}
                       </td>
+                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
+                        {formatCurrency(hasSnapshot ? baseCost : newCost)}
+                      </td>
                       <td className={`border border-gray-300 px-3 py-2 text-center ${
                         !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
                       }`}>
@@ -220,9 +221,6 @@ export function CostsPanel() {
                             </div>
                           </div>
                         ) : '—'}
-                      </td>
-                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
-                        {formatCurrency(hasSnapshot ? baseCost : newCost)}
                       </td>
                       <td className={`border border-gray-300 px-3 py-2 text-center ${
                         !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'

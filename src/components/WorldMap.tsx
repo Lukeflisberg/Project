@@ -15,6 +15,33 @@ const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 47
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
 proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
 
+// Color palettes for avvForm (fixed) and barighet (dynamic)
+interface ColorPalettes {
+  avvForm: {
+    '�A': string;
+    'GA': string;
+    'SA': string;
+  };
+}
+const COLOR_PALETTES: ColorPalettes = {
+  avvForm: {
+    '�A': '#FF3B30',  // Bright red
+    'GA': '#00D4AA',  // Bright teal/cyan
+    'SA': '#007AFF',  // Bright blue
+  },
+};
+
+// Dynamic colors for barighet - will be generated based on unique values
+const getBarighetColorPalette = (uniqueBarighet: string[]): Record<string, string> => {
+  const colors = ['#FFD93D', '#FF9F43', '#EE5A6F', '#A8E6CF', '#FFD3B6', '#FFAAA5', '#FF8B94', '#A8D8EA', '#AA96DA', '#FCBAD3'];
+  const palette: Record<string, string> = {};
+  uniqueBarighet.forEach((barighet, index) => {
+    palette[barighet] = colors[index % colors.length];
+  });
+
+  return palette;
+};
+
 // Helper function to convert SWEREF99 TM to WGS84
 const swerefToWGS84 = (northing: number, easting: number): [number, number] => {
   try {
@@ -40,7 +67,6 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
     click() {
       onDeselect();
-      console.log("Deselected");
     }
   });
   return null;
@@ -64,6 +90,8 @@ export function WorldMap() {
   const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
   const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
   const [showBarighetPopup, setShowBarighetPopup] = useState(false);
+  const [showAllTeams, setShowAllTeams] = useState(true);
+  const [colorMode, setColorMode] = useState<'none' | 'avvForm' | 'barighet'>('none');
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -175,6 +203,22 @@ export function WorldMap() {
     setIsMaximized(!isMaximized);
   };
 
+  const getColorForTask = (task: Task, mode: 'none' | 'avvForm' | 'barighet' = colorMode): string => {
+      if (mode === 'none') return state.defaultColor;
+      
+      if (mode === 'avvForm') {
+        const formType = task.task.avvForm as keyof typeof COLOR_PALETTES.avvForm;
+        return COLOR_PALETTES.avvForm[formType] || state.defaultColor;
+      }
+      
+      if (mode === 'barighet') {
+        const barighetPalette = getBarighetColorPalette(getUniqueBarighet());
+        return barighetPalette[task.task.barighet] || state.defaultColor;
+      }
+      
+      return state.defaultColor;
+    };
+
   const createMarkerIcon = (color: string, isSelected: boolean = false, index?: number) => {
     const size: number = isSelected ? 20 : 8;
 
@@ -279,8 +323,7 @@ export function WorldMap() {
   const getVisibleTasks = () => {
     let tasks: Task[] = state.tasks;
 
-    // Filter by team
-    if (state.selectedTeamId === 'all') {
+    if (showAllTeams) {
       tasks = tasks.filter(task =>
         (task.duration.teamId !== null) ||
         (state.toggledNull && task.duration.teamId === null)
@@ -292,23 +335,20 @@ export function WorldMap() {
       );
     }
 
-    // Filter by avvForm
     tasks = tasks.filter(task => selectedAvvForm.includes(task.task.avvForm));
-
-    // Filter by barighet
     tasks = tasks.filter(task => selectedBarighet.includes(task.task.barighet));
 
     return tasks;
   };
 
   const getVisibleTeams = () => {
-    if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return state.teams;
+    if (showAllTeams || state.selectedTeamId === null) return state.teams;
     const t: Team | undefined = state.teams.find(t => t.id === state.selectedTeamId);
     return t ? [t] : [];
   };
 
   const getTaskConnectionLines = () => {
-    if (state.selectedTeamId === 'all' || state.selectedTeamId === null) return [];
+    if (state.selectedTeamId === null) return [];
 
     // Get the first month's period IDs
     const firstMonth = state.months[0];
@@ -320,8 +360,6 @@ export function WorldMap() {
     // Get the boundaries for the first month
     const firstMonthStart = 0;
     const firstMonthEnd = firstMonthPeriods.reduce((sum, period) => sum + period.length_h, 0);
-
-    console.log(firstMonthStart, firstMonthEnd);
 
     const visibleTasks: Task[] = getVisibleTasks().filter(task =>
       task.duration.teamId === state.selectedTeamId &&
@@ -343,7 +381,7 @@ export function WorldMap() {
       lines.push({
         id: `${currentTask.task.id}-${nextTask.task.id}`,
         positions: [currentPos, nextPos],
-        color: getTaskColor(currentTask, state.teams.find(t => t.id === currentTask.duration.teamId)?.color),
+        color: getColorForTask(currentTask),
         weight: 2.5,
         opacity: 0.8
       });
@@ -364,10 +402,14 @@ export function WorldMap() {
   const handleTeamToggle = (teamId: string | null) => {
     dispatch({
       type: 'SET_SELECTED_TEAM',
-      teamId: state.selectedTeamId === teamId ? 'all' : teamId
+      teamId: teamId
     });
     console.log(`Toggled team ${state.selectedTeamId}`);
   };
+
+  const handleAllTeamsToggle = () => {
+    setShowAllTeams(!showAllTeams);
+  }
 
   const handleNullToggle = () => {
     dispatch({
@@ -412,6 +454,21 @@ export function WorldMap() {
         ? prev.filter(b => b !== barighet)
         : [...prev, barighet]
     );
+  };
+
+  const toggleColorMode = (mode: 'avvForm' | 'barighet') => {
+    const newMode = colorMode === mode ? 'none' : mode;
+    setColorMode(newMode);
+
+    // Dispatch color updates to global state for Gantt chart
+    state.tasks.forEach(task => {
+      const color = getColorForTask(task, newMode);
+      dispatch({
+        type: 'SET_TASK_COLOR',
+        taskId: task.task.id,
+        color: color
+      });
+    });
   };
 
   // Close popups when clicking outside
@@ -678,7 +735,7 @@ export function WorldMap() {
         ref={markerRef}
         position={wgs84Pos}
         icon={createUnassignedMarkerIcon(
-          getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color),
+          getColorForTask(task),
           state.selectedTaskId === task.task.id
         )}
       >
@@ -793,8 +850,8 @@ export function WorldMap() {
           <h3 className="text-xs font-semibold text-gray-600 mb-2">Filters</h3>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => handleTeamToggle('all')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${state.selectedTeamId === 'all'
+              onClick={() => handleAllTeamsToggle()}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${showAllTeams
                   ? 'bg-gray-700 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
@@ -820,13 +877,29 @@ export function WorldMap() {
                   setShowAvvFormPopup(!showAvvFormPopup);
                   setShowBarighetPopup(false);
                 }}
-                className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
+                className={`filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+                  colorMode === 'avvForm' 
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-300' 
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
               >
                 AvvForm ({selectedAvvForm.length})
               </button>
 
               {showAvvFormPopup && (
-                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] z-50 style={{ zIndex: 9999 }}">
+                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[200px]" style={{ zIndex: 9999 }}>
+                  <div className="mb-3 pb-2 border-b border-gray-200">
+                    <button
+                      onClick={() => toggleColorMode('avvForm')}
+                      className={`w-full px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        colorMode === 'avvForm'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {colorMode === 'avvForm' ? '✓ Color Mode Active' : 'Toggle Color Mode'}
+                    </button>
+                  </div>
                   <div className="space-y-2">
                     {['�A', 'GA', 'SA'].map(form => (
                       <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
@@ -836,6 +909,12 @@ export function WorldMap() {
                           onChange={() => toggleAvvForm(form)}
                           className="w-4 h-4 cursor-pointer"
                         />
+                        {colorMode === 'avvForm' && (
+                          <div
+                            className="w-4 h-4 rounded border border-gray-300"
+                            style={{ backgroundColor: COLOR_PALETTES.avvForm[form as keyof typeof COLOR_PALETTES.avvForm] }}
+                          />
+                        )}
                         <span className="text-sm text-gray-700">{form}</span>
                       </label>
                     ))}
@@ -851,25 +930,50 @@ export function WorldMap() {
                   setShowBarighetPopup(!showBarighetPopup);
                   setShowAvvFormPopup(false);
                 }}
-                className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-teal-500 text-white hover:bg-teal-600 flex items-center gap-1"
+                className={`filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+                  colorMode === 'barighet'
+                    ? 'bg-teal-600 text-white ring-2 ring-teal-300'
+                    : 'bg-teal-500 text-white hover:bg-teal-600'
+                }`}
               >
                 Barighet ({selectedBarighet.length})
               </button>
 
               {showBarighetPopup && (
-                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] max-h-[300px] overflow-y-auto z-50 style={{ zIndex: 9999 }}">
+                <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[200px] max-h-[300px] overflow-y-auto" style={{ zIndex: 9999 }}>
+                  <div className="mb-3 pb-2 border-b border-gray-200">
+                    <button
+                      onClick={() => toggleColorMode('barighet')}
+                      className={`w-full px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        colorMode === 'barighet'
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {colorMode === 'barighet' ? '✓ Color Mode Active' : 'Toggle Color Mode'}
+                    </button>
+                  </div>
                   <div className="space-y-2">
-                    {getUniqueBarighet().map(barighet => (
-                      <label key={barighet} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                        <input
-                          type="checkbox"
-                          checked={selectedBarighet.includes(barighet)}
-                          onChange={() => toggleBarighet(barighet)}
-                          className="w-4 h-4 cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-700">{barighet}</span>
-                      </label>
-                    ))}
+                    {getUniqueBarighet().map(barighet => {
+                      const barighetPalette = getBarighetColorPalette(getUniqueBarighet());
+                      return (
+                        <label key={barighet} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedBarighet.includes(barighet)}
+                            onChange={() => toggleBarighet(barighet)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                          {colorMode === 'barighet' && (
+                            <div
+                              className="w-4 h-4 rounded border border-gray-300"
+                              style={{ backgroundColor: barighetPalette[barighet] }}
+                            />
+                          )}
+                          <span className="text-sm text-gray-700">{barighet}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -912,7 +1016,7 @@ export function WorldMap() {
                 <Marker
                   key={`homebase-${team.id}`}
                   position={wgs84Pos}
-                  icon={createHomeBaseIcon(team.color, isSelectedTeam)}
+                  icon={createHomeBaseIcon(state.defaultColor, isSelectedTeam)}
                   eventHandlers={{ click: () => handleTeamToggle(team.id) }}
                 >
                   <Popup>
@@ -930,25 +1034,32 @@ export function WorldMap() {
             })}
 
             {(() => {
-              if (state.selectedTeamId === 'all') {
-                const assignedTasks: Task[] = getVisibleTasks().filter(task => task.duration.teamId !== null);
+              if (showAllTeams) {
+                const assignedTasks: Task[] = getVisibleTasks()
+                  .filter(task => task.duration.teamId !== null)
+                  .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
                 const unassignedTasks: Task[] = state.toggledNull
                   ? getVisibleTasks().filter(task => task.duration.teamId === null)
                   : [];
+                let index: number = 0;
 
                 return (
                   <>
                     {assignedTasks.map((task) => {
                       const isSelected: boolean = state.selectedTaskId === task.task.id;
-                      const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
+                      const markerColor: string = getColorForTask(task);
                       const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+                      const isSelectedTeam = task.duration.teamId === state.selectedTeamId;
+                      if (isSelectedTeam) index += 1;
 
                       return (
                         <Marker
                           key={task.task.id}
                           position={wgs84Pos}
-                          icon={createMarkerIcon(teamColor, isSelected)}
+                          icon={isSelectedTeam ? createMarkerIcon(markerColor, isSelected, index) : createMarkerIcon(markerColor, isSelected)}
                           eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
+                          zIndexOffset={isSelectedTeam ? 20 : 10}
                         >
                           <Popup>
                             <div className="p-2">
@@ -985,7 +1096,7 @@ export function WorldMap() {
                 <>
                   {assignedTasks.map((task, index) => {
                     const isSelected: boolean = state.selectedTaskId === task.task.id;
-                    const teamColor: string = getTaskColor(task, state.teams.find(t => t.id === task.duration.teamId)?.color);
+                    const markerColor: string = getColorForTask(task);
                     const markerIndex: number = index + 1;
                     const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
@@ -993,7 +1104,7 @@ export function WorldMap() {
                       <Marker
                         key={task.task.id}
                         position={wgs84Pos}
-                        icon={createMarkerIcon(teamColor, isSelected, markerIndex)}
+                        icon={createMarkerIcon(markerColor, isSelected, markerIndex)}
                         eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                       >
                         <Popup>

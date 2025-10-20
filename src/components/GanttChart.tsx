@@ -840,7 +840,11 @@ export function GanttChart() {
         const startHour = 0;
 
         // Details
-        const task = result.tasks.find((d: any) => d.id === id)!;
+        const _task = result.tasks.find((d: any) => d.id === id)!;
+        const task: Task.Details = {
+          ..._task,
+          color: state.defaultColor
+        };
 
         // Harvest costs
         const harvestCosts = result.harvestCosts.find((h: any) => h['Activity'] === id)!.costs;
@@ -1192,7 +1196,7 @@ export function GanttChart() {
                   <div className="flex items-center gap-2">
                     <div 
                       className="w-3 h-4 rounded-full"
-                      style={{ backgroundColor: team.color }} 
+                      style={{ backgroundColor: state.defaultColor }} 
                     />
                     <span className="text-sm font-medium text-gray-700">{team.id}</span>
                   </div>
@@ -1207,7 +1211,7 @@ export function GanttChart() {
 
           {/* Sticky total duration heading */}
           <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
-            eff
+            util
           </div>
 
           {/* Scrollable duration rows */}
@@ -1451,7 +1455,7 @@ export function GanttChart() {
                         ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                         ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                       `}
-                      style={{ backgroundColor: getTaskColor(task, team.color), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
+                      style={{ backgroundColor: getTaskColor(task), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
                       onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
                     >
                       {/* Setup visual indicator */}

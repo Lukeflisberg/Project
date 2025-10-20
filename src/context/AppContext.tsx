@@ -18,6 +18,7 @@ type AppAction =
   | { type: 'SET_RESOURCES'; resources: Resource[] }
   | { type: 'SET_DEMAND'; demand: Demand[] }
   | { type: 'SET_DISTANCES'; distances: Distance[] }
+  | { type: 'SET_TASK_COLOR'; taskId: string, color: string }
 
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean }
@@ -41,6 +42,7 @@ const initialState: AppState = {
   dragging_from_gantt: null,
   dragging_to_gantt: null,
   totalHours: 0,
+  defaultColor: "#5F8A8B",
 
   toggledNull: false,
   toggledDrop: false,
@@ -103,6 +105,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_DISTANCES':
       return { ...state, distances: action.distances };
+
+    case 'SET_TASK_COLOR':
+      const updatedTasks = state.tasks.map(task => 
+        task.task.id === action.taskId
+          ? { ...task, task: { ...task.task, color: action.color }}
+          : task
+      );
+      return { ...state, tasks: updatedTasks}
 
 
     case 'TOGGLE_NULL':

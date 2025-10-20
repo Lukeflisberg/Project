@@ -46,12 +46,7 @@ export async function importDataFromFile(
             if (json[0]?.period_length) period_length = json[0].period_length;
             if (json[0]?.months) months = json[0].months;
             if (json[0]?.tasks) tasks = json[0].tasks;
-            if (json[0]?.teams) {
-              teams = json[0].teams.map((team: any) => ({ 
-                ...team,
-                color: "#5F8A8B"
-              }));
-            }
+            if (json[0]?.teams) teams = json[0].teams;
             if (json[0]?.durations) durations = json[0].durations;
             if (json[0]?.harvestCosts) harvestCosts = json[0].harvestCosts;
             if (json[0]?.production) production = json[0].production;
@@ -65,12 +60,7 @@ export async function importDataFromFile(
           period_length = Array.isArray(json.period_length) ? json.period_length : [];
           months = Array.isArray(json.months) ? json.months : [];
           tasks = Array.isArray(json.tasks) ? json.tasks: [];
-          teams = Array.isArray(json.teams) 
-            ? json.teams.map((team: any) => ({
-              ...team,
-              color: "#5F8A8B"
-            })) 
-            : [];
+          teams = Array.isArray(json.teams) ? json.teams: [];
           durations = Array.isArray(json.durations) ? json.durations : [];
           harvestCosts = Array.isArray(json.harvestCosts) ? json.harvestCosts : [];
           production = Array.isArray(json.production) ? json.production : [];

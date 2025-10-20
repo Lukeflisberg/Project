@@ -155,15 +155,16 @@ export function isInInvalidPeriod(task: Task, startHour: number, endHour: number
 }
 
 // ----------------------
-// Task Color Mapping
+// Task Color
 // ----------------------
-// Returns a color based on the task's avvForm value
-export function getTaskColor(task: Task, teamColorEntry: string | undefined): string {
-  const teamColor = teamColorEntry ?? "#5F8A8B";
-  const colorMap: Record<string, string> = {
-    // '�A': '#f59e0b', // amber-500
-    'n/a': teamColor, // fallback to team color
-  };
-  
-  return colorMap[task.task.avvForm] || teamColor;
+export function getTaskColor(task: Task): string {
+  return task.task.color;
 }
+
+// Color stuff
+// Currently, the marker color thing should be working 
+// Just assign the color of the marker too it
+// But I had an idea of rather when I toggle the color, recolor ALL tasks
+// Then when untoggled, reset them
+// Then when rendering, just check if color exists, this could also be fixed by just appling color in filereader like I did with team
+// then i can just call gettaskcolor for color and  getcolorfromtask to set all tasks
