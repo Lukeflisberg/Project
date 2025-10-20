@@ -59,6 +59,12 @@ export function WorldMap() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
+  // Filter states
+  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['�A', 'GA', 'SA']);
+  const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
+  const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
+  const [showBarighetPopup, setShowBarighetPopup] = useState(false);
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -93,7 +99,7 @@ export function WorldMap() {
           y: e.clientY - dragStartRef.current.y
         });
       };
-
+      
       const handleMouseUp = () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
@@ -255,7 +261,7 @@ export function WorldMap() {
 
   // Home base triangle icon for teams
   const createHomeBaseIcon = (color: string, isSelected: boolean = false) => {
-    const size: number = isSelected ? 20 : 8;
+    const size: number = isSelected ? 12 : 8;
     const stroke: number = isSelected ? 2 : 1;
     const iconHtml: string = `
       <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
@@ -271,16 +277,28 @@ export function WorldMap() {
   };
 
   const getVisibleTasks = () => {
+    let tasks: Task[] = state.tasks;
+
+    // Filter by team
     if (state.selectedTeamId === 'all') {
-      return state.tasks.filter(task =>
+      tasks = tasks.filter(task =>
         (task.duration.teamId !== null) ||
         (state.toggledNull && task.duration.teamId === null)
       );
+    } else {
+      tasks = tasks.filter(task =>
+        (task.duration.teamId === state.selectedTeamId) ||
+        (state.toggledNull && task.duration.teamId === null)
+      );
     }
-    return state.tasks.filter(task =>
-      (task.duration.teamId === state.selectedTeamId) ||
-      (state.toggledNull && task.duration.teamId === null)
-    );
+
+    // Filter by avvForm
+    tasks = tasks.filter(task => selectedAvvForm.includes(task.task.avvForm));
+
+    // Filter by barighet
+    tasks = tasks.filter(task => selectedBarighet.includes(task.task.barighet));
+
+    return tasks;
   };
 
   const getVisibleTeams = () => {
@@ -358,6 +376,57 @@ export function WorldMap() {
     })
     console.log("Toggled null");
   }
+
+  // Get unique barighet values dynamically
+  const getUniqueBarighet = () => {
+    const barighetValues = new Set<string>();
+    state.tasks.forEach(task => {
+      if (task.task.barighet) {
+        barighetValues.add(task.task.barighet);
+      }
+    });
+    return Array.from(barighetValues).sort();
+  };
+
+  // Initialize barighet filter when tasks change
+  useEffect(() => {
+    const uniqueBarighet = getUniqueBarighet();
+    if (selectedBarighet.length === 0 && uniqueBarighet.length > 0) {
+      setSelectedBarighet(uniqueBarighet);
+    }
+  }, [state.tasks]);
+
+  // Toggle avvForm filter
+  const toggleAvvForm = (form: string) => {
+    setSelectedAvvForm(prev => 
+      prev.includes(form) 
+        ? prev.filter(f => f !== form)
+        : [...prev, form]
+    );
+  };
+
+  // Toggle barighet filter
+  const toggleBarighet = (barighet: string) => {
+    setSelectedBarighet(prev => 
+      prev.includes(barighet) 
+        ? prev.filter(b => b !== barighet)
+        : [...prev, barighet]
+    );
+  };
+
+  // Close popups when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.filter-popup') && !target.closest('.filter-button')) {
+        setShowAvvFormPopup(false);
+        setShowBarighetPopup(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const ResizeHandler = () => {
     const map: L.Map = useMap();
@@ -672,7 +741,7 @@ export function WorldMap() {
           <MapIcon className="text-blue-600" width="24" height="24" />
           <h2 className="text-xl font-semibold text-gray-800">Task Locations</h2>
         </div>
-
+    
         <div className="flex items-center gap-2 control-buttons">
           <button
             onClick={toggleMaximized}
@@ -693,34 +762,99 @@ export function WorldMap() {
       </div>
 
       {/* Sub Heading */}
-      {/* All Button */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => handleTeamToggle('all')}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-            state.selectedTeamId === 'all'
-              ? 'bg-gray-700 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          All
-        </button>
-        
-        {/* Unassigned Button */}
-        <button 
-          onClick={() => handleNullToggle()}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
-            state.toggledNull === true
-              ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
-              : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
-          }`}
-        >
-          Unassigned
-        </button>
+      {/* Team Filters */}
+      <div className="mb-4">
+        <h3 className="text-xs font-semibold text-gray-600 mb-2">Filters</h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => handleTeamToggle('all')}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              state.selectedTeamId === 'all'
+                ? 'bg-gray-700 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            All Teams
+          </button>
+          
+          {/* Unassigned Button */}
+          <button 
+            onClick={() => handleNullToggle()}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${
+              state.toggledNull === true
+                ? 'bg-orange-500 text-white border-orange-600 shadow-md hover:bg-orange-600'
+                : 'bg-white text-orange-600 border-orange-400 hover:bg-orange-50 hover:border-orange-500'
+            }`}
+          >
+            Unassigned
+          </button>
+
+          {/* AvvForm Filter Button */}
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setShowAvvFormPopup(!showAvvFormPopup);
+                setShowBarighetPopup(false);
+              }}
+              className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
+            >
+              AvvForm ({selectedAvvForm.length})
+            </button>
+            
+            {showAvvFormPopup && (
+              <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] z-50 style={{ zIndex: 9999 }}">
+                <div className="space-y-2">
+                  {['�A', 'GA', 'SA'].map(form => (
+                    <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedAvvForm.includes(form)}
+                        onChange={() => toggleAvvForm(form)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-700">{form}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Barighet Filter Button */}
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setShowBarighetPopup(!showBarighetPopup);
+                setShowAvvFormPopup(false);
+              }}
+              className="filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors bg-teal-500 text-white hover:bg-teal-600 flex items-center gap-1"
+            >
+              Barighet ({selectedBarighet.length})
+            </button>
+            
+            {showBarighetPopup && (
+              <div className="filter-popup absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 min-w-[150px] max-h-[300px] overflow-y-auto z-50 style={{ zIndex: 9999 }}">
+                <div className="space-y-2">
+                  {getUniqueBarighet().map(barighet => (
+                    <label key={barighet} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedBarighet.includes(barighet)}
+                        onChange={() => toggleBarighet(barighet)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-700">{barighet}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Map Container */}
-      <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default' }}>
+      <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default', zIndex: 1 }}>
         <MapContainer
           ref={mapRef}
           center={[62.0, 15.0]}
