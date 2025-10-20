@@ -1136,7 +1136,7 @@ export function GanttChart() {
           </div>
 
           {/* Scrollable team rows */}
-          <div className="flex-1 overflow-y-scroll overflow-x-hidden" onScroll={(e) => {
+          <div className="flex-1 overflow-y-scroll overflow-x-hidden" style={{ direction: 'rtl' }} onScroll={(e) => {
             const scrollTop = e.currentTarget.scrollTop;
             const durationCol = ganttRef.current?.querySelector('.duration-column');
             const timelineCol = ganttRef.current?.querySelector('.timeline-column');
@@ -1270,7 +1270,7 @@ export function GanttChart() {
           <div className="timeline-content relative flex flex-col h-full">
 
             {/* Horizontal scroll wrapper */}
-            <div className="timeline-column flex-1 overflow-x-auto overflow-y-hidden">
+            <div className="timeline-column flex-1 overflow-hidden">
 
               {/* Sticky periods header row */}
               <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-10"> 

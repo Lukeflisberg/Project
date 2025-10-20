@@ -14,17 +14,17 @@ const COLORS = {
 
 function usePeriods() {
   const { state } = useApp();
-  const periodIds = useMemo(() => state.periods.map(p => p.id), [state.periods]);
-  return periodIds;
+  const periodNames = useMemo(() => state.periods.map(p => p.name), [state.periods]);
+  return periodNames;
 }
 
 // Demand vs Production with surplus carryover to next period
 function DemandProductionChart({ resource }: { resource: string | null }) {
   const { state } = useApp();
-  const periodIds = usePeriods();
+  const periodNames = usePeriods();
 
   const series = useMemo(() => {
-    const n = periodIds.length;
+    const n = periodNames.length;
     if (!n) return [] as { name: string; production: number; demand: number; productionSurplus: number; demandSurplus: number }[];
 
     const boundaries = createPeriodBoundaries(state.periods);
@@ -43,13 +43,9 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
     const result = [];
     let cumulativeSurplus = 0;
 
-    for (let i = 0; i < periodIds.length; i++) {
+    for (let i = 0; i < periodNames.length; i++) {
       const p = prod[i] || 0;
       const d = dem[i] || 0;
-      
-      // Add cumulative surplus from previous periods to current production
-      const effectiveProduction = p + Math.max(0, cumulativeSurplus);
-      const effectiveDemand = d + Math.max(0, -cumulativeSurplus);
       
       // Calculate new surplus for this period
       const currentSurplus = p - d;
@@ -60,7 +56,7 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
       const demandSurplus = Math.max(0, -cumulativeSurplus);
 
       result.push({
-        name: periodIds[i].toUpperCase(),
+        name: periodNames[i],
         production: p,
         demand: d,
         productionSurplus: productionSurplus,
@@ -72,7 +68,7 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
     }
 
     return result;
-  }, [periodIds, state.periods, state.tasks, state.demand, resource]);
+  }, [periodNames, state.periods, state.tasks, state.demand, resource]);
 
   if (!series.length) {
     return <div className="flex items-center justify-center h-64 text-sm text-gray-500">No period/demand/production data available.</div>;
