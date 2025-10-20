@@ -1094,7 +1094,7 @@ export function GanttChart() {
   return (
     <div 
       ref={ganttRef}
-      className="gantt-chart-container relative bg-white rounded-lg shadow-lg p-4 h-full overflow-hidden"
+      className="gantt-chart-container flex flex-col relative bg-white rounded-lg shadow-lg p-4 h-full overflow-hidden"
     >
       {/* Header: Title and Import Buttons */}
       <div className="flex items-center gap-2 mb-4">
@@ -1136,7 +1136,13 @@ export function GanttChart() {
           </div>
 
           {/* Scrollable team rows */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex-1 overflow-y-scroll overflow-x-hidden" onScroll={(e) => {
+            const scrollTop = e.currentTarget.scrollTop;
+            const durationCol = ganttRef.current?.querySelector('.duration-column');
+            const timelineCol = ganttRef.current?.querySelector('.timeline-column');
+            if (durationCol) durationCol.scrollTop = scrollTop;
+            if (timelineCol) timelineCol.scrollTop = scrollTop;
+          }}>
             {state.teams.map(team => {
               const relevantTask = state.dragging_to_gantt 
                 ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
@@ -1159,7 +1165,7 @@ export function GanttChart() {
                   : highlight
                   ? "bg-blue-50 border-blue-300 border-l-4 border-l-blue-500 border-b-gray-200"
                   : "border-gray-100",
-              ].join("");
+              ].join(" ");
               
               return (
                 <div
@@ -1205,7 +1211,7 @@ export function GanttChart() {
           </div>
 
           {/* Scrollable duration rows */}
-          <div className="flex-1 overflow-y-hidden overflow-x-hidden">
+          <div className="duration-column flex-1 overflow-y-hidden overflow-x-hidden">
             {state.teams.map(team => {
               const relevantTask = state.dragging_to_gantt 
                 ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
@@ -1261,12 +1267,11 @@ export function GanttChart() {
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* Timeline container */}
-          <div className="timeline-content relative">
+          <div className="timeline-content relative flex flex-col h-full">
 
             {/* Horizontal scroll wrapper */}
-            <div className="flex-1 overflow-x-auto overflow-y-hidden">
+            <div className="timeline-column flex-1 overflow-x-auto overflow-y-hidden">
 
-              {/* Start period boundary: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-100" />  */}
               {/* Sticky periods header row */}
               <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-10"> 
                 <div className="flex h-full w-max">
@@ -1324,7 +1329,6 @@ export function GanttChart() {
                     <div className='absolute inset-0 pointer-events-none bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed border-l-0 flex items-center justify-center'></div>
                   )}
 
-                  {/* Start grid line: <div className="absolute top-0 bottom-0 left-0 border-r border-gray-50" /> */}
                   {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div

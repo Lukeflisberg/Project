@@ -36,7 +36,7 @@ function AppContent() {
       <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
         
         {/* Top Row - Gantt (3/5w) and Map (2/5w) */}
-        <div className="flex gap-4 h-[60%]">
+        <div className="flex gap-4 h-[60%] overflow-hidden">
           <div className="w-3/5">
             <GanttChart />
           </div>
