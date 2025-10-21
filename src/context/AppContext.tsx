@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, Task, Team, Period, Month, Resource, Demand, Distance } from '../types';
+import { AppState, Task, Team, Period, Month, Resource, Demand, Distance, ProductionGoals, AssortmentsGraph, TransportCosts } from '../types';
 
 // ----------------------
 // Action Types for State
@@ -14,11 +14,14 @@ type AppAction =
 
   | { type: 'SET_PERIODS'; periods: Period[] }
   | { type: 'SET_MONTHS'; months: Month[] }
+  | { type: 'SET_PRODUCTION_GOALS'; productionGoals: ProductionGoals[] }
   | { type: 'SET_TOTAL_HOURS'; totalHours: number }
   | { type: 'SET_RESOURCES'; resources: Resource[] }
   | { type: 'SET_DEMAND'; demand: Demand[] }
+  | { type: 'SET_ASSORTMENTS_GRAPH'; assortmentsGraph: AssortmentsGraph[] }
   | { type: 'SET_DISTANCES'; distances: Distance[] }
   | { type: 'SET_TASK_COLOR'; taskId: string, color: string }
+  | { type: 'SET_TRANSPORT_COSTS'; transportCosts: TransportCosts[] }
 
   | { type: 'TOGGLE_NULL'; toggledNull: boolean }
   | { type: 'TOGGLE_UNASSIGN_DROP'; toggledDrop: boolean }
@@ -56,6 +59,9 @@ const initialState: AppState = {
   demand: [],
   distances: [],
   taskSnapshot: [],
+  productionGoals: [],
+  assortments_graph: [],
+  transportCosts: [],
 };
 
 // ----------------------
@@ -97,11 +103,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_MONTHS':
       return { ...state, months: action.months };
 
+    case 'SET_PRODUCTION_GOALS':
+      return { ...state, productionGoals: action.productionGoals };
+
     case 'SET_RESOURCES':
       return { ...state, resources: action.resources };
 
     case 'SET_DEMAND':
       return { ...state, demand: action.demand };
+
+    case 'SET_ASSORTMENTS_GRAPH':
+      return { ...state, assortments_graph: action.assortmentsGraph };
 
     case 'SET_DISTANCES':
       return { ...state, distances: action.distances };
@@ -113,6 +125,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
           : task
       );
       return { ...state, tasks: updatedTasks}
+
+    case 'SET_TRANSPORT_COSTS':
+      return { ...state, transportCosts: action.transportCosts }
 
 
     case 'TOGGLE_NULL':

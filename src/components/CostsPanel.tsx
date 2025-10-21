@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcTotalCostDistribution, createPeriodBoundaries, getMonthStartEnd } from '../helper/chartUtils';
+import { calculateTotalCostBreakdown, createPeriodBoundaries, getMonthTimeWindow } from '../helper/chartUtils';
 import { Check, X, Landmark } from 'lucide-react';
 import { endHour } from '../helper/taskUtils';
 import { Task } from '../types';
@@ -20,30 +20,40 @@ export function CostsPanel() {
   const { state, dispatch } = useApp();
 
   const isEmpty: boolean = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
-  const { start, end } = getMonthStartEnd(state.months[0]?.monthID, state.months, createPeriodBoundaries(state.periods));
+  const { start, end } = getMonthTimeWindow(state.months[0]?.monthID, state.months, createPeriodBoundaries(state.periods));
 
   const firstMonthTasks: Task[] = state.tasks.filter(t => t.duration.startHour >= start && endHour(t) <= end);
   const firstMonthTaskSnapshot: Task[] = state.taskSnapshot.filter(t => t.duration.startHour >= start && endHour(t) <= end);
 
   const hasSnapshot = state.taskSnapshot.length > 0;
 
+  // Calculate transport costs
+  const transportCost_m0 = useMemo(() => 
+    state.transportCosts.length > 0 ? state.transportCosts[0].cost : 0,
+    [state.transportCosts]
+  );
+  const transportCost_all = useMemo(() => 
+    state.transportCosts.reduce((sum, tc) => sum + tc.cost, 0),
+    [state.transportCosts]
+  );
+
   // Calculate costs
   const newCost = useMemo(() => 
-    calcTotalCostDistribution(state.tasks, state.teams, state.demand, state.periods, state.distances).total,
-    [state.tasks, state.teams, state.demand, state.periods, state.distances]
+    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_all,
+    [state.tasks, state.teams, state.demand, state.periods, state.distances, transportCost_all]
   );
   const newCost_m0 = useMemo(() => 
-    calcTotalCostDistribution(firstMonthTasks, state.teams, state.demand, state.periods, state.distances).total,
-    [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]
+    calculateTotalCostBreakdown(firstMonthTasks, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_m0,
+    [firstMonthTasks, state.teams, state.demand, state.periods, state.distances, transportCost_m0]
   );
 
   const baseCost = useMemo(() => 
-    calcTotalCostDistribution(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]
+    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_all,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, transportCost_all]
   );
   const baseCost_m0 = useMemo(() => 
-    calcTotalCostDistribution(firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances).total,
-    [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]
+    calculateTotalCostBreakdown(firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_m0,
+    [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances, transportCost_m0]
   );
 
   const costDifference = newCost - baseCost;
@@ -60,11 +70,11 @@ export function CostsPanel() {
 
   // Pie chart data for all views
   const getPieData = (tasks: Task[]) => {
-    const costData = calcTotalCostDistribution(tasks, state.teams, state.demand, state.periods, state.distances);
+    const costData = calculateTotalCostBreakdown(tasks, state.teams, state.demand, state.periods, state.distances);
     
     if (!costData) return [];
 
-    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCosts, industryValue } = costData;
+    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandPenaltyCosts, industryValue } = costData;
 
     const costs = [
       { name: 'Harvester', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
@@ -72,7 +82,7 @@ export function CostsPanel() {
       { name: 'Traveling', value: Math.abs(travelingCosts), displayValue: travelingCosts },
       { name: 'Wheeling', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
       { name: 'Trailer', value: Math.abs(trailerCosts), displayValue: trailerCosts },
-      { name: 'Demand', value: Math.abs(demandCosts), displayValue: demandCosts },
+      { name: 'Demand', value: Math.abs(demandPenaltyCosts), displayValue: demandPenaltyCosts },
       { name: 'Industry_v', value: Math.abs(industryValue), displayValue: industryValue }
     ].filter(item => item.value > 0);
 
@@ -135,17 +145,20 @@ export function CostsPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Demand', 'Industry_v'].map((costName, idx) => {
+                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Transport', 'Demand', 'Industry_v'].map((costName, idx) => {
                       const newItem = pieDataNew.find(item => item.name === costName);
                       const newM0Item = pieDataNew_m0.find(item => item.name === costName);
                       const prevItem = pieDatabase.find(item => item.name === costName);
                       const prevM0Item = pieDatabase_m0.find(item => item.name === costName);
                       
+                      // Handle Transport costs separately
+                      const isTransport = costName === 'Transport';
+                      
                       // When no snapshot, show current values in base columns
-                      const baseM0Value = hasSnapshot ? (prevM0Item?.displayValue ?? 0) : (newM0Item?.displayValue ?? 0);
-                      const baseAllValue = hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0);
-                      const newM0Value = hasSnapshot ? (newM0Item?.displayValue ?? 0) : 0;
-                      const newAllValue = hasSnapshot ? (newItem?.displayValue ?? 0) : 0;
+                      const baseM0Value = isTransport ? transportCost_m0 : (hasSnapshot ? (prevM0Item?.displayValue ?? 0) : (newM0Item?.displayValue ?? 0));
+                      const baseAllValue = isTransport ? transportCost_all : (hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0));
+                      const newM0Value = isTransport ? transportCost_m0 : (hasSnapshot ? (newM0Item?.displayValue ?? 0) : 0);
+                      const newAllValue = isTransport ? transportCost_all : (hasSnapshot ? (newItem?.displayValue ?? 0) : 0);
                       
                       const m0Diff = hasSnapshot ? newM0Value - baseM0Value : 0;
                       const allDiff = hasSnapshot ? newAllValue - baseAllValue : 0;
@@ -177,10 +190,10 @@ export function CostsPanel() {
                           <td className="border border-gray-300 px-3 py-2 text-right text-gray-800">
                             {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
                           </td>
-                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newM0Value !== 0 ? 'text-right' : 'text-center'} font-medium ${
-                            !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newM0Value !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
+                            isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
-                            {hasSnapshot && newM0Value !== 0 ? (
+                            {isTransport ? '—' : hasSnapshot && newM0Value !== 0 ? (
                               <div>
                                 <div className="text-xs">
                                   {m0Sign}{formatCurrency(Math.abs(m0Diff))}
@@ -188,10 +201,10 @@ export function CostsPanel() {
                               </div>
                             ) : '—'}
                           </td>
-                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newAllValue !== 0 ? 'text-right' : 'text-center'} font-medium ${
-                            !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newAllValue !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
+                            isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
-                            {hasSnapshot && newAllValue !== 0 ? (
+                            {isTransport ? '—' : hasSnapshot && newAllValue !== 0 ? (
                               <div>
                                 <div className="text-xs">
                                   {allSign}{formatCurrency(Math.abs(allDiff))}

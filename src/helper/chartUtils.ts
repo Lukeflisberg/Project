@@ -14,13 +14,13 @@ export function createPeriodBoundaries(periods: Period[]): PeriodBoundary[] {
     return periodBoundaries;
 }
 
-interface ProductionByPeriod {
+interface ProductQuantityByPeriod {
     [productName: string]: number[];
 }
-export function getProductionByProduct(
+export function calculateProductionPerPeriod(
     tasks: Task[],
     periodBoundaries: PeriodBoundary[]
-): ProductionByPeriod {
+): ProductQuantityByPeriod {
     const periodCount = Math.max(0, periodBoundaries.length - 1);
 
     // Build the product set dynamically based on actual tasks to avoid missing keys
@@ -28,7 +28,7 @@ export function getProductionByProduct(
         new Set(tasks.flatMap(t => Object.keys(t.production ?? {})))
     );
 
-    const result: ProductionByPeriod = {};
+    const result: ProductQuantityByPeriod = {};
     for (const product of productKeys) {
         result[product] = new Array(periodCount).fill(0);
     }
@@ -70,119 +70,144 @@ export function getProductionByProduct(
     return result;
 }
 
-interface ProductionByTeam {
+interface TeamProductionSummary {
     teamId: string;
-    products: Record<string, number>; //name, quantity
+    volume: number;
 }
-export function getProductionByTeam(tasks: Task[]): ProductionByTeam[] {
-    // Group tasks by team
-    const teamMap = new Map<string, Task[]>();
-
-    for (const task of tasks) {
-        if (!task.duration.teamId) continue; // Skip tasks without a team
-
-        if (!teamMap.has(task.duration.teamId)) {
-            teamMap.set(task.duration.teamId, []);
-        }
-        teamMap.get(task.duration.teamId)!.push(task);
-    }
-
-    // Calculate production for each team
-    const result: ProductionByTeam[] = [];
-
-    for (const [teamId, teamTasks] of teamMap.entries()) {
-        const products: Record<string, number> = {};
-
-        for (const task of teamTasks) {
-            if (!task.production) continue;
-
-            // Add all products from this task
-            for (const [productName, quantity] of Object.entries(task.production)) {
-                if (!products[productName]) {
-                    products[productName] = 0;
-                }
-                products[productName] += quantity;
-            }
-        }
-
-        result.push({
-            teamId,
-            products
-        });
-    }
-
-    return result;
-}
-
-interface ProductionByMonths {
-    monthId: string;
-    products: Record<string, number>; // name, quantity
-}
-export function getProductionByMonths(
+export function calculateProductionPerTeam(
     tasks: Task[],
+    monthFilter: string,
     months: Month[],
     periodBoundaries: PeriodBoundary[]
-): ProductionByMonths[] {
-    const result: ProductionByMonths[] = [];
-    const monthsId = months.map(m => m.monthID);
+): TeamProductionSummary[] {
+    let monthStart: number;
+    let monthEnd: number;
 
-    // Process each month
-    for (const monthId of monthsId) {
-        const { start, end } = getMonthStartEnd(monthId, months, periodBoundaries);
-
-        // Filter tasks for this month
-        const monthTasks = tasks.filter(
-            t => t.duration.startHour >= start && endHour(t) <= end
-        );
-
-        // Calculate production for this month
-        const products: Record<string, number> = {};
-
-        for (const task of monthTasks) {
-            if (!task.production) continue;
-
-            // Add all products from this task
-            for (const [productName, quantity] of Object.entries(task.production)) {
-                if (!products[productName]) {
-                    products[productName] = 0;
-                }
-                products[productName] += quantity;
-            }
-        }
-
-        result.push({
-            monthId,
-            products
-        });
+    // Determine the time window for filtering
+    if (monthFilter === 'all') {
+        monthStart = 0;
+        monthEnd = Infinity;
+    } 
+    else {
+        const {start, end} = getMonthTimeWindow(monthFilter, months, periodBoundaries);
+        monthStart = start;
+        monthEnd = end;
     }
 
-    // Add 'all' entry with total production across all months
-    const allProducts: Record<string, number> = {};
+    // Group tasks by team and calculate proportional production
+    const teamMap = new Map<string, Record<string, number>>();
 
     for (const task of tasks) {
+        if (!task.duration.teamId) continue;
         if (!task.production) continue;
+        
+        const taskStart = task.duration.startHour;
+        const taskEnd = endHour(task);
+        const taskDuration = effectiveDuration(task);
 
-        for (const [productName, quantity] of Object.entries(task.production)) {
-            if (!allProducts[productName]) {
-                allProducts[productName] = 0;
+        if (taskDuration <= 0) continue;
+
+        // Calculate overlap with the month window
+        const overlapStart = Math.max(taskStart, monthStart);
+        const overlapEnd = Math.min(taskEnd, monthEnd);
+        const overlap = Math.max(0, overlapEnd - overlapStart);
+
+        if (overlap > 0) {
+            const proportion = overlap / taskDuration;
+
+            // Initialize team entry if needed
+            if (!teamMap.has(task.duration.teamId)) {
+                teamMap.set(task.duration.teamId, {});
             }
-            allProducts[productName] += quantity;
+
+            const teamProducts = teamMap.get(task.duration.teamId)!;
+
+            // Add proportional production for each product
+            for (const [productName, quantity] of Object.entries(task.production)) {
+                if (!teamProducts[productName]) {
+                    teamProducts[productName] = 0;
+                }
+                teamProducts[productName] += quantity * proportion;
+            }
         }
     }
 
-    result.push({
-        monthId: 'all',
-        products: allProducts
-    });
+    // Convert map to array
+    const result: TeamProductionSummary[] = [];
+    for (const [teamId, products] of teamMap.entries()) {
+        const volume = Object.values(products).reduce((sum, qty) => sum + qty, 0);
+        result.push({ teamId, volume });
+    }
+
+    // Sort by teamId to ensure consistent ordering
+    result.sort((a, b) => a.teamId.localeCompare(b.teamId));
+    console.log(result[0].volume);
 
     return result;
 }
 
-interface DemandsByPeriod {
+interface MonthProductionSummary {
+    products: Record<string, number>; 
+}
+export function calculateProductionForMonth(
+    tasks: Task[],
+    monthFilter: string,
+    months: Month[],
+    periodBoundaries: PeriodBoundary[]
+): MonthProductionSummary {
+    let monthStart: number;
+    let monthEnd: number;
+
+    // Determine the time window for filtering
+    if (monthFilter === 'all') {
+        monthStart = 0;
+        monthEnd = Infinity;
+    } else {
+        const { start, end } = getMonthTimeWindow(monthFilter, months, periodBoundaries);
+        monthStart = start;
+        monthEnd = end;
+    }
+
+    // Calculate proportional production for the selected month filter
+    const products: Record<string, number> = {};
+
+    for (const task of tasks) {
+        if (!task.duration.teamId) continue;
+        if (!task.production) continue;
+
+        const taskStart = task.duration.startHour;
+        const taskEnd = endHour(task);
+        const taskDuration = effectiveDuration(task);
+
+        if (taskDuration <= 0) continue;
+
+        // Calculate overlap with the month window
+        const overlapStart = Math.max(taskStart, monthStart);
+        const overlapEnd = Math.min(taskEnd, monthEnd);
+        const overlap = Math.max(0, overlapEnd - overlapStart);
+
+        if (overlap > 0) {
+            const proportion = overlap / taskDuration;
+
+            // Add proportional production for each product
+            for (const [productName, quantity] of Object.entries(task.production)) {
+                if (!products[productName]) {
+                    products[productName] = 0;
+                }
+                products[productName] += quantity * proportion;
+            }
+        }
+    }
+
+    return { products };
+}
+
+
+interface DemandQuantityByPeriod {
     [productName: string]: number[];
 }
-export function getDemandByProduct(demand: Demand[]): DemandsByPeriod {
-    const result: DemandsByPeriod = {};
+export function calculateDemandPerPeriod(demand: Demand[]): DemandQuantityByPeriod {
+    const result: DemandQuantityByPeriod = {};
 
     // Process each product's demand
     for (const d of demand) {
@@ -202,11 +227,11 @@ export function getDemandByProduct(demand: Demand[]): DemandsByPeriod {
     return result;
 }
 
-export const calcDurationOf = (tasks: Task[]): number => {
+export const calculateTotalTaskDuration = (tasks: Task[]): number => {
     return tasks.reduce((sum, task) => sum + effectiveDuration(task), 0);
 };
 
-export const getMonthStartEnd = (monthId: string, months: Month[], periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
+export const getMonthTimeWindow = (monthId: string, months: Month[], periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
     const month = months.find(m => m.monthID === monthId);
 
     if (!month || !month.periods || month.periods.length === 0) {
@@ -232,13 +257,13 @@ export const getMonthStartEnd = (monthId: string, months: Month[], periodBoundar
     };
 }
 
-export function calcMonthlyDurations(
-    monthStartEnd: { start: number, end: number },
+export function calculateMonthlyTaskDuration(
+    monthTimeWindow: { start: number, end: number },
     tasks: Task[],
 ): number {
     // Compute the month window [monthStart, monthEnd)
-    const monthStart: number = monthStartEnd.start;
-    const monthEnd: number = monthStartEnd.end;
+    const monthStart: number = monthTimeWindow.start;
+    const monthEnd: number = monthTimeWindow.end;
 
     // Sum overlap durations for tasks intersecting with the month window
     let duration = 0;
@@ -253,17 +278,17 @@ export function calcMonthlyDurations(
     return duration;
 }
 
-interface TotalCostDistribution {
+interface CostBreakdown {
     harvesterCosts: number;
     forwarderCosts: number;
     travelingCosts: number;
     wheelingCosts: number;
     trailerCosts: number;
-    demandCosts: number;
+    demandPenaltyCosts: number;
     industryValue: number;
-    total: number;
+    totalCost: number;
 }
-export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]): TotalCostDistribution {
+export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]): CostBreakdown {
     const assignedTasks = tasks.filter(t => t.duration.teamId !== null);
     let harvesterCostCalculations: string[] = [];
     let forwarderCostCalculations: string[] = [];
@@ -308,23 +333,23 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         return total + taskCost;
     }, 0);
     
-    // console.log("Total Harvester Costs: ", harvesterCosts);
-    // console.log("Total Forwarder Costs: ", forwarderCosts);
-    // console.log("Total Traveling Costs: ", travelingCosts);
+    console.log("Total Harvester Costs: ", harvesterCosts);
+    console.log("Total Forwarder Costs: ", forwarderCosts);
+    console.log("Total Traveling Costs: ", travelingCosts);
 
-    // console.groupCollapsed("Harvester Cost Calcs");
-    // console.log(harvesterCostCalculations.join('\n'));
-    // console.groupEnd();
+    console.groupCollapsed("Harvester Cost Calcs");
+    console.log(harvesterCostCalculations.join('\n'));
+    console.groupEnd();
 
-    // console.groupCollapsed("Forwarder Cost Calcs");
-    // console.log(forwarderCostCalculations.join('\n'));
-    // console.groupEnd();
+    console.groupCollapsed("Forwarder Cost Calcs");
+    console.log(forwarderCostCalculations.join('\n'));
+    console.groupEnd();
 
-    // console.groupCollapsed("Traveling Cost Calcs");
-    // console.log(travelingCostCalculations.join('\n'));
-    // console.groupEnd();
+    console.groupCollapsed("Traveling Cost Calcs");
+    console.log(travelingCostCalculations.join('\n'));
+    console.groupEnd();
 
-    // console.log("");
+    console.log("");
 
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
@@ -362,72 +387,73 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
             }
         }
     }
-    // console.log("Total Wheeling Cost: ", wheelingCosts);
-    // console.groupCollapsed("Wheeling Cost Calcs")
-    // console.log(wheelingCalcs.join('\n'));
-    // console.groupEnd();
+
+    console.log("Total Wheeling Cost: ", wheelingCosts);
+    console.groupCollapsed("Wheeling Cost Calcs")
+    console.log(wheelingCalcs.join('\n'));
+    console.groupEnd();
     
-    // console.log("Total Trailer Cost: ", trailerCosts);
-    // console.groupCollapsed("Trailer Cost Calcs")
-    // console.log(trailerCalcs.join('\n'));
-    // console.groupEnd();
+    console.log("Total Trailer Cost: ", trailerCosts);
+    console.groupCollapsed("Trailer Cost Calcs")
+    console.log(trailerCalcs.join('\n'));
+    console.groupEnd();
 
-    // console.log("");
+    console.log("");
 
-    // Demand Costs
+    // Demand Penalty Costs
     // Get inventory balance
-    const prodMap = getProductionByProduct(assignedTasks, createPeriodBoundaries(periods)); 
-    const demMap = getDemandByProduct(demands);
-    const balance: { [key: string]: number } = {};
-    let demandCostCalc: string[] = [`result * goal`];
+    const productionByPeriod = calculateProductionPerPeriod(assignedTasks, createPeriodBoundaries(periods)); 
+    const demandByPeriod = calculateDemandPerPeriod(demands);
+    const inventoryBalance: { [key: string]: number } = {};
+    let demandCostCalc: string[] = [`difference * penaltyCost`];
 
-    Object.keys(prodMap).forEach(product => {
-        const prodTotal = prodMap[product].reduce((sum, val) => sum + val, 0);
-        const demandTotal = demMap[product].reduce((sum, val) => sum + val, 0);
-        const diff = prodTotal - demandTotal;
+    Object.keys(productionByPeriod).forEach(product => {
+        const totalProduction = productionByPeriod[product].reduce((sum, val) => sum + val, 0);
+        const totalDemand = demandByPeriod[product].reduce((sum, val) => sum + val, 0);
+        const difference = totalProduction - totalDemand;
 
-        balance[product] = diff;
+        inventoryBalance[product] = difference;
     })
 
-    const demandCosts = demands.map(d => {
-        const result = balance[d.Product] - demMap[d.Product].reduce((sum, val) => sum + val, 0);
-        if (result > 0) {
-            demandCostCalc.push(`>0: ${result} * ${d.demand[0].costAboveAckumGoal}`);
-            return result * d.demand[0].costAboveAckumGoal;
+    const demandPenaltyCosts = demands.map(d => {
+        const difference = inventoryBalance[d.Product] - demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
+        if (difference > 0) {
+            demandCostCalc.push(`>0: ${difference} * ${d.demand[0].costAboveAckumGoal}`);
+            return difference * d.demand[0].costAboveAckumGoal;
         } else {
-            demandCostCalc.push(`<0: ${result} * ${d.demand[0].costBelowAckumGoal}`);
-            return (-1 * result) * d.demand[0].costBelowAckumGoal;
+            demandCostCalc.push(`<0: ${difference} * ${d.demand[0].costBelowAckumGoal}`);
+            return (-1 * difference) * d.demand[0].costBelowAckumGoal;
         }
     }).reduce((sum, val) => sum + val, 0);
     
-    // console.log("Total Demand cost: ", demandCosts);
-    // console.groupCollapsed("Demand Cost Calcs");
-    // console.log(demandCostCalc.join('\n'));
-    // console.groupEnd();
+    console.log("Total Demand Penalty Cost: ", demandPenaltyCosts);
+    console.groupCollapsed("Demand Penalty Cost Calcs");
+    console.log(demandCostCalc.join('\n'));
+    console.groupEnd();
 
-    // console.groupCollapsed("Balance");
-    // console.log(balance);
-    // console.groupEnd();
+    console.groupCollapsed("Inventory Balance");
+    console.log(inventoryBalance);
+    console.groupEnd();
 
-    // console.log("");    
+    console.log("");    
 
-    let industryValueCalcs: string[] = [`balance[p.Product] * d.value_prod or just 0`];
+    let industryValueCalcs: string[] = [`surplusQuantity * unitValue`];
     
-    // Industry Value
+    // Industry Value (revenue from surplus production)
     const industryValue = demands.map(d => {
-        if (balance[d.Product] > 0) {
-            industryValueCalcs.push(`${balance[d.Product]} * ${d.value_prod}`)
-            return balance[d.Product] * d.value_prod;
+        if (inventoryBalance[d.Product] > 0) {
+            industryValueCalcs.push(`${inventoryBalance[d.Product]} * ${d.value_prod}`)
+            return inventoryBalance[d.Product] * d.value_prod;
         } else {
             industryValueCalcs.push(`0`);
             return 0;
         }
     }).reduce((sum, val) => sum + val, 0);
 
-    // console.log("Total Industry Value: ", industryValue);
-    // console.groupCollapsed("Industry Value Calc");
-    // console.log(industryValueCalcs.join('\n'));
-    // console.groupEnd();
+    console.log("Total Industry Value: ", industryValue);
+    console.groupCollapsed("Industry Value Calc");
+    console.log(industryValueCalcs.join('\n'));
+    console.groupEnd();
 
     return {
         harvesterCosts: harvesterCosts,
@@ -435,8 +461,8 @@ export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands:
         travelingCosts: travelingCosts,
         wheelingCosts: wheelingCosts,
         trailerCosts: trailerCosts,
-        demandCosts: demandCosts,
+        demandPenaltyCosts: demandPenaltyCosts,
         industryValue: industryValue,
-        total: harvesterCosts + forwarderCosts + travelingCosts + wheelingCosts + trailerCosts + demandCosts - industryValue
+        totalCost: harvesterCosts + forwarderCosts + travelingCosts + wheelingCosts + trailerCosts + demandPenaltyCosts - industryValue
     }
 }

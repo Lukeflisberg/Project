@@ -9,6 +9,26 @@ export interface Month {
   periods: string[];
 }
 
+export interface ProductionGoals {
+  monthID: number;
+  team: string;
+  minGoal: number;
+  maxGoal: number;
+}
+
+export interface AssortmentsGraph {
+  assortment: string;
+  supply: number;
+  demandMin: number;
+  demandGoal: number;
+  include: number;
+}
+
+export interface TransportCosts {
+  monthId: number;
+  cost: number;
+}
+
 export interface Task {
   task: Task.Details;
   duration: Task.Duration;
@@ -24,6 +44,7 @@ export namespace Task {
     lon: number;
     avvForm: string;
     barighet: string;
+    ursprung: string;
     color: string;
   }
 
@@ -178,4 +199,7 @@ export interface AppState {
   demand: Demand[];
   distances: Distance[];
   taskSnapshot: Task[];
+  productionGoals: ProductionGoals[];
+  assortments_graph: AssortmentsGraph[];
+  transportCosts: TransportCosts[];
 }

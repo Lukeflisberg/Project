@@ -6,7 +6,7 @@ import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
 import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor } from '../helper/taskUtils';
-import { calcDurationOf } from '../helper/chartUtils';
+import { calculateTotalTaskDuration } from '../helper/chartUtils';
 
 // ----------------------
 // Period Configuration
@@ -805,16 +805,20 @@ export function GanttChart() {
 
     // Import months
     if (result.months && Array.isArray(result.months)) {
-      const formattedMonths = result.months;
-      dispatch({ type: 'SET_MONTHS', months: formattedMonths });
-      console.log("Imported months: ", formattedMonths);
+      dispatch({ type: 'SET_MONTHS', months: result.months });
+      console.log("Imported months: ", result.months);
+    }
+
+    // Import production goals
+    if (result.productionGoals && Array.isArray(result.productionGoals)) {
+      dispatch({ type: 'SET_PRODUCTION_GOALS', productionGoals: result.productionGoals})
+      console.log("Imported Production Goals: ", result.productionGoals);
     }
 
     // Import teams 
     if (result.teams && Array.isArray(result.teams)) {
-      const formattedTeams = result.teams;
-      dispatch({ type: 'UPDATE_TEAMS', teams: formattedTeams });
-      console.log("Imported Teams: ", formattedTeams);
+      dispatch({ type: 'UPDATE_TEAMS', teams: result.teams });
+      console.log("Imported Teams: ", result.teams);
     }
 
     // Import tasks
@@ -914,19 +918,19 @@ export function GanttChart() {
 
     // Import Demand
     if (result.Demand && Array.isArray(result.Demand)) {
-      dispatch({
-        type: 'SET_DEMAND',
-        demand: result.Demand
-      });
+      dispatch({ type: 'SET_DEMAND', demand: result.Demand });
       console.log("Imported Demand: ", result.Demand);
+    }
+
+    // Import Assortments Graph
+    if (result.assortments_graph && Array.isArray(result.assortments_graph)) {
+      dispatch({ type: 'SET_ASSORTMENTS_GRAPH', assortmentsGraph: result.assortments_graph });
+      console.log("Imported Assortments Graph: ", result.assortments_graph);
     }
 
     // Import Distances
     if (result.Distances && Array.isArray(result.Distances)) {
-      dispatch({
-        type: 'SET_DISTANCES',
-        distances: result.Distances
-      });
+      dispatch({ type: 'SET_DISTANCES', distances: result.Distances });
       console.log("Imported Distances: ", result.Distances);
     }
   };
@@ -940,6 +944,11 @@ export function GanttChart() {
     if (!result) return;
 
     let _tasks = state.tasks; // Store local copy of state.tasks
+
+    if (result.transportCosts && Array.isArray(result.transportCosts)) {
+      dispatch({ type: 'SET_TRANSPORT_COSTS', transportCosts: result.transportCosts });
+      console.log("Imported Transport Costs: ", result.transportCosts);
+    }
 
     // Reset the teams of all tasks
     for (const task of _tasks) {
@@ -1227,7 +1236,7 @@ export function GanttChart() {
               
               const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
               const rowTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-              const totalDuration: number = calcDurationOf(rowTasks);
+              const totalDuration: number = calculateTotalTaskDuration(rowTasks);
               const isSelected = state.selectedTeamId === team.id;
               
               return (
