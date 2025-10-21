@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getProductionByTeam, getMonthStartEnd } from '../helper/chartUtils';
+import { calcDurationOf, calcMonthlyDurations, createPeriodBoundaries, getProductionByProduct, getDemandByProduct, getMonthStartEnd, getProductionByMonths } from '../helper/chartUtils';
 import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
 
 // Color palette
@@ -110,17 +110,48 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
   );
 }
 
-function WorkEfficiencyChart() {
+function WorkEfficiencyChart({ monthId }: { monthId: string | null }) {
   const { state } = useApp();
 
   const data = useMemo(() => {
-    const totalAvailable = state.totalHours > 0
-      ? state.totalHours
-      : state.periods.reduce((s, p) => s + p.length_h, 0);
+    // Determine total available hours based on selected month
+    let totalAvailable = 0;
+    let relevantTasks = state.tasks;
+
+    if (monthId === 'all') {
+      totalAvailable = state.totalHours > 0
+        ? state.totalHours 
+        : state.periods.reduce((s, p) => s + p.length_h, 0);
+    } else {
+      // Find the selected month
+      const month = state.months?.find(m => m.monthID === monthId);
+      if (month) {
+        // Get periods for this month
+        const monthPeriods = state.periods.filter(p => month.periods.includes(p.id));
+        totalAvailable = monthPeriods.reduce((sum, p) => sum + p.length_h, 0);
+
+        // Get month boundaries for filtering tasks
+        const monthStartEnd = getMonthStartEnd(month.monthID, state.months, createPeriodBoundaries(state.periods));
+        
+        // Filter tasks to only those within this month
+        relevantTasks = state.tasks;
+      }
+    }
 
     const items = state.teams.map(team => {
-      const teamTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-      const used = calcDurationOf(teamTasks);
+      const teamTasks = relevantTasks.filter(t => t.duration.teamId === team.id);
+
+      let used = 0;
+      if (monthId === 'all') {
+        used = calcDurationOf(teamTasks);
+      } else {
+        const month = state.months?.find(m => m.monthID === monthId);
+        if (month) {
+          const monthStartEnd = getMonthStartEnd(month.monthID, state.months, createPeriodBoundaries(state.periods));
+          used = calcMonthlyDurations(monthStartEnd, teamTasks);
+        }
+      }
+
       const percent = totalAvailable > 0 ? (used / totalAvailable) * 100 : 0;
       return { 
         name: team.id, 
@@ -131,7 +162,7 @@ function WorkEfficiencyChart() {
     });
 
     return items;
-  }, [state.tasks, state.teams, state.totalHours, state.periods]);
+  }, [state.tasks, state.teams, state.totalHours, state.periods, state.months, monthId]);
 
   if (!data.length) {
     return <div className="flex items-center justify-center h-64 text-sm text-gray-500">No teams/tasks to compute efficiency.</div>;
@@ -174,27 +205,28 @@ function WorkEfficiencyChart() {
   );
 }
 
-function TeamProductionChart({ teamId }: { teamId: string | null }) {
+function MonthlyProductionChart({ monthId }: { monthId: string | null }) {
   const { state } = useApp();
 
   const data = useMemo(() => {
-    const productionByTeam = getProductionByTeam(state.tasks);
+    const monthlyProductionData = getProductionByMonths(state.tasks, state.months, createPeriodBoundaries(state.periods));
     
-    if (!productionByTeam || productionByTeam.length === 0) {
+    if (!monthlyProductionData || monthlyProductionData .length === 0) {
       return [];
     }
 
-    // Find the selected team or use the first one
-    const selectedTeam = productionByTeam.find(t => t.teamId === teamId) || productionByTeam[0];
+    // Find the selected month or use 'all'
+    const selectedMonth = monthlyProductionData.find(m => m.monthId === monthId) || 
+                          monthlyProductionData.find(m => m.monthId === 'all');
     
-    if (!selectedTeam) return [];
+    if (!selectedMonth) return [];
 
     // Transform the team's products into chart data with product names on x-axis
-    return Object.entries(selectedTeam.products).map(([productName, quantity]) => ({
+    return Object.entries(selectedMonth.products).map(([productName, quantity]) => ({
       name: productName,
       quantity: quantity
     }));
-  }, [state.tasks, teamId]);
+  }, [state.tasks, state.months, state.periods, monthId]);
 
   if (!data.length) {
     return (
@@ -232,108 +264,9 @@ function TeamProductionChart({ teamId }: { teamId: string | null }) {
   );
 }
 
-function MonthlyEfficiencyChart() {
-  const { state } = useApp();
-  const boundaries = createPeriodBoundaries(state.periods);
-
-  const data = useMemo(() => {
-    if (!state.months || state.months.length === 0 || state.teams.length === 0) {
-      return [];
-    }
-
-    return state.months.map(month => {
-      // Calculate total available hours for this month
-      const monthPeriods = state.periods.filter(p => month.periods.includes(p.id));
-      const totalAvailable = monthPeriods.reduce((sum, p) => sum + p.length_h, 0);
-
-      if (totalAvailable === 0) {
-        return {
-          name: month.monthID,
-          value: 0,
-          used: 0,
-          total: totalAvailable,
-          teamCount: state.teams.length
-        };
-      }
-
-      // Calculate average efficiency across all teams
-      let totalEfficiency = 0;
-      let totalUsed = 0;
-
-      state.teams.forEach(team => {
-        const teamTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-        const monthStartEnd = getMonthStartEnd(month, createPeriodBoundaries(state.periods));
-        const used = calcMonthlyDurations(monthStartEnd, teamTasks);
-        const efficiency = (used / totalAvailable) * 100;
-        
-        totalEfficiency += efficiency;
-        totalUsed += used;
-      });
-
-      const avgEfficiency = state.teams.length > 0 ? totalEfficiency / state.teams.length : 0;
-      const avgUsed = state.teams.length > 0 ? totalUsed / state.teams.length : 0;
-      
-      return {
-        name: month.monthID,
-        value: Number(Math.min(100, Math.max(0, avgEfficiency)).toFixed(2)),
-        used: Number(avgUsed.toFixed(2)),
-        total: Number(totalAvailable.toFixed(2)),
-        teamCount: state.teams.length
-      };
-    });
-  }, [state.months, state.teams, state.tasks, state.periods, boundaries]);
-
-  if (!data.length) {
-    return (
-      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
-        No monthly data to display.
-      </div>
-    );
-  }
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
-          <p className="font-semibold mb-1">{data.name}</p>
-          <p className="text-sm">Avg Efficiency: {data.value.toFixed(1)}%</p>
-          <p className="text-sm">
-            Avg Used: {Math.floor(data.used)}h {Math.round((data.used % 1) * 60)}m
-          </p>
-          <p className="text-sm">
-            Total Available: {Math.floor(data.total)}h {Math.round((data.total % 1) * 60)}m
-          </p>
-          <p className="text-sm text-gray-600">Teams: {data.teamCount}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  return (
-    <div className="w-full h-80">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-          <CartesianGrid stroke={COLORS.grid} />
-          <XAxis 
-            dataKey="name" 
-            tick={{ fontSize: 11 }}
-            interval={0}
-          />
-          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend />
-          <Bar dataKey="value" name="Avg Efficiency" fill="#10B981" />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 export function ChartsPanel() {
   const { state } = useApp();
-  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart' | 'TeamProductionChart' | 'CostDistributionChart'>('DemandProductionChart');
+  const [tab, setTab] = useState<'DemandProductionChart' | 'WorkEfficiencyChart' | 'MonthlyEfficiencyChart' | 'MonthlyProductionChart' | 'CostDistributionChart'>('DemandProductionChart');
 
   const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
 
@@ -351,19 +284,29 @@ export function ChartsPanel() {
     }
   }, [resources, selectedResource]);
 
-  // Team dropdown options (for TeamProductionChart)
-  const teams = useMemo(() => {
-    const productionByTeam = getProductionByTeam(state.tasks);
-    return productionByTeam.map(t => t.teamId).sort();
+  // Team dropdown options (for MonthlyProductionChart)
+  const months = useMemo(() => {
+    const monthlyProduction = getProductionByMonths(state.tasks, state.months, createPeriodBoundaries(state.periods));
+    return monthlyProduction.map(m => m.monthId).sort();
   }, [state.tasks]);
 
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
   useEffect(() => {
     // Default to first team when options change
-    if (!selectedTeam || !teams.includes(selectedTeam)) {
-      setSelectedTeam(teams[0] ?? null);
+    if (!selectedMonth || !months.includes(selectedMonth)) {
+      setSelectedMonth(months[0] ?? null);
     }
-  }, [teams, selectedTeam]);
+  }, [months, selectedMonth]);
+
+  // Month dropdown options for WorkEfficiencyChart
+  const [selectedWorkEffMonth, setSelectedWorkEffMonth] = useState<string>('all');
+  useEffect(() => {
+    // Default to 'all' if selected month not in list
+    const availableMonths = state.months?.map(m => m.monthID) ?? [];
+    if (selectedWorkEffMonth !== 'all' && !availableMonths.includes(selectedWorkEffMonth)) {
+      setSelectedWorkEffMonth('all');
+    }
+  }, [state.months, selectedWorkEffMonth]);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -376,8 +319,8 @@ export function ChartsPanel() {
             Demand vs Production
           </button>
           <button
-            onClick={() => setTab('TeamProductionChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'TeamProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+            onClick={() => setTab('MonthlyProductionChart')}
+            className={`px-3 py-1.5 text-sm rounded ${tab === 'MonthlyProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Team Production
           </button>
@@ -387,18 +330,12 @@ export function ChartsPanel() {
           >
             Work Efficiency
           </button>
-          <button
-            onClick={() => setTab('MonthlyEfficiencyChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'MonthlyEfficiencyChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
-          >
-            Monthly Efficiency
-          </button>
         </div>
         
         {/* Conditional dropdown based on active tab */}
         {tab === 'DemandProductionChart' && resources.length > 0 && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Resource:</label>
+            <label className="text-xs text-gray-500">Assortment:</label>
             <select
               value={selectedResource ?? ''}
               onChange={e => setSelectedResource(e.target.value || null)}
@@ -411,16 +348,34 @@ export function ChartsPanel() {
           </div>
         )}
         
-        {tab === 'TeamProductionChart' && teams.length > 0 && (
+        {tab === 'MonthlyProductionChart' && months.length > 0 && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Team:</label>
+            <label className="text-xs text-gray-500">Month:</label>
             <select
-              value={selectedTeam ?? ''}
-              onChange={e => setSelectedTeam(e.target.value || null)}
+              value={selectedMonth ?? ''}
+              onChange={e => setSelectedMonth(e.target.value || null)}
               className="px-2 py-1 text-sm border rounded"
             >
-              {teams.map(t => (
-                <option key={t} value={t}>{t}</option>
+              {months.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {tab === 'WorkEfficiencyChart' && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Month:</label>
+            <select
+              value={selectedWorkEffMonth ?? 'all'}
+              onChange={e => setSelectedWorkEffMonth(e.target.value)}
+              className="px-2 py-1 text-sm border rounded"
+            >
+              <option value="all">All Months</option>
+              {state.months?.map(month => (
+                <option key={month.monthID} value={month.monthID}>
+                  {month.monthID}
+                </option>
               ))}
             </select>
           </div>
@@ -433,11 +388,9 @@ export function ChartsPanel() {
         ) : tab === 'DemandProductionChart' ? (
           <DemandProductionChart resource={selectedResource} />
         ) : tab === 'WorkEfficiencyChart' ? (
-          <WorkEfficiencyChart />
-        ) : tab === 'MonthlyEfficiencyChart' ? (
-          <MonthlyEfficiencyChart />
-        ) : tab === 'TeamProductionChart' ? (
-          <TeamProductionChart teamId={selectedTeam} />
+          <WorkEfficiencyChart monthId={selectedWorkEffMonth} />
+        ) : tab === 'MonthlyProductionChart' ? (
+          <MonthlyProductionChart monthId={selectedMonth} />
         ) : null}
       </div>
     </div>

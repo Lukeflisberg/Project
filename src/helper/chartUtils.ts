@@ -1,9 +1,7 @@
 import { Demand, Task, Period, Month, Team, Distance } from "../types";
 import { effectiveDuration, endHour } from "./taskUtils";
 
-// Shared type for period boundaries
 export type PeriodBoundary = { id: string; total: number };
-
 export function createPeriodBoundaries(periods: Period[]): PeriodBoundary[] {
     // Start from 0 to avoid off-by-one issues and align with [start, end) semantics
     const periodBoundaries: PeriodBoundary[] = [{ id: "P0", total: 0 }];
@@ -116,10 +114,73 @@ export function getProductionByTeam(tasks: Task[]): ProductionByTeam[] {
     return result;
 }
 
+interface ProductionByMonths {
+    monthId: string;
+    products: Record<string, number>; // name, quantity
+}
+export function getProductionByMonths(
+    tasks: Task[],
+    months: Month[],
+    periodBoundaries: PeriodBoundary[]
+): ProductionByMonths[] {
+    const result: ProductionByMonths[] = [];
+    const monthsId = months.map(m => m.monthID);
+
+    // Process each month
+    for (const monthId of monthsId) {
+        const { start, end } = getMonthStartEnd(monthId, months, periodBoundaries);
+
+        // Filter tasks for this month
+        const monthTasks = tasks.filter(
+            t => t.duration.startHour >= start && endHour(t) <= end
+        );
+
+        // Calculate production for this month
+        const products: Record<string, number> = {};
+
+        for (const task of monthTasks) {
+            if (!task.production) continue;
+
+            // Add all products from this task
+            for (const [productName, quantity] of Object.entries(task.production)) {
+                if (!products[productName]) {
+                    products[productName] = 0;
+                }
+                products[productName] += quantity;
+            }
+        }
+
+        result.push({
+            monthId,
+            products
+        });
+    }
+
+    // Add 'all' entry with total production across all months
+    const allProducts: Record<string, number> = {};
+
+    for (const task of tasks) {
+        if (!task.production) continue;
+
+        for (const [productName, quantity] of Object.entries(task.production)) {
+            if (!allProducts[productName]) {
+                allProducts[productName] = 0;
+            }
+            allProducts[productName] += quantity;
+        }
+    }
+
+    result.push({
+        monthId: 'all',
+        products: allProducts
+    });
+
+    return result;
+}
+
 interface DemandsByPeriod {
     [productName: string]: number[];
 }
-
 export function getDemandByProduct(demand: Demand[]): DemandsByPeriod {
     const result: DemandsByPeriod = {};
 
@@ -145,7 +206,9 @@ export const calcDurationOf = (tasks: Task[]): number => {
     return tasks.reduce((sum, task) => sum + effectiveDuration(task), 0);
 };
 
-export const getMonthStartEnd = (month: Month, periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
+export const getMonthStartEnd = (monthId: string, months: Month[], periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
+    const month = months.find(m => m.monthID === monthId);
+
     if (!month || !month.periods || month.periods.length === 0) {
         return { start: 0, end: 0 };
     }
@@ -190,7 +253,17 @@ export function calcMonthlyDurations(
     return duration;
 }
 
-export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]) {
+interface TotalCostDistribution {
+    harvesterCosts: number;
+    forwarderCosts: number;
+    travelingCosts: number;
+    wheelingCosts: number;
+    trailerCosts: number;
+    demandCosts: number;
+    industryValue: number;
+    total: number;
+}
+export function calcTotalCostDistribution(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]): TotalCostDistribution {
     const assignedTasks = tasks.filter(t => t.duration.teamId !== null);
     let harvesterCostCalculations: string[] = [];
     let forwarderCostCalculations: string[] = [];

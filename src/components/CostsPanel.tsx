@@ -20,7 +20,7 @@ export function CostsPanel() {
   const { state, dispatch } = useApp();
 
   const isEmpty: boolean = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
-  const { start, end } = getMonthStartEnd(state.months[0], createPeriodBoundaries(state.periods));
+  const { start, end } = getMonthStartEnd(state.months[0]?.monthID, state.months, createPeriodBoundaries(state.periods));
 
   const firstMonthTasks: Task[] = state.tasks.filter(t => t.duration.startHour >= start && endHour(t) <= end);
   const firstMonthTaskSnapshot: Task[] = state.taskSnapshot.filter(t => t.duration.startHour >= start && endHour(t) <= end);
@@ -128,9 +128,9 @@ export function CostsPanel() {
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Cost Type</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (M0)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">base (All)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (M0)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Base (1st)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Base (All)</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (1st)</th>
                       <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (All)</th>
                     </tr>
                   </thead>
@@ -171,13 +171,13 @@ export function CostsPanel() {
                               <span className="font-medium text-gray-700">{costName}</span>
                             </div>
                           </td>
-                          <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
+                          <td className="border border-gray-300 px-3 py-2 text-right text-gray-800">
                             {baseM0Value !== 0 ? formatCurrency(baseM0Value) : '—'}
                           </td>
-                          <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
+                          <td className="border border-gray-300 px-3 py-2 text-right text-gray-800">
                             {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
                           </td>
-                          <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
+                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newM0Value !== 0 ? 'text-right' : 'text-center'} font-medium ${
                             !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
                             {hasSnapshot && newM0Value !== 0 ? (
@@ -188,7 +188,7 @@ export function CostsPanel() {
                               </div>
                             ) : '—'}
                           </td>
-                          <td className={`border border-gray-300 px-3 py-2 text-center font-medium ${
+                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newAllValue !== 0 ? 'text-right' : 'text-center'} font-medium ${
                             !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                           }`}>
                             {hasSnapshot && newAllValue !== 0 ? (
@@ -203,14 +203,14 @@ export function CostsPanel() {
                       );
                     })}
                     <tr className="bg-gray-100 font-bold">
-                      <td className="border border-gray-300 px-3 py-2 text-gray-900">Total Cost</td>
-                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
+                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">Total Cost</td>
+                      <td className="border border-gray-300 px-3 py-2 text-right text-gray-900">
                         {formatCurrency(hasSnapshot ? baseCost_m0 : newCost_m0)}
                       </td>
-                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">
+                      <td className="border border-gray-300 px-3 py-2 text-right text-gray-900">
                         {formatCurrency(hasSnapshot ? baseCost : newCost)}
                       </td>
-                      <td className={`border border-gray-300 px-3 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot ? 'text-right' : 'text-center'} ${
                         !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
                       }`}>
                         {hasSnapshot ? (
@@ -222,7 +222,7 @@ export function CostsPanel() {
                           </div>
                         ) : '—'}
                       </td>
-                      <td className={`border border-gray-300 px-3 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot ? 'text-right' : 'text-center'} ${
                         !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
                       }`}>
                         {hasSnapshot ? (
