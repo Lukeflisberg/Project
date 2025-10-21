@@ -10,7 +10,7 @@ export interface Month {
 }
 
 export interface ProductionGoals {
-  monthID: number;
+  monthID: string;
   team: string;
   minGoal: number;
   maxGoal: number;
@@ -18,6 +18,7 @@ export interface ProductionGoals {
 
 export interface AssortmentsGraph {
   assortment: string;
+  assortment_group: string;
   supply: number;
   demandMin: number;
   demandGoal: number;

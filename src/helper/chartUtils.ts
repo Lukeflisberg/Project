@@ -19,7 +19,8 @@ interface ProductQuantityByPeriod {
 }
 export function calculateProductionPerPeriod(
     tasks: Task[],
-    periodBoundaries: PeriodBoundary[]
+    periodBoundaries: PeriodBoundary[],
+    assortmentGraph?: Array<{ assortment: string; assortment_group: string; include: number }>
 ): ProductQuantityByPeriod {
     const periodCount = Math.max(0, periodBoundaries.length - 1);
 
@@ -28,9 +29,22 @@ export function calculateProductionPerPeriod(
         new Set(tasks.flatMap(t => Object.keys(t.production ?? {})))
     );
 
+    // Create mapping from assortment to assortment_group if available
+    const assortmentToGroup = new Map<string, string>();
+    if (assortmentGraph) {
+        for (const item of assortmentGraph) {
+            if (item.include === 1) {
+                assortmentToGroup.set(item.assortment, item.assortment_group);
+            }
+        }
+    }
+
     const result: ProductQuantityByPeriod = {};
     for (const product of productKeys) {
-        result[product] = new Array(periodCount).fill(0);
+        const groupKey = assortmentToGroup.get(product) || product;
+        if (!result[groupKey]) {
+            result[groupKey] = new Array(periodCount).fill(0);
+        }
     }
 
     // Process each task
@@ -56,12 +70,13 @@ export function calculateProductionPerPeriod(
 
                 // Add proportional production to this period
                 for (const [key, value] of Object.entries(task.production)) {
-                    if (!result[key]) {
+                    const groupKey = assortmentToGroup.get(key) || key;
+                    if (!result[groupKey]) {
                         // Initialize missing product keys on-the-fly
-                        result[key] = new Array(periodCount).fill(0);
+                        result[groupKey] = new Array(periodCount).fill(0);
                     }
                     // Write to i - 1 due to [start, end) period windows mapping
-                    result[key][i - 1] += value * proportionInPeriod;
+                    result[groupKey][i - 1] += value * proportionInPeriod;
                 }
             }
         }
@@ -153,10 +168,34 @@ export function calculateProductionForMonth(
     tasks: Task[],
     monthFilter: string,
     months: Month[],
-    periodBoundaries: PeriodBoundary[]
+    periodBoundaries: PeriodBoundary[],
+    assortmentGraph: Array<{ assortment: string; assortment_group: string; include: number }>
 ): MonthProductionSummary {
     let monthStart: number;
     let monthEnd: number;
+
+    // Build the product set dynamically based on actual tasks to avoid missing keys
+    const productKeys = Array.from(
+        new Set(tasks.flatMap(t => Object.keys(t.production ?? {})))
+    );
+
+    // Create mapping from assortment to assortment_group if available
+    const assortmentToGroup = new Map<string, string>();
+    if (assortmentGraph) {
+        for (const item of assortmentGraph) {
+            if (item.include === 1) {
+                assortmentToGroup.set(item.assortment, item.assortment_group);
+            }
+        }
+    }
+
+    const result: ProductQuantityByPeriod = {};
+    for (const product of productKeys) {
+        const groupKey = assortmentToGroup.get(product) || product;
+        if (!result[groupKey]) {
+            result[groupKey] = new Array();
+        }
+    }
 
     // Determine the time window for filtering
     if (monthFilter === 'all') {
@@ -190,11 +229,13 @@ export function calculateProductionForMonth(
             const proportion = overlap / taskDuration;
 
             // Add proportional production for each product
-            for (const [productName, quantity] of Object.entries(task.production)) {
-                if (!products[productName]) {
-                    products[productName] = 0;
+            for (const [key, quantity] of Object.entries(task.production)) {
+                const groupKey = assortmentToGroup.get(key) || key;
+
+                if (!products[groupKey]) {
+                    products[groupKey] = 0;
                 }
-                products[productName] += quantity * proportion;
+                products[groupKey] += quantity * proportion;
             }
         }
     }
@@ -206,22 +247,37 @@ export function calculateProductionForMonth(
 interface DemandQuantityByPeriod {
     [productName: string]: number[];
 }
-export function calculateDemandPerPeriod(demand: Demand[]): DemandQuantityByPeriod {
+export function calculateDemandPerPeriod(
+    demand: Demand[],
+    assortmentGraph?: Array<{ assortment: string; assortment_group: string; include: number }>
+): DemandQuantityByPeriod {
+    // Create mapping from assortment to assortment_group if available
+    const assortmentToGroup = new Map<string, string>();
+    if (assortmentGraph) {
+        for (const item of assortmentGraph) {
+            if (item.include === 1) {
+                assortmentToGroup.set(item.assortment, item.assortment_group);
+            }
+        }
+    }
+
     const result: DemandQuantityByPeriod = {};
 
     // Process each product's demand
     for (const d of demand) {
         const productName: string = d.Product;
+        const groupKey = assortmentToGroup.get(productName) || productName;
         const demands: Demand["demand"] = d.demand;
 
-        const periodDemands: number[] = [];
-
-        // Get demand for each period
-        for (const period of demands) {
-            periodDemands.push(period.demand);
+        // Initialize group if not exists
+        if (!result[groupKey]) {
+            result[groupKey] = new Array(demands.length).fill(0);
         }
 
-        result[productName] = periodDemands;
+        // Get demand for each period and aggregate by group
+        for (let i = 0; i < demands.length; i++) {
+            result[groupKey][i] += demands[i].demand;
+        }
     }
 
     return result;
