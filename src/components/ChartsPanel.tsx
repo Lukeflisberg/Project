@@ -127,15 +127,30 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     // Transform the team's products into chart data with product names on x-axis
     const result = monthlyProductionData.map(({ teamId, volume }) => {
       // Find the production goal for this team and month
-      const goal = state.productionGoals.find(
-        g => g.monthID === monthId && g.team === teamId
-      );
+      let minGoal: number | null = null;
+      let maxGoal: number | null = null;
+
+      if (monthId === 'all') {
+        // Sum all goals for this team across all months
+        const teamGoals = state.productionGoals.filter(g => g.team === teamId);
+        if (teamGoals.length > 0) {
+          minGoal = teamGoals.reduce((sum, g) => sum + (g.minGoal ?? 0), 0);
+          maxGoal = teamGoals.reduce((sum, g) => sum + (g.maxGoal ?? 0), 0);
+        }
+      } else {
+        // Find the specific goal for this month
+        const goal = state.productionGoals.find(
+          g => g.monthID === monthId && g.team === teamId
+        );
+        minGoal = goal?.minGoal ?? null;
+        maxGoal = goal?.maxGoal ?? null;
+      }
 
       return {
         name: teamId,
         quantity: volume,
-        minGoal: goal?.minGoal ?? null,
-        maxGoal: goal?.maxGoal ?? null
+        minGoal,
+        maxGoal
       };
     });
 
@@ -361,7 +376,7 @@ function WorkEfficiencyChart({ monthId }: { monthId: string | null }) {
       } else {
         const month = state.months?.find(m => m.monthID === monthId);
         if (month) {
-          const monthStartEnd = getMonthTimeWindow(month.monthID, state.months, createPeriodBoundaries(state.periods));
+          const monthStartEnd = getMonthTimeWindow(month, createPeriodBoundaries(state.periods));
           used = calculateMonthlyTaskDuration(monthStartEnd, teamTasks);
         }
       }

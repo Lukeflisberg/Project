@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { calculateTotalCostBreakdown, createPeriodBoundaries, getMonthTimeWindow } from '../helper/chartUtils';
+import { calculateTotalCostBreakdown, getMonthTimeWindow } from '../helper/chartUtils';
 import { Check, X, Landmark } from 'lucide-react';
-import { endHour } from '../helper/taskUtils';
-import { Task } from '../types';
+import { Task, Month } from '../types';
 
 // Pie chart colors
 const PIE_COLORS = [
@@ -20,10 +19,6 @@ export function CostsPanel() {
   const { state, dispatch } = useApp();
 
   const isEmpty: boolean = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
-  const { start, end } = getMonthTimeWindow(state.months[0]?.monthID, state.months, createPeriodBoundaries(state.periods));
-
-  const firstMonthTasks: Task[] = state.tasks.filter(t => t.duration.startHour >= start && endHour(t) <= end);
-  const firstMonthTaskSnapshot: Task[] = state.taskSnapshot.filter(t => t.duration.startHour >= start && endHour(t) <= end);
 
   const hasSnapshot = state.taskSnapshot.length > 0;
 
@@ -43,8 +38,8 @@ export function CostsPanel() {
     [state.tasks, state.teams, state.demand, state.periods, state.distances, transportCost_all]
   );
   const newCost_m0 = useMemo(() => 
-    calculateTotalCostBreakdown(firstMonthTasks, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_m0,
-    [firstMonthTasks, state.teams, state.demand, state.periods, state.distances, transportCost_m0]
+    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances, state.months[0]).totalCost + transportCost_m0,
+    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.months, transportCost_m0]
   );
 
   const baseCost = useMemo(() => 
@@ -52,8 +47,8 @@ export function CostsPanel() {
     [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, transportCost_all]
   );
   const baseCost_m0 = useMemo(() => 
-    calculateTotalCostBreakdown(firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_m0,
-    [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances, transportCost_m0]
+    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months[0]).totalCost + transportCost_m0,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months, transportCost_m0]
   );
 
   const costDifference = newCost - baseCost;
@@ -68,9 +63,16 @@ export function CostsPanel() {
     : 'inf';
   const isImprovement_m0 = costDifference_m0 < 0;
 
-  // Pie chart data for all views
-  const getPieData = (tasks: Task[]) => {
-    const costData = calculateTotalCostBreakdown(tasks, state.teams, state.demand, state.periods, state.distances);
+  // Pie chart data for all views - now accepts optional month parameter
+  const getPieData = (tasks: Task[], month?: Month) => {
+    const costData = calculateTotalCostBreakdown(
+      tasks, 
+      state.teams, 
+      state.demand, 
+      state.periods, 
+      state.distances,
+      month
+    );
     
     if (!costData) return [];
 
@@ -90,9 +92,9 @@ export function CostsPanel() {
   };
 
   const pieDataNew = useMemo(() => getPieData(state.tasks), [state.tasks, state.teams, state.demand, state.periods, state.distances]);
-  const pieDataNew_m0 = useMemo(() => getPieData(firstMonthTasks), [firstMonthTasks, state.teams, state.demand, state.periods, state.distances]);
+  const pieDataNew_m0 = useMemo(() => getPieData(state.tasks, state.months[0]), [state.tasks, state.teams, state.demand, state.periods, state.distances, state.months]);
   const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]);
-  const pieDatabase_m0 = useMemo(() => getPieData(firstMonthTaskSnapshot), [firstMonthTaskSnapshot, state.teams, state.demand, state.periods, state.distances]);
+  const pieDatabase_m0 = useMemo(() => getPieData(state.taskSnapshot, state.months[0]), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months]);
 
   // Handlers
   function onAccept() {

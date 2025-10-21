@@ -678,6 +678,10 @@ export function WorldMap() {
                     const result: number | null = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
 
                     if (result !== null) {
+                      if (state.taskSnapshot.length === 0) {
+                        dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
+                      }
+                      
                       dispatch({
                         type: 'UPDATE_TASK_TEAM',
                         taskId: task.task.id,
@@ -693,10 +697,6 @@ export function WorldMap() {
                         type: 'TOGGLE_COMPARISON_MODAL',
                         toggledModal: true
                       });
-
-                      if (state.taskSnapshot.length === 0) {
-                        dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
-                      }
 
                       // Success
                       console.log(`✅ Task successfully placed at hour ${result}`);

@@ -98,13 +98,15 @@ export function calculateProductionPerTeam(
     let monthStart: number;
     let monthEnd: number;
 
+    const month = months.find(m => m.monthID === monthFilter)!;
+
     // Determine the time window for filtering
     if (monthFilter === 'all') {
         monthStart = 0;
         monthEnd = Infinity;
     } 
     else {
-        const {start, end} = getMonthTimeWindow(monthFilter, months, periodBoundaries);
+        const {start, end} = getMonthTimeWindow(month, periodBoundaries);
         monthStart = start;
         monthEnd = end;
     }
@@ -188,12 +190,14 @@ export function calculateProductionForMonth(
     // Determine the time window for filtering
     let monthStart: number;
     let monthEnd: number;
+
+    const month = months.find(m => m.monthID === monthFilter)!;
     
     if (monthFilter === 'all') {
         monthStart = 0;
         monthEnd = Infinity;
     } else {
-        const { start, end } = getMonthTimeWindow(monthFilter, months, periodBoundaries);
+        const { start, end } = getMonthTimeWindow(month, periodBoundaries);
         monthStart = start;
         monthEnd = end;
     }
@@ -277,29 +281,29 @@ export const calculateTotalTaskDuration = (tasks: Task[]): number => {
     return tasks.reduce((sum, task) => sum + effectiveDuration(task), 0);
 };
 
-export const getMonthTimeWindow = (monthId: string, months: Month[], periodBoundaries: PeriodBoundary[]): { start: number, end: number } => {
-    const month = months.find(m => m.monthID === monthId);
-
-    if (!month || !month.periods || month.periods.length === 0) {
+interface TimeWindow {
+    start: number;
+    end: number;
+}
+export function getMonthTimeWindow(month: Month, periodBoundaries: Array<{ id: string; total: number }>): TimeWindow {
+    if (!month.periods || month.periods.length === 0) {
         return { start: 0, end: 0 };
     }
 
-    // Identify the first and last period IDs for the month
     const firstId = month.periods[0];
     const lastId = month.periods[month.periods.length - 1];
 
-    const firstIdx: number = periodBoundaries.findIndex(item => item.id === firstId);
-    const lastIdx: number = periodBoundaries.findIndex(item => item.id === lastId);
+    const firstIdx = periodBoundaries.findIndex(item => item.id === firstId);
+    const lastIdx = periodBoundaries.findIndex(item => item.id === lastId);
 
-    // Validate lookups (firstIdx must be >= 1 to allow access to the start boundary)
     if (firstIdx <= 0 || lastIdx < 0) {
-        console.warn("cost panel: invalid period IDs for month", { firstId, lastId });
+        console.warn("Invalid period IDs for month", { firstId, lastId });
         return { start: 0, end: 0 };
     }
 
     return {
-        start: periodBoundaries[firstIdx - 1].total, // start of first period in month
-        end: periodBoundaries[lastIdx].total        // end of last period in month
+        start: periodBoundaries[firstIdx - 1].total,
+        end: periodBoundaries[lastIdx].total
     };
 }
 
@@ -324,6 +328,20 @@ export function calculateMonthlyTaskDuration(
     return duration;
 }
 
+function calculateTaskProportion(task: Task, timeWindow: { start: number, end: number }): number {
+    const taskStart = task.duration.startHour;
+    const taskEnd = endHour(task);
+    const taskDuration = effectiveDuration(task);
+
+    if (taskDuration <= 0) return 0;
+
+    const overlapStart = Math.max(taskStart, timeWindow.start);
+    const overlapEnd = Math.min(taskEnd, timeWindow.end);
+    const overlap = Math.max(0, overlapEnd - overlapStart);
+
+    return overlap / taskDuration;
+}
+
 interface CostBreakdown {
     harvesterCosts: number;
     forwarderCosts: number;
@@ -334,12 +352,23 @@ interface CostBreakdown {
     industryValue: number;
     totalCost: number;
 }
-export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demands: Demand[], periods: Period[], distances: Distance[]): CostBreakdown {
+export function calculateTotalCostBreakdown(
+    tasks: Task[], 
+    teams: Team[], 
+    demands: Demand[], 
+    periods: Period[], 
+    distances: Distance[],
+    monthFilter?: Month  // Optional month for filtered calculations
+): CostBreakdown {
     const assignedTasks = tasks.filter(t => t.duration.teamId !== null);
-    let harvesterCostCalculations: string[] = [];
-    let forwarderCostCalculations: string[] = [];
-    let travelingCostCalculations: string[] = [];
-
+    
+    // Calculate time window if month is provided
+    let timeWindow: TimeWindow | undefined;
+    if (monthFilter) {
+        const periodBoundaries = createPeriodBoundaries(periods);
+        timeWindow = getMonthTimeWindow(monthFilter, periodBoundaries);
+    }
+    
     // Harvester Costs
     const harvesterCosts = assignedTasks.reduce((total, task) => {
         const taskCost = task.harvestCosts.reduce((taskTotal, cost) => {
@@ -349,7 +378,12 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
             return taskTotal;
         }, 0);
 
-        harvesterCostCalculations.push(taskCost.toFixed(2));
+        // Apply proportional cost if time window is specified
+        if (timeWindow) {
+            const proportion = calculateTaskProportion(task, timeWindow);
+            return total + (taskCost * proportion);
+        }
+        
         return total + taskCost;
     }, 0);
 
@@ -362,7 +396,11 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
             return taskTotal;
         }, 0);
 
-        forwarderCostCalculations.push(taskCost.toFixed(2));
+        if (timeWindow) {
+            const proportion = calculateTaskProportion(task, timeWindow);
+            return total + (taskCost * proportion);
+        }
+        
         return total + taskCost;
     }, 0);
 
@@ -375,41 +413,27 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
             return taskTotal;
         }, 0);
 
-        travelingCostCalculations.push(taskCost.toFixed(2));
+        if (timeWindow) {
+            const proportion = calculateTaskProportion(task, timeWindow);
+            return total + (taskCost * proportion);
+        }
+        
         return total + taskCost;
     }, 0);
-    
-    // console.log("Total Harvester Costs: ", harvesterCosts);
-    // console.log("Total Forwarder Costs: ", forwarderCosts);
-    // console.log("Total Traveling Costs: ", travelingCosts);
-
-    // console.groupCollapsed("Harvester Cost Calcs");
-    // console.log(harvesterCostCalculations.join('\n'));
-    // console.groupEnd();
-
-    // console.groupCollapsed("Forwarder Cost Calcs");
-    // console.log(forwarderCostCalculations.join('\n'));
-    // console.groupEnd();
-
-    // console.groupCollapsed("Traveling Cost Calcs");
-    // console.log(travelingCostCalculations.join('\n'));
-    // console.groupEnd();
-
-    // console.log("");
 
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
     let trailerCosts: number = 0;
-    let trailerCalcs: string[] = [`team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost`];
-    let wheelingCalcs: string[] = [`distance * team.fixMovingCostWithoutTrailer`];
 
     for (const team of teams) {
         const teamTasks: Task[] = assignedTasks.filter(t => t.duration.teamId === team.id);
        
         // Iterate through consecutive pairs of tasks
         for (let i = 0; i < teamTasks.length - 1; i++) {
-            const fromId: string = teamTasks[i].task.id;
-            const toId: string = teamTasks[i + 1].task.id;
+            const fromTask = teamTasks[i];
+            const toTask = teamTasks[i + 1];
+            const fromId: string = fromTask.task.id;
+            const toId: string = toTask.task.id;
 
             // Find the distance object from the fromTask
             const distanceEntry: Distance | undefined = distances.find(d => d["From/To"] === fromId);
@@ -424,89 +448,135 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
                 continue;
             }
             
-            if (distance > team.maxWheelingDist_km) {
-                trailerCosts += team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost;
-                trailerCalcs.push(`${team.fixMovingCostWithTrailer} + (${distance} / ${team.trailerAverageSpeed}) * ${team.trailerCost}`);
-            } else {
-                wheelingCosts += distance * team.fixMovingCostWithoutTrailer
-                wheelingCalcs.push(`${distance} * ${team.fixMovingCostWithoutTrailer}`);
+            // Check if this movement occurs within the time window
+            let includeMovement = true;
+            if (timeWindow) {
+                // Movement happens at the end of fromTask
+                const movementTime = endHour(fromTask);
+                includeMovement = movementTime >= timeWindow.start && movementTime < timeWindow.end;
+            }
+
+            if (includeMovement) {
+                if (distance > team.maxWheelingDist_km) {
+                    trailerCosts += team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost;
+                } else {
+                    wheelingCosts += distance * team.fixMovingCostWithoutTrailer;
+                }
             }
         }
     }
 
-    // console.log("Total Wheeling Cost: ", wheelingCosts);
-    // console.groupCollapsed("Wheeling Cost Calcs")
-    // console.log(wheelingCalcs.join('\n'));
-    // console.groupEnd();
-    
-    // console.log("Total Trailer Cost: ", trailerCosts);
-    // console.groupCollapsed("Trailer Cost Calcs")
-    // console.log(trailerCalcs.join('\n'));
-    // console.groupEnd();
-
-    // console.log("");
-
-    // Demand Penalty Costs
-    // Get inventory balance
-    const productionByPeriod = calculateProductionPerPeriod(assignedTasks, createPeriodBoundaries(periods)); 
+    // Demand Penalty Costs and Industry Value
+    const periodBoundaries = createPeriodBoundaries(periods);
+    const productionByPeriod = calculateProductionPerPeriod(assignedTasks, periodBoundaries); 
     const demandByPeriod = calculateDemandPerPeriod(demands);
-    const inventoryBalance: { [key: string]: number } = {};
-    let demandCostCalc: string[] = [`difference * penaltyCost`];
 
-    Object.keys(productionByPeriod).forEach(product => {
-        const totalProduction = productionByPeriod[product].reduce((sum, val) => sum + val, 0);
-        const totalDemand = demandByPeriod[product].reduce((sum, val) => sum + val, 0);
-        const difference = totalProduction - totalDemand;
+    let demandCost = 0;
+    let industryValue = 0;
 
-        inventoryBalance[product] = difference;
-    })
+    if (monthFilter && monthFilter.periods) {
+        // Monthly calculation with inventory balance tracking
+        const monthPeriodIds = new Set(monthFilter.periods);
+        const inventoryBalance: { [key: string]: number } = {};
+        let deliveredVolume: { [key: string]: number } = {};
+        
+        // Get period indices that belong to this month
+        const monthPeriodIndices: number[] = [];
+        periodBoundaries.forEach((boundary, index) => {
+            if (index > 0 && monthPeriodIds.has(boundary.id)) {
+                monthPeriodIndices.push(index - 1); // Adjust for productionByPeriod indexing
+            }
+        });
 
-    const demandPenaltyCosts = demands.map(d => {
-        const difference = inventoryBalance[d.Product] - demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
+        // Extract month-specific production and demand data
+        const m0_productionByPeriod: { [key: string]: number[] } = {};
+        const m0_demandByPeriod: { [key: string]: number[] } = {};
 
-        if (difference < -100000) {
-            console.log('interest point: ', inventoryBalance[d.Product], demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0));
-            console.log(demandByPeriod);
-            console.log(demands);
-        }
+        // Build month-specific arrays by extracting only the periods in this month
+        Object.keys(productionByPeriod).forEach(product => {
+            m0_productionByPeriod[product] = monthPeriodIndices.map(idx => productionByPeriod[product][idx] || 0);
+        });
 
-        if (difference > 0) {
-            demandCostCalc.push(`>0: ${difference} * ${d.demand[0].costAboveAckumGoal}`);
-            return difference * d.demand[0].costAboveAckumGoal;
-        } else {
-            demandCostCalc.push(`<0: ${difference} * ${d.demand[0].costBelowAckumGoal}`);
-            return (-1 * difference) * d.demand[0].costBelowAckumGoal;
-        }
-    }).reduce((sum, val) => sum + val, 0);
-    
-    console.log("Total Demand Penalty Cost: ", demandPenaltyCosts);
-    console.groupCollapsed("Demand Penalty Cost Calcs");
-    console.log(demandCostCalc.join('\n'));
-    console.groupEnd();
+        console.log(m0_productionByPeriod);
 
-    // console.groupCollapsed("Inventory Balance");
-    // console.log(inventoryBalance);
-    // console.groupEnd();
+        Object.keys(demandByPeriod).forEach(product => {
+            m0_demandByPeriod[product] = monthPeriodIndices.map(idx => demandByPeriod[product][idx] || 0);
+        });
 
-    // console.log("");    
+        console.log(m0_demandByPeriod);
 
-    let industryValueCalcs: string[] = [`surplusQuantity * unitValue`];
-    
-    // Industry Value (revenue from surplus production)
-    const industryValue = demands.map(d => {
-        if (inventoryBalance[d.Product] > 0) {
-            industryValueCalcs.push(`${inventoryBalance[d.Product]} * ${d.value_prod}`)
-            return inventoryBalance[d.Product] * d.value_prod;
-        } else {
-            industryValueCalcs.push(`0`);
-            return 0;
-        }
-    }).reduce((sum, val) => sum + val, 0);
+        // Calculate inventory balance period by period within the month
+        Object.keys(m0_productionByPeriod).forEach(product => {
+            let balance = 0;
 
-    console.log("Total Industry Value: ", industryValue);
-    console.groupCollapsed("Industry Value Calc");
-    console.log(industryValueCalcs.join('\n'));
-    console.groupEnd();
+            m0_productionByPeriod[product].forEach((production, index) => {
+                const demand = m0_demandByPeriod[product]?.[index] || 0;
+                balance = balance + production - demand;
+            });
+
+            inventoryBalance[product] = balance;
+        });
+
+        // Calculate demand cost based on cumulative balance within the month
+        demandCost = demands.map(d => {
+            const totalDemand = m0_demandByPeriod[d.Product]?.reduce((sum, val) => sum + val, 0) || 0;
+            const balance = inventoryBalance[d.Product] || 0;
+            const remainder = balance - totalDemand;
+
+            if (remainder > 0) {
+                // Overproduction penalty
+                return remainder * d.demand[0].costAboveAckumGoal;
+            } else {
+                // Underproduction penalty
+                return -remainder * d.demand[0].costBelowAckumGoal;
+            }
+        }).reduce((sum, val) => sum + val, 0);
+
+        // Calculate industry value for the month
+        Object.keys(m0_productionByPeriod).forEach(product => {
+            const totalProduction = m0_productionByPeriod[product].reduce((sum, val) => sum + val, 0);
+            deliveredVolume[product] = totalProduction;
+        });
+
+        industryValue = demands.map(d => {
+            return (deliveredVolume[d.Product] || 0) * d.value_prod;
+        }).reduce((sum, val) => sum + val, 0);
+        
+    } else {
+        // Original calculation for full horizon
+        const inventoryBalance: { [key: string]: number } = {};
+
+        Object.keys(productionByPeriod).forEach(product => {
+            let balance = 0;
+
+            productionByPeriod[product].forEach((production, index) => {
+                const demand = demandByPeriod[product][index] || 0;
+                balance = balance + production - demand;
+            });
+
+            inventoryBalance[product] = balance;
+        });
+
+        demandCost = demands.map(d => {
+            const remainder = inventoryBalance[d.Product] - demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
+
+            if (remainder > 0) {
+                return remainder * d.demand[0].costAboveAckumGoal;
+            } else {
+                return -remainder * d.demand[0].costBelowAckumGoal;
+            }
+        }).reduce((sum, val) => sum + val, 0);
+
+        let deliveredVolume: { [key: string]: number } = {};
+        Object.keys(productionByPeriod).forEach(product => {
+            const totalProduction = productionByPeriod[product].reduce((sum, val) => sum + val, 0);
+            deliveredVolume[product] = totalProduction;
+        });
+
+        industryValue = demands.map(d => {
+            return deliveredVolume[d.Product] * d.value_prod;
+        }).reduce((sum, val) => sum + val, 0);
+    }
 
     return {
         harvesterCosts: harvesterCosts,
@@ -514,8 +584,8 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
         travelingCosts: travelingCosts,
         wheelingCosts: wheelingCosts,
         trailerCosts: trailerCosts,
-        demandPenaltyCosts: demandPenaltyCosts,
+        demandPenaltyCosts: demandCost,
         industryValue: industryValue,
-        totalCost: harvesterCosts + forwarderCosts + travelingCosts + wheelingCosts + trailerCosts + demandPenaltyCosts - industryValue
-    }
+        totalCost: harvesterCosts + forwarderCosts + travelingCosts + wheelingCosts + trailerCosts + demandCost - industryValue
+    };
 }

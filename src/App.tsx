@@ -3,7 +3,7 @@ import { GanttChart } from './components/GanttChart';
 import { WorldMap } from './components/WorldMap';
 import { ChartsPanel } from './components/ChartsPanel';
 import { Trees } from 'lucide-react'; 
-import { CostsPanel } from './components/CostsPanel';
+import { CostsPanel } from './components/CostAnalysis';
 
 function AppContent() {
   return (
