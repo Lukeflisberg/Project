@@ -171,33 +171,24 @@ export function calculateProductionForMonth(
     periodBoundaries: PeriodBoundary[],
     assortmentGraph: Array<{ assortment: string; assortment_group: string; include: number }>
 ): MonthProductionSummary {
-    let monthStart: number;
-    let monthEnd: number;
-
-    // Build the product set dynamically based on actual tasks to avoid missing keys
-    const productKeys = Array.from(
-        new Set(tasks.flatMap(t => Object.keys(t.production ?? {})))
-    );
-
-    // Create mapping from assortment to assortment_group if available
+    // Create mapping from assortment to assortment_group
     const assortmentToGroup = new Map<string, string>();
+    const excludedAssortments = new Set<string>();
+    
     if (assortmentGraph) {
         for (const item of assortmentGraph) {
             if (item.include === 1) {
                 assortmentToGroup.set(item.assortment, item.assortment_group);
+            } else if (item.include === 0) {
+                excludedAssortments.add(item.assortment);
             }
         }
     }
 
-    const result: ProductQuantityByPeriod = {};
-    for (const product of productKeys) {
-        const groupKey = assortmentToGroup.get(product) || product;
-        if (!result[groupKey]) {
-            result[groupKey] = new Array();
-        }
-    }
-
     // Determine the time window for filtering
+    let monthStart: number;
+    let monthEnd: number;
+    
     if (monthFilter === 'all') {
         monthStart = 0;
         monthEnd = Infinity;
@@ -211,8 +202,7 @@ export function calculateProductionForMonth(
     const products: Record<string, number> = {};
 
     for (const task of tasks) {
-        if (!task.duration.teamId) continue;
-        if (!task.production) continue;
+        if (!task.duration?.teamId || !task.production) continue;
 
         const taskStart = task.duration.startHour;
         const taskEnd = endHour(task);
@@ -230,19 +220,19 @@ export function calculateProductionForMonth(
 
             // Add proportional production for each product
             for (const [key, quantity] of Object.entries(task.production)) {
-                const groupKey = assortmentToGroup.get(key) || key;
-
-                if (!products[groupKey]) {
-                    products[groupKey] = 0;
+                // Skip if this assortment is explicitly excluded
+                if (excludedAssortments.has(key)) {
+                    continue;
                 }
-                products[groupKey] += quantity * proportion;
+                
+                const groupKey = assortmentToGroup.get(key) || key;
+                products[groupKey] = (products[groupKey] || 0) + quantity * proportion;
             }
         }
     }
 
     return { products };
 }
-
 
 interface DemandQuantityByPeriod {
     [productName: string]: number[];
@@ -389,23 +379,23 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
         return total + taskCost;
     }, 0);
     
-    console.log("Total Harvester Costs: ", harvesterCosts);
-    console.log("Total Forwarder Costs: ", forwarderCosts);
-    console.log("Total Traveling Costs: ", travelingCosts);
+    // console.log("Total Harvester Costs: ", harvesterCosts);
+    // console.log("Total Forwarder Costs: ", forwarderCosts);
+    // console.log("Total Traveling Costs: ", travelingCosts);
 
-    console.groupCollapsed("Harvester Cost Calcs");
-    console.log(harvesterCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Harvester Cost Calcs");
+    // console.log(harvesterCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.groupCollapsed("Forwarder Cost Calcs");
-    console.log(forwarderCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Forwarder Cost Calcs");
+    // console.log(forwarderCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.groupCollapsed("Traveling Cost Calcs");
-    console.log(travelingCostCalculations.join('\n'));
-    console.groupEnd();
+    // console.groupCollapsed("Traveling Cost Calcs");
+    // console.log(travelingCostCalculations.join('\n'));
+    // console.groupEnd();
 
-    console.log("");
+    // console.log("");
 
     // Wheeling Costs and Trailer Costs
     let wheelingCosts: number = 0;
@@ -444,17 +434,17 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
         }
     }
 
-    console.log("Total Wheeling Cost: ", wheelingCosts);
-    console.groupCollapsed("Wheeling Cost Calcs")
-    console.log(wheelingCalcs.join('\n'));
-    console.groupEnd();
+    // console.log("Total Wheeling Cost: ", wheelingCosts);
+    // console.groupCollapsed("Wheeling Cost Calcs")
+    // console.log(wheelingCalcs.join('\n'));
+    // console.groupEnd();
     
-    console.log("Total Trailer Cost: ", trailerCosts);
-    console.groupCollapsed("Trailer Cost Calcs")
-    console.log(trailerCalcs.join('\n'));
-    console.groupEnd();
+    // console.log("Total Trailer Cost: ", trailerCosts);
+    // console.groupCollapsed("Trailer Cost Calcs")
+    // console.log(trailerCalcs.join('\n'));
+    // console.groupEnd();
 
-    console.log("");
+    // console.log("");
 
     // Demand Penalty Costs
     // Get inventory balance
@@ -473,6 +463,13 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
 
     const demandPenaltyCosts = demands.map(d => {
         const difference = inventoryBalance[d.Product] - demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
+
+        if (difference < -100000) {
+            console.log('interest point: ', inventoryBalance[d.Product], demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0));
+            console.log(demandByPeriod);
+            console.log(demands);
+        }
+
         if (difference > 0) {
             demandCostCalc.push(`>0: ${difference} * ${d.demand[0].costAboveAckumGoal}`);
             return difference * d.demand[0].costAboveAckumGoal;
@@ -487,11 +484,11 @@ export function calculateTotalCostBreakdown(tasks: Task[], teams: Team[], demand
     console.log(demandCostCalc.join('\n'));
     console.groupEnd();
 
-    console.groupCollapsed("Inventory Balance");
-    console.log(inventoryBalance);
-    console.groupEnd();
+    // console.groupCollapsed("Inventory Balance");
+    // console.log(inventoryBalance);
+    // console.groupEnd();
 
-    console.log("");    
+    // console.log("");    
 
     let industryValueCalcs: string[] = [`surplusQuantity * unitValue`];
     

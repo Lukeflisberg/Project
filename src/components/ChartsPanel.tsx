@@ -125,7 +125,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     );
 
     // Transform the team's products into chart data with product names on x-axis
-    return monthlyProductionData.map(({ teamId, volume }) => {
+    const result = monthlyProductionData.map(({ teamId, volume }) => {
       // Find the production goal for this team and month
       const goal = state.productionGoals.find(
         g => g.monthID === monthId && g.team === teamId
@@ -138,6 +138,9 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
         maxGoal: goal?.maxGoal ?? null
       };
     });
+
+    // console.log('TeamProductionChart data:', result);
+    return result;
   }, [state.tasks, state.months, state.periods, state.productionGoals, monthId]);
 
   if (!data.length) {
@@ -148,67 +151,76 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     );
   }
 
-  // Custom label component to draw goal lines for each bar
-  const GoalLines = (props: any) => {
-    const { x, y, width, height, index, value } = props;
+  // Custom shape component for bars with goal lines
+  const CustomBar = (props: any) => {
+    const { x, y, width, height, index } = props;
     const dataPoint = data[index];
     
-    if (!dataPoint || dataPoint.minGoal === null || dataPoint.maxGoal === null) {
+    if (!dataPoint) {
       return null;
     }
 
-    // Use the bar's y position and height to calculate the scale
-    // The bar's top (y) represents the value, and y + height represents 0
-    console.log(x, y, width, height, index, value);
-    const barBottom = y + height; // This is where value = 0
-    const barTop = y; // This is where value = dataPoint.quantity
-    
-    // Calculate the pixels per unit value
-    const pixelsPerUnit = height / value;
-
-    // Calculate y positions for goals
-    const scale = (goalValue: number) => {
-      return barBottom - (goalValue * pixelsPerUnit);
-    };
-
-    const minY = scale(dataPoint.minGoal);
-    const maxY = scale(dataPoint.maxGoal);
-    const centerX = x + width / 2;
-    const lineWidth = width * 0.8;
-    const lineStart = centerX - lineWidth / 2;
-    const lineEnd = centerX + lineWidth / 2;
-
     return (
       <g>
-        {/* Min goal horizontal line */}
-        <line
-          x1={lineStart}
-          y1={minY}
-          x2={lineEnd}
-          y2={minY}
-          stroke="#000"
-          strokeWidth={2}
+        {/* The actual bar */}
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill="#10B981"
         />
         
-        {/* Max goal horizontal line */}
-        <line
-          x1={lineStart}
-          y1={maxY}
-          x2={lineEnd}
-          y2={maxY}
-          stroke="#000"
-          strokeWidth={2}
-        />
-        
-        {/* Vertical connecting line */}
-        <line
-          x1={centerX}
-          y1={minY}
-          x2={centerX}
-          y2={maxY}
-          stroke="#000"
-          strokeWidth={1.5}
-        />
+        {/* Goal lines - only if goals exist and bar has a value */}
+        {dataPoint.minGoal !== null && dataPoint.maxGoal !== null && dataPoint.quantity > 0 && (
+          (() => {
+            // Calculate the scale based on the bar dimensions
+            const barBottom = y + height; // This is where value = 0
+            const pixelsPerUnit = height / dataPoint.quantity;
+
+            // Calculate y positions for goals
+            const minY = barBottom - (dataPoint.minGoal * pixelsPerUnit);
+            const maxY = barBottom - (dataPoint.maxGoal * pixelsPerUnit);
+            const centerX = x + width / 2;
+            const lineWidth = width * 0.8;
+            const lineStart = centerX - lineWidth / 2;
+            const lineEnd = centerX + lineWidth / 2;
+
+            return (
+              <g>
+                {/* Min goal horizontal line */}
+                <line
+                  x1={lineStart}
+                  y1={minY}
+                  x2={lineEnd}
+                  y2={minY}
+                  stroke="#000"
+                  strokeWidth={2}
+                />
+                
+                {/* Max goal horizontal line */}
+                <line
+                  x1={lineStart}
+                  y1={maxY}
+                  x2={lineEnd}
+                  y2={maxY}
+                  stroke="#000"
+                  strokeWidth={2}
+                />
+                
+                {/* Vertical connecting line */}
+                <line
+                  x1={centerX}
+                  y1={minY}
+                  x2={centerX}
+                  y2={maxY}
+                  stroke="#000"
+                  strokeWidth={1.5}
+                />
+              </g>
+            );
+          })()
+        )}
       </g>
     );
   };
@@ -250,8 +262,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           <Bar 
             dataKey="quantity" 
             name="Production Quantity"
-            fill="#10B981"
-            label={<GoalLines />}
+            shape={<CustomBar />}
           />
         </BarChart>
       </ResponsiveContainer>
@@ -271,7 +282,8 @@ function MonthlyProductionChart({ monthId }: { monthId: string | null }) {
       state.tasks, 
       monthId, 
       state.months, 
-      createPeriodBoundaries(state.periods)
+      createPeriodBoundaries(state.periods),
+      state.assortments_graph
     );
     console.log("data: ", monthlyProductionData);
 

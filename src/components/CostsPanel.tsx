@@ -83,7 +83,7 @@ export function CostsPanel() {
       { name: 'Wheeling', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
       { name: 'Trailer', value: Math.abs(trailerCosts), displayValue: trailerCosts },
       { name: 'Demand', value: Math.abs(demandPenaltyCosts), displayValue: demandPenaltyCosts },
-      { name: 'Industry_v', value: Math.abs(industryValue), displayValue: industryValue }
+      { name: 'Ind_value', value: Math.abs(industryValue), displayValue: industryValue }
     ].filter(item => item.value > 0);
 
     return costs;
@@ -145,7 +145,7 @@ export function CostsPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Transport', 'Demand', 'Industry_v'].map((costName, idx) => {
+                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Transport', 'Demand', 'Ind_value'].map((costName, idx) => {
                       const newItem = pieDataNew.find(item => item.name === costName);
                       const newM0Item = pieDataNew_m0.find(item => item.name === costName);
                       const prevItem = pieDatabase.find(item => item.name === costName);
@@ -163,13 +163,13 @@ export function CostsPanel() {
                       const m0Diff = hasSnapshot ? newM0Value - baseM0Value : 0;
                       const allDiff = hasSnapshot ? newAllValue - baseAllValue : 0;
                       
-                      // Industry_v has inverse logic: increase is good, decrease is bad
-                      const isIndustryValue = costName === 'Industry_v';
+                      // Ind_value has inverse logic: increase is good, decrease is bad
+                      const isIndustryValue = costName === 'Ind_value';
                       const m0IsImprovement = isIndustryValue ? m0Diff > 0 : m0Diff < 0;
                       const allIsImprovement = isIndustryValue ? allDiff > 0 : allDiff < 0;
                       
                       // For display: costs should show - for decrease (good), + for increase (bad)
-                      // Industry_v should show + for increase (good), - for decrease (bad)
+                      // Ind_value should show + for increase (good), - for decrease (bad)
                       const m0Sign = isIndustryValue ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+');
                       const allSign = isIndustryValue ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+');
                       
