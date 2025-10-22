@@ -7,25 +7,22 @@ import { ColorPalettes, Task, Team } from '../types';
 import { planSequentialLayoutHours, effectiveDuration, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
+import { startOfYesterday } from 'date-fns';
 
 const DEFAULT_POSITION: { x: number, y: number } = { x: 1156, y: 66 };
 const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 475 };
 
-// Define EPSG:3006 (SWEREF99 TM) and WGS84
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
 proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
 
-// Color palettes for avvForm (fixed) and barighet (dynamic)
-
 const COLOR_PALETTES: ColorPalettes = {
   avvForm: {
-    '�A': '#FF3B30',  // Bright red
-    'GA': '#00D4AA',  // Bright teal/cyan
-    'SA': '#007AFF',  // Bright blue
+    '�A': '#FF3B30',
+    'GA': '#00D4AA',
+    'SA': '#007AFF',
   },
 };
 
-// Dynamic colors for barighet - will be generated based on unique values
 const getBarighetColorPalette = (uniqueBarighet: string[]): Record<string, string> => {
   const colors = ['#FFD93D', '#FF9F43', '#EE5A6F', '#A8E6CF', '#FFD3B6', '#FFAAA5', '#FF8B94', '#A8D8EA', '#AA96DA', '#FCBAD3'];
   const palette: Record<string, string> = {};
@@ -36,19 +33,26 @@ const getBarighetColorPalette = (uniqueBarighet: string[]): Record<string, strin
   return palette;
 };
 
-// Helper function to convert SWEREF99 TM to WGS84
 const swerefToWGS84 = (northing: number, easting: number): [number, number] => {
   try {
     const [lon, lat] = proj4('EPSG:3006', 'EPSG:4326', [easting, northing]);
     return [lat, lon];
   } catch (error) {
     console.error('Error converting coordinates:', error, { northing, easting });
-    // Fallback to approximate center of Sweden if conversion fails
     return [62.0, 15.0];
   }
 };
 
-// Leaflet Marker Icon Fix
+const wgs84ToSWEREF = (lat: number, lon: number): [number, number] => {
+  try {
+    const [easting, northing] = proj4('EPSG:4326', 'EPSG:3006', [lon, lat]);
+    return [northing, easting];
+  } catch (error) {
+    console.error('Error converting coordinates:', error, { lat, lon });
+    return [6900000, 500000];
+  }
+};
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -56,7 +60,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// DeselectOnMapClick Component
 function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   useMapEvents({
     click() {
@@ -66,7 +69,6 @@ function DeselectOnMapClick({ onDeselect }: { onDeselect: () => void }) {
   return null;
 }
 
-// WorldMap Component
 export function WorldMap() {
   const { state, dispatch } = useApp();
 
@@ -79,7 +81,6 @@ export function WorldMap() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // Filter states
   const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['ÖA', 'GA', 'SA']);
   const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
   const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
@@ -90,10 +91,8 @@ export function WorldMap() {
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // immediate revalidation
     mapRef.current.invalidateSize();
 
-    // delay revalidation (after DOM reflow)
     setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 300);
@@ -106,7 +105,6 @@ export function WorldMap() {
     const handleMouseDown = (e: MouseEvent) => {
       const target: HTMLElement = e.target as HTMLElement;
 
-      // Only allow dragging if not clicking on the map container itself
       if (target.closest('.leaflet-container')) return;
 
       e.preventDefault();
@@ -297,7 +295,6 @@ export function WorldMap() {
     });
   };
 
-  // Home base triangle icon for teams
   const createHomeBaseIcon = (color: string, isSelected: boolean = false) => {
     const size: number = isSelected ? 12 : 8;
     const stroke: number = isSelected ? 2 : 1;
@@ -344,7 +341,6 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === null) return [];
 
-    // Hide lines if any filters are active (not all options selected)
     const allAvvForms = ['ÖA', 'GA', 'SA'];
     const allBarighet = getUniqueBarighet();
 
@@ -353,14 +349,11 @@ export function WorldMap() {
 
     if (isAvvFormFiltered || isBarighetFiltered) return [];
 
-    // Get the first month's period IDs
     const firstMonth = state.months[0];
     if (!firstMonth) return [];
 
-    // Get periods that belong to the first month
     const firstMonthPeriods = state.periods.filter(p => firstMonth.periods.includes(p.id));
 
-    // Get the boundaries for the first month
     const firstMonthStart = 0;
     const firstMonthEnd = firstMonthPeriods.reduce((sum, period) => sum + period.length_h, 0);
 
@@ -372,7 +365,6 @@ export function WorldMap() {
 
     const sortedTasks: Task[] = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
 
-    // Get the selected team's maxWheelingDist_km
     const selectedTeam = state.teams.find(t => t.id === state.selectedTeamId);
     const maxWheelingDist_km = selectedTeam?.maxWheelingDist_km || 0;
 
@@ -381,18 +373,15 @@ export function WorldMap() {
       const currentTask: Task = sortedTasks[i];
       const nextTask: Task = sortedTasks[i + 1];
 
-      // Calculate distance in km between tasks (SWEREF99 coordinates are in meters)
       const dx = nextTask.task.lon - currentTask.task.lon;
       const dy = nextTask.task.lat - currentTask.task.lat;
       const distanceMeters = Math.sqrt(dx * dx + dy * dy);
       const distanceKm = distanceMeters / 1000;
 
-      // Determine line color based on distance vs maxWheelingDist
       const lineColor = distanceKm <= maxWheelingDist_km
-        ? '#10B981'  // Bright green for distances within limit (good)
-        : '#EF4444';  // Bright red for distances exceeding limit (bad)
+        ? '#10B981'
+        : '#EF4444';
 
-      // Convert SWEREF99 to WGS84 for display
       const currentPos: [number, number] = swerefToWGS84(currentTask.task.lat, currentTask.task.lon);
       const nextPos: [number, number] = swerefToWGS84(nextTask.task.lat, nextTask.task.lon);
 
@@ -408,13 +397,148 @@ export function WorldMap() {
     return lines;
   };
 
-  const handleMarkerClick = (taskId: string | null) => {
+  const handleMarkerClick = (taskId: string | null, type?: string) => {
     dispatch({
       type: 'SET_SELECTED_TASK',
       taskId,
       toggle_team: state.selectedTeamId
     });
+
+    if (type === 'unassigned') {
+      // Return the opposite (null or taskId)
+      dispatch({ type: 'SET_DRAGGING_TO_GANTT', taskId: state.dragging_to_gantt === taskId ? null : taskId });
+    }
+
     console.log(`Click on marker ${taskId}`);
+  };
+
+  const handleMarkerDragEnd = (taskId: string, mousePosition: { x: number, y: number }) => {
+    // Clear the dragging state
+    dispatch({ type: 'SET_DRAGGING_TO_GANTT', taskId: null });
+  
+    const ganttElement = document.querySelector('.gantt-chart-container');
+    const ganttRect = ganttElement?.getBoundingClientRect();
+    
+    if (ganttRect && 
+        mousePosition.x >= ganttRect.left && 
+        mousePosition.x <= ganttRect.right &&
+        mousePosition.y >= ganttRect.top && 
+        mousePosition.y <= ganttRect.bottom) {
+      
+      console.log('Dropped inside Gantt chart!', taskId);
+      
+      // Get the timeline-content element (this is the actual timeline area)
+      const timelineContent = document.querySelector('.timeline-content');
+      if (!timelineContent) {
+        console.log('Timeline content not found');
+        return;
+      }
+      
+      const timelineRect = timelineContent.getBoundingClientRect();
+      
+      // Check if dropped inside the timeline area
+      if (mousePosition.x >= timelineRect.left && 
+          mousePosition.x <= timelineRect.right &&
+          mousePosition.y >= timelineRect.top && 
+          mousePosition.y <= timelineRect.bottom) {
+        
+        // Get all team rows
+        const teamRows = document.querySelectorAll('[data-team-row="true"]');
+        
+        // Find which team row the task was dropped on (by Y position)
+        for (const teamRow of teamRows) {
+          const teamRowRect = teamRow.getBoundingClientRect();
+          
+          // Check if the drop Y position is within this team row
+          if (mousePosition.y >= teamRowRect.top && 
+              mousePosition.y <= teamRowRect.bottom) {
+            
+            const teamId = teamRow.getAttribute('data-team-id');
+            console.log('Dropped on team:', teamId);
+            
+            // Find the task being moved
+            const task = state.tasks.find(t => t.task.id === taskId);
+            if (!task) {
+              console.error('Task not found:', taskId);
+              return;
+            }
+            
+            // Check if task is allowed on this team
+            if (isDisallowed(task, teamId)) {
+              console.log(`Task ${taskId} is not allowed on team ${teamId}`);
+              return;
+            }
+
+            // Before any changes are made, create a snapshot
+            if (state.taskSnapshot.length === 0) {
+              dispatch({
+                type: 'SET_TASKSNAPSHOT',
+                taskSnapshot: state.tasks
+              });
+            }
+
+            dispatch({
+              type: 'UPDATE_TASK_TEAM',
+              taskId: taskId,
+              newTeamId: teamId
+            });
+            
+            // Calculate drop hour based on x position within timeline
+            const relativeX = mousePosition.x - timelineRect.left;
+            const timelineWidth = timelineRect.width;
+            const dropHour = Math.floor((relativeX / timelineWidth) * state.totalHours);
+            
+            console.log('Drop hour:', dropHour);
+            
+            // Get all tasks in the target team (including the one we just moved)
+            const newTeamSiblings = state.tasks
+              .filter(t => t.duration.teamId === teamId || t.task.id === task.task.id)
+              .map(t => (t.task.id === task.task.id ? { ...t, duration: { ...t.duration, teamId: teamId } } : t));
+
+            // Use planSequentialLayoutHours to handle repositioning
+            const plan = planSequentialLayoutHours(
+              newTeamSiblings,
+              task.task.id,
+              dropHour,
+              state.totalHours
+            );
+            
+            const batchUpdates = plan['updates'].map(u => ({
+              taskId: u.id,
+              startHour: u.startHour,
+              defaultDuration: u.defaultDuration
+            }));
+
+            if (batchUpdates.length > 0) {
+              console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+              dispatch({
+                type: 'BATCH_UPDATE_TASK_HOURS',
+                updates: batchUpdates
+              });
+            }
+
+            // Handle unassigned tasks (those pushed beyond maxHour)
+            for (const id of plan['unassign']) {
+              dispatch({
+                type: 'UPDATE_TASK_TEAM',
+                taskId: id,
+                newTeamId: null
+              });
+              console.log(`⚠️ Task ${id} was pushed beyond the timeline and unassigned`);
+            }
+
+            dispatch({
+              type: 'TOGGLE_COMPARISON_MODAL',
+              toggledModal: true
+            });
+            
+            break;
+          }
+        }
+      }
+    } else {
+      console.log('Dropped outside Gantt chart');
+    }
   };
 
   const handleTeamToggle = (teamId: string | null) => {
@@ -437,7 +561,6 @@ export function WorldMap() {
     console.log("Toggled null");
   }
 
-  // Get unique barighet values dynamically
   const getUniqueBarighet = () => {
     const barighetValues = new Set<string>();
     state.tasks.forEach(task => {
@@ -448,7 +571,6 @@ export function WorldMap() {
     return Array.from(barighetValues).sort();
   };
 
-  // Initialize barighet filter when tasks change
   useEffect(() => {
     const uniqueBarighet = getUniqueBarighet();
     if (selectedBarighet.length === 0 && uniqueBarighet.length > 0) {
@@ -456,7 +578,6 @@ export function WorldMap() {
     }
   }, [state.tasks]);
 
-  // Toggle avvForm filter
   const toggleAvvForm = (form: string) => {
     setSelectedAvvForm(prev =>
       prev.includes(form)
@@ -465,7 +586,6 @@ export function WorldMap() {
     );
   };
 
-  // Toggle barighet filter
   const toggleBarighet = (barighet: string) => {
     setSelectedBarighet(prev =>
       prev.includes(barighet)
@@ -478,7 +598,6 @@ export function WorldMap() {
     const newMode = colorMode === mode ? 'none' : mode;
     setColorMode(newMode);
 
-    // Dispatch color updates to global state for Gantt chart
     state.tasks.forEach(task => {
       const color = getColorForTask(task, newMode);
       dispatch({
@@ -489,7 +608,6 @@ export function WorldMap() {
     });
   };
 
-  // Close popups when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -519,7 +637,6 @@ export function WorldMap() {
     return null
   }
 
-  // MapController Component
   function MapController() {
     const { state } = useApp();
     const map: L.Map = useMap();
@@ -529,16 +646,13 @@ export function WorldMap() {
         const task: Task | undefined = state.tasks.find(t => t.task.id === state.selectedTaskId);
         if (task) {
           try {
-            // Convert SWEREF99 to WGS84
             const [lat, lon]: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
             if (isFinite(lat) && isFinite(lon)) {
-              // Check if the marker is within the current map bounds
               const bounds: L.LatLngBounds = map.getBounds();
               const markerLatLng: L.LatLng = L.latLng(lat, lon);
 
               if (!bounds.contains(markerLatLng)) {
-                // Only move the map if the marker is outside the current view
                 console.log(`Moving to task ${task.task.id}:`, { sweref: [task.task.lat, task.task.lon], wgs84: [lat, lon] });
                 map.setView([lat, lon], map.getZoom(), { animate: true, duration: 1 });
               } else {
@@ -557,7 +671,6 @@ export function WorldMap() {
     return null;
   }
 
-  // PolyLine Component
   const PolyLine = ({ positions, color, weight, opacity }: any) => {
     const map: L.Map = useMap();
 
@@ -579,226 +692,6 @@ export function WorldMap() {
     return null;
   };
 
-  function DraggableUnassignedMarker({ task }: { task: Task }) {
-    const map: L.Map = useMap();
-    const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
-    const markerRef = useRef<L.Marker | null>(null);
-
-    useEffect(() => {
-      const marker: L.Marker<any> | null = markerRef.current;
-      if (!marker) return;
-
-      let cloneElement: HTMLElement | null = null;
-      let hasMoved = false;
-      let startX = 0;
-      let startY = 0;
-      let mouseDownTime = 0;
-
-      const handleMouseDown = (e: L.LeafletMouseEvent) => {
-        mouseDownTime = Date.now();
-        hasMoved = false;
-        startX = e.originalEvent.clientX;
-        startY = e.originalEvent.clientY;
-
-        const handleMouseMove = (e: MouseEvent) => {
-          const dx = Math.abs(e.clientX - startX);
-          const dy = Math.abs(e.clientY - startY);
-
-          // Consider it a drag if moved more than 5 pixels
-          if (dx > 5 || dy > 5) {
-            if (!hasMoved) {
-              e.stopPropagation();
-              e.preventDefault();
-
-              hasMoved = true;
-
-              if (map?.dragging?.disable) map.dragging.disable();
-
-              const markerElement: HTMLElement | undefined = marker.getElement();
-              if (markerElement) {
-                cloneElement = markerElement.cloneNode(true) as HTMLElement;
-                cloneElement.style.position = 'fixed';
-                cloneElement.style.zIndex = '9999';
-                cloneElement.style.pointerEvents = 'none';
-                cloneElement.style.opacity = '0.7';
-                cloneElement.style.transform = 'none';
-
-                cloneElement.style.left = `${e.clientX}px`;
-                cloneElement.style.top = `${e.clientY}px`;
-
-                document.body.appendChild(cloneElement);
-              }
-
-              // Dispatch dragging state only after confirming it's a drag
-              if (state.selectedTaskId !== task.task.id) {
-                dispatch({
-                  type: 'SET_DRAGGING_TO_GANTT',
-                  taskId: task.task.id
-                });
-              }
-            }
-
-            if (cloneElement) {
-              cloneElement.style.left = `${e.clientX}px`;
-              cloneElement.style.top = `${e.clientY}px`;
-            }
-          }
-        }
-
-        const handleMouseUp = (e: MouseEvent) => {
-          const clickDuration = Date.now() - mouseDownTime;
-
-          document.removeEventListener('mousemove', handleMouseMove);
-          document.removeEventListener('mouseup', handleMouseUp);
-
-          // If it wasn't a drag (just a click), trigger popup and selection
-          if (!hasMoved && clickDuration < 300) {
-            handleMarkerClick(task.task.id);
-            setTimeout(() => {
-              marker.openPopup();
-            }, 50);
-          } else if (hasMoved) {
-            dispatch({
-              type: 'SET_DRAGGING_TO_GANTT',
-              taskId: null
-            });
-
-            if (cloneElement && cloneElement.parentNode) {
-              cloneElement.parentNode.removeChild(cloneElement);
-              cloneElement = null;
-            }
-
-            setTimeout(() => {
-              if (map?.dragging?.enable) map.dragging.enable();
-            }, 0);
-            // It was a drag, handle the drop logic
-            const elementUnderMouse: Element | null = document.elementFromPoint(e.clientX, e.clientY);
-            const ganttChart: Element | null | undefined = elementUnderMouse?.closest('.gantt-chart-container');
-
-            if (ganttChart) {
-              const teamRow: Element | null | undefined = elementUnderMouse?.closest('[data-team-row]');
-
-              if (teamRow) {
-                const teamId: string | null = teamRow.getAttribute('data-team-id');
-
-                if (teamId && !isDisallowed(task, teamId)) {
-                  const timeline: Element | null = ganttChart.querySelector('.timeline-content');
-                  const timelineRect: DOMRect | undefined = timeline?.getBoundingClientRect();
-
-                  if (timelineRect) {
-                    const totalHours: number = state.totalHours;
-
-                    // Calculate drop position based on mouse X coordinate
-                    const relativeX = e.clientX - timelineRect.left;
-                    const dropHour = Math.max(0, Math.min(totalHours, (relativeX / timelineRect.width) * totalHours));
-
-                    console.log(`Attempting to move task "${task.task.id}" to team ${teamId} at hour ${dropHour}`);
-                    console.log(`Task: ${effectiveDuration(task, teamId)}h`);
-
-                    if (state.taskSnapshot.length === 0) {
-                      dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
-                    }
-
-                    // Update team assignment first
-                    dispatch({
-                      type: 'UPDATE_TASK_TEAM',
-                      taskId: task.task.id,
-                      newTeamId: teamId
-                    });
-
-                    // Get all tasks in the target team (including the one we just moved)
-                    const newTeamSiblings = state.tasks
-                      .filter(t => t.duration.teamId === teamId || t.task.id === task.task.id)
-                      .map(t => (t.task.id === task.task.id ? { ...t, duration: { ...t.duration, teamId: teamId } } : t));
-
-                    // Use planSequentialLayoutHours to handle repositioning
-                    const plan = planSequentialLayoutHours(
-                      newTeamSiblings,
-                      task.task.id,
-                      dropHour,
-                      totalHours
-                    );
-                    const batchUpdates = plan['updates'].map(u => ({
-                      taskId: u.id,
-                      startHour: u.startHour,
-                      defaultDuration: u.defaultDuration
-                    }));
-
-                    if (batchUpdates.length > 0) {
-                      console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
-                      dispatch({
-                        type: 'BATCH_UPDATE_TASK_HOURS',
-                        updates: batchUpdates
-                      });
-                    }
-
-                    // Handle unassigned tasks (those pushed beyond maxHour)
-                    for (const id of plan['unassign']) {
-                      dispatch({
-                        type: 'UPDATE_TASK_TEAM',
-                        taskId: id,
-                        newTeamId: null
-                      });
-                      console.log(`⚠️ Task ${id} was pushed beyond the timeline and unassigned`);
-                    }
-
-                    dispatch({
-                      type: 'TOGGLE_COMPARISON_MODAL',
-                      toggledModal: true
-                    });
-
-                    // Success
-                    console.log(`✅ Task successfully placed at hour ${dropHour} (may have been adjusted)`);
-                  }
-                }
-              }
-            }
-          }
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-      };
-
-      marker.on('mousedown', handleMouseDown);
-
-      return () => {
-        marker.off('mousedown', handleMouseDown);
-        if (map?.dragging?.enable) map.dragging.enable();
-      };
-    }, [map, wgs84Pos, task.task.id, state, dispatch]);
-
-    return (
-      <Marker
-        key={task.task.id}
-        ref={(ref) => {
-          if (ref) {
-            markerRef.current = ref;
-          }
-        }}
-        position={wgs84Pos}
-        icon={createUnassignedMarkerIcon(
-          getColorForTask(task),
-          state.selectedTaskId === task.task.id
-        )}
-      >
-        <Popup>
-          <div className="p-2">
-            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
-            <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
-            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
-            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
-            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-              <MapPin size={12} />
-              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
-            </div>
-          </div>
-        </Popup>
-      </Marker>
-    );
-  }
-
-  // Render
   return (
     <div
       ref={wrapperRef}
@@ -815,10 +708,8 @@ export function WorldMap() {
       }
     >
 
-      {/* Resize Handles */}
       {!isMaximized && (
         <>
-          {/* Corner handles */}
           <div
             onMouseDown={(e) => handleResize(e, 'nw')}
             className="absolute -top-1 -left-1 w-3 h-3 cursor-nw-resize z-10 hover:bg-blue-200 transition-colors"
@@ -836,7 +727,6 @@ export function WorldMap() {
             className="absolute -bottom-1 -right-1 w-3 h-3 cursor-se-resize z-10 hover:bg-blue-200 transition-colors"
           />
 
-          {/* Edge handles */}
           <div
             onMouseDown={(e) => handleResize(e, 'n')}
             className="absolute -top-1 left-8 right-8 h-2 cursor-n-resize z-10 hover:bg-blue-200 transition-colors"
@@ -856,7 +746,6 @@ export function WorldMap() {
         </>
       )}
 
-      {/* Heading */}
       <div
         ref={containerRef}
         className="world-map-container bg-white rounded-lg shadow-lg p-4 h-full flex flex-col"
@@ -887,8 +776,6 @@ export function WorldMap() {
           </div>
         </div>
 
-        {/* Sub Heading */}
-        {/* Team Filters */}
         <div className="mb-4">
           <h3 className="text-xs font-semibold text-gray-600 mb-2">Filters</h3>
           <div className="flex flex-wrap gap-2">
@@ -902,7 +789,6 @@ export function WorldMap() {
               All Teams
             </button>
 
-            {/* Unassigned Button */}
             <button
               onClick={() => handleNullToggle()}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 border-2 ${state.toggledNull === true
@@ -913,7 +799,6 @@ export function WorldMap() {
               Unassigned
             </button>
 
-            {/* AvvForm Filter Button */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -966,7 +851,6 @@ export function WorldMap() {
               )}
             </div>
 
-            {/* Barighet Filter Button */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -1024,7 +908,6 @@ export function WorldMap() {
           </div>
         </div>
 
-        {/* Map Container */}
         <div className="flex-1 rounded-lg overflow-hidden" style={{ cursor: 'default', zIndex: 1 }}>
           <MapContainer
             ref={mapRef}
@@ -1078,12 +961,10 @@ export function WorldMap() {
 
             {(() => {
               if (showAllTeams) {
-                // Get all assigned tasks for the selected team (unfiltered for numbering)
                 const allTeamTasks: Task[] = state.tasks
                   .filter(task => task.duration.teamId === state.selectedTeamId)
                   .sort((a, b) => a.duration.startHour - b.duration.startHour);
 
-                // Create a map of task IDs to their index numbers
                 const taskIndexMap = new Map<string, number>();
                 allTeamTasks.forEach((task, index) => {
                   taskIndexMap.set(task.task.id, index + 1);
@@ -1130,19 +1011,69 @@ export function WorldMap() {
                       );
                     })}
 
-                    {unassignedTasks.map(task => (
-                      <DraggableUnassignedMarker key={task.task.id} task={task} />
-                    ))}
+                    {unassignedTasks.map((task) => {
+                      const isSelected: boolean = state.selectedTaskId === task.task.id;
+                      const markerColor: string = getColorForTask(task);
+                      const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+
+                      return (
+                        <Marker
+                          key={task.task.id}
+                          position={wgs84Pos}
+                          icon={createUnassignedMarkerIcon(markerColor, isSelected)}
+                          draggable={true}
+                          eventHandlers={{
+                            click: () => handleMarkerClick(task.task.id, 'unassigned'),
+
+                            dragend: (e) => {
+                              const marker = e.target;
+                              
+                              // Get the container point (pixel coordinates on the map)
+                              const map = marker._map;
+                              const latLng = marker.getLatLng();
+                              const containerPoint = map.latLngToContainerPoint(latLng);
+                              
+                              // Convert to screen coordinates
+                              const mapContainer = map.getContainer();
+                              const rect = mapContainer.getBoundingClientRect();
+                              const mousePosition = { 
+                                x: rect.left + containerPoint.x, 
+                                y: rect.top + containerPoint.y 
+                              };
+                              
+                              // Reset marker to original position immediately
+                              marker.setLatLng(wgs84Pos);
+                              
+                              // Pass both task ID and mouse position to handler
+                              handleMarkerDragEnd(task.task.id, mousePosition);
+                            }
+                          }}
+                          zIndexOffset={30}
+                        >
+                          <Popup>
+                            <div className="p-2">
+                              <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                              <p className="text-sm text-orange-600 font-medium">Unassigned (Draggable)</p>
+                              <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                              <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                <MapPin size={12} />
+                                N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-2 italic">Drag to reposition</p>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
                   </>
                 )
               }
 
-              // Get all assigned tasks for the selected team (unfiltered for numbering)
               const allTeamTasks: Task[] = state.tasks
                 .filter(task => task.duration.teamId === state.selectedTeamId)
                 .sort((a, b) => a.duration.startHour - b.duration.startHour);
 
-              // Create a map of task IDs to their index numbers
               const taskIndexMap = new Map<string, number>();
               allTeamTasks.forEach((task, index) => {
                 taskIndexMap.set(task.task.id, index + 1);
@@ -1187,9 +1118,60 @@ export function WorldMap() {
                     );
                   })}
 
-                  {unassignedTasks.map(task => (
-                    <DraggableUnassignedMarker key={task.task.id} task={task} />
-                  ))}
+                  {unassignedTasks.map((task) => {
+                    const isSelected: boolean = state.selectedTaskId === task.task.id;
+                    const markerColor: string = getColorForTask(task);
+                    const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+
+                    return (
+                      <Marker
+                        key={task.task.id}
+                        position={wgs84Pos}
+                        icon={createUnassignedMarkerIcon(markerColor, isSelected)}
+                        draggable={true} // Make it so that the markers position is reset on drag end
+                        eventHandlers={{
+                          click: () => handleMarkerClick(task.task.id, 'unassigned'),
+                          dragend: (e) => {
+                            const marker = e.target;
+                            
+                            // Get the container point (pixel coordinates on the map)
+                            const map = marker._map;
+                            const latLng = marker.getLatLng();
+                            const containerPoint = map.latLngToContainerPoint(latLng);
+                            
+                            // Convert to screen coordinates
+                            const mapContainer = map.getContainer();
+                            const rect = mapContainer.getBoundingClientRect();
+                            const mousePosition = { 
+                              x: rect.left + containerPoint.x, 
+                              y: rect.top + containerPoint.y 
+                            };
+                            
+                            // Reset marker to original position immediately
+                            marker.setLatLng(wgs84Pos);
+                            
+                            // Pass both task ID and mouse position to handler
+                            handleMarkerDragEnd(task.task.id, mousePosition);
+                          }
+                        }}
+                        zIndexOffset={30}
+                      >
+                        <Popup>
+                          <div className="p-2">
+                            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                            <p className="text-sm text-orange-600 font-medium">Unassigned (Draggable)</p>
+                            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <MapPin size={12} />
+                              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 italic">Drag to reposition</p>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
                 </>
               );
             })()}
