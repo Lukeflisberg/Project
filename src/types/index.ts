@@ -204,3 +204,45 @@ export interface AppState {
   assortments_graph: AssortmentsGraph[];
   transportCosts: TransportCosts[];
 }
+
+export interface ColorPalettes {
+  avvForm: {
+    '�A': string;
+    'GA': string;
+    'SA': string;
+  };
+}
+
+export interface QuantityByPeriod {
+    [productName: string]: number[];
+}
+
+export interface MonthProductionSummary {
+    products: Record<string, number>; 
+}
+
+export interface PeriodBoundary { 
+    id: string;
+    total: number 
+};
+
+export interface TeamProductionSummary {
+    teamId: string;
+    volume: number;
+}
+
+export interface TimeWindow {
+    start: number;
+    end: number;
+}
+
+export interface CostBreakdown {
+    harvesterCosts: number;
+    forwarderCosts: number;
+    travelingCosts: number;
+    wheelingCosts: number;
+    trailerCosts: number;
+    demandCost: number;
+    industryValue: number;
+    totalCost: number;
+}

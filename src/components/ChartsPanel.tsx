@@ -70,7 +70,7 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
   }, [periodNames, state.periods, state.tasks, state.demand, state.assortments_graph, resource]);
 
   if (!series.length) {
-    return <div className="flex items-center justify-center h-64 text-sm text-gray-500">No period/demand/production data available.</div>;
+    return <div className="flex items-center justify-center h-40 text-xs text-gray-500">No period/demand/production data available.</div>;
   }
 
   // Find max value for domain
@@ -78,31 +78,31 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
   const paddedMax = Math.ceil(maxVal * 1.1);
 
   return (
-    <div className="w-full h-80">
+    <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart 
           data={series} 
-          margin={{ top: 10, right: 20, bottom: 10, left: 0 }}
+          margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
           barCategoryGap="40%"
           barGap={2} 
         >
           <CartesianGrid stroke={COLORS.grid} />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="name" tick={{ fontSize: 10 }} />
           <YAxis 
             domain={[0, paddedMax]} 
             allowDataOverflow={false} 
-            tick={{ fontSize: 11 }}
+            tick={{ fontSize: 10 }}
           />
           <Tooltip
             formatter={(value: any) => Number(value).toFixed(2)}
           />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: '11px' }} />
           
-          <Bar dataKey="productionSurplus" name="Surplus" fill={COLORS.surplus} barSize={20} stackId="production" />
-          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={20} stackId="production" />
+          <Bar dataKey="productionSurplus" name="Surplus" fill={COLORS.surplus} barSize={16} stackId="production" />
+          <Bar dataKey="production" name="Production" fill={COLORS.production} barSize={16} stackId="production" />
           
-          <Bar dataKey="demandSurplus" name="Shortage" fill={COLORS.shortage} barSize={20} stackId="demand" />
-          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={20} stackId="demand" />
+          <Bar dataKey="demandSurplus" name="Shortage" fill={COLORS.shortage} barSize={16} stackId="demand" />
+          <Bar dataKey="demand" name="Demand" fill={COLORS.demand} barSize={16} stackId="demand" />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -121,7 +121,8 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
       state.tasks,
       monthId,
       state.months, 
-      createPeriodBoundaries(state.periods)
+      createPeriodBoundaries(state.periods),
+      state.totalHours
     );
 
     // Transform the team's products into chart data with product names on x-axis
@@ -160,7 +161,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
 
   if (!data.length) {
     return (
-      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
+      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
         No production data available for this team.
       </div>
     );
@@ -241,31 +242,31 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
   };
 
   return (
-    <div className="w-full h-80">
+    <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+        <BarChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
-            tick={{ fontSize: 11 }}
+            tick={{ fontSize: 10 }}
             interval={0}
             angle={-45}
             textAnchor="end"
           />
-          <YAxis tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 10 }} />
           <Tooltip 
             content={({ active, payload }) => {
               if (active && payload && payload.length) {
                 const data = payload[0].payload;
                 return (
-                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm">
+                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm text-xs">
                     <p className="font-semibold">{data.name}</p>
-                    <p className="text-sm">Production: {Number(data.quantity).toFixed(2)}</p>
+                    <p>Production: {Number(data.quantity).toFixed(2)}</p>
                     {data.minGoal !== null && (
-                      <p className="text-sm">Min Goal: {Number(data.minGoal).toFixed(2)}</p>
+                      <p>Min Goal: {Number(data.minGoal).toFixed(2)}</p>
                     )}
                     {data.maxGoal !== null && (
-                      <p className="text-sm">Max Goal: {Number(data.maxGoal).toFixed(2)}</p>
+                      <p>Max Goal: {Number(data.maxGoal).toFixed(2)}</p>
                     )}
                   </div>
                 );
@@ -273,7 +274,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
               return null;
             }}
           />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: '11px' }} />
           <Bar 
             dataKey="quantity" 
             name="Production Quantity"
@@ -298,7 +299,8 @@ function MonthlyProductionChart({ monthId }: { monthId: string | null }) {
       monthId, 
       state.months, 
       createPeriodBoundaries(state.periods),
-      state.assortments_graph
+      state.assortments_graph,
+      state.totalHours
     );
     console.log("data: ", monthlyProductionData);
 
@@ -311,29 +313,29 @@ function MonthlyProductionChart({ monthId }: { monthId: string | null }) {
 
   if (!data.length) {
     return (
-      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
+      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
         No production data available for this month.
       </div>
     );
   }
 
   return (
-    <div className="w-full h-80">
+    <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+        <BarChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
-            tick={{ fontSize: 11 }}
+            tick={{ fontSize: 10 }}
             interval={0}
             angle={-45}
             textAnchor="end"
           />
-          <YAxis tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 10 }} />
           <Tooltip 
             formatter={(value: any) => Number(value).toFixed(2)}
           />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: '11px' }} />
           <Bar 
             dataKey="quantity" 
             name="Production Quantity"
@@ -372,12 +374,12 @@ function WorkEfficiencyChart({ monthId }: { monthId: string | null }) {
 
       let used = 0;
       if (monthId === 'all') {
-        used = calculateTotalTaskDuration(teamTasks);
+        used = calculateTotalTaskDuration(teamTasks, state.totalHours);
       } else {
         const month = state.months?.find(m => m.monthID === monthId);
         if (month) {
           const monthStartEnd = getMonthTimeWindow(month, createPeriodBoundaries(state.periods));
-          used = calculateMonthlyTaskDuration(monthStartEnd, teamTasks);
+          used = calculateMonthlyTaskDuration(monthStartEnd, teamTasks, state.totalHours);
         }
       }
 
@@ -394,7 +396,7 @@ function WorkEfficiencyChart({ monthId }: { monthId: string | null }) {
   }, [state.tasks, state.teams, state.totalHours, state.periods, state.months, monthId]);
 
   if (!data.length) {
-    return <div className="flex items-center justify-center h-64 text-sm text-gray-500">No teams/tasks to compute efficiency.</div>;
+    return <div className="flex items-center justify-center h-40 text-xs text-gray-500">No teams/tasks to compute efficiency.</div>;
   }
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -413,20 +415,20 @@ function WorkEfficiencyChart({ monthId }: { monthId: string | null }) {
   };
 
   return (
-    <div className="w-full h-80">
+    <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
-            tick={{ fontSize: 11 }}
+            tick={{ fontSize: 10 }}
             interval={0}
             angle={-45}
             textAnchor="end"
           />
-          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
+          <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: '11px' }} />
           <Bar dataKey="value" name="Efficiency" fill="#3B82F6" />
         </ComposedChart>
       </ResponsiveContainer>
@@ -492,29 +494,29 @@ export function ChartsPanel() {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="flex items-center justify-between px-4 py-2 border-b">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between px-3 py-1 border-b">
+        <div className="flex gap-1.5">
           <button
             onClick={() => setTab('DemandProductionChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'DemandProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+            className={`px-2 py-0.5 text-xs rounded ${tab === 'DemandProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Demand vs Production
           </button>
           <button
             onClick={() => setTab('TeamProductionChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'TeamProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+            className={`px-2 py-0.5 text-xs rounded ${tab === 'TeamProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Team Production
           </button>
           <button
             onClick={() => setTab('WorkEfficiencyChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'WorkEfficiencyChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+            className={`px-2 py-0.5 text-xs rounded ${tab === 'WorkEfficiencyChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Work Efficiency
           </button>
           <button
             onClick={() => setTab('MonthlyProductionChart')}
-            className={`px-3 py-1.5 text-sm rounded ${tab === 'MonthlyProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
+            className={`px-2 py-0.5 text-xs rounded ${tab === 'MonthlyProductionChart' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100 text-gray-700'}`}
           >
             Monthly Production
           </button>
@@ -522,12 +524,12 @@ export function ChartsPanel() {
         
         {/* Conditional dropdown based on active tab */}
         {tab === 'DemandProductionChart' && resources.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Assortment Group:</label>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500">Assortment:</label>
             <select
               value={selectedResource ?? ''}
               onChange={e => setSelectedResource(e.target.value || null)}
-              className="px-2 py-1 text-sm border rounded"
+              className="px-1.5 py-0.5 text-xs border rounded"
             >
               {resources.map(r => (
                 <option key={r} value={r}>{r}</option>
@@ -537,12 +539,12 @@ export function ChartsPanel() {
         )}
         
         {tab === 'TeamProductionChart' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500">Month:</label>
             <select
               value={selectedTeamProdMonth ?? ''}
               onChange={e => setSelectedTeamProdMonth(e.target.value)}
-              className="px-2 py-1 text-sm border rounded"
+              className="px-1.5 py-0.5 text-xs border rounded"
             >
               <option value="all">All Months</option>
               {state.months?.map(month => (
@@ -555,12 +557,12 @@ export function ChartsPanel() {
         )}
 
         {tab === 'WorkEfficiencyChart' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500">Month:</label>
             <select
               value={selectedWorkEffMonth ?? 'all'}
               onChange={e => setSelectedWorkEffMonth(e.target.value)}
-              className="px-2 py-1 text-sm border rounded"
+              className="px-1.5 py-0.5 text-xs border rounded"
             >
               <option value="all">All Months</option>
               {state.months?.map(month => (
@@ -573,12 +575,12 @@ export function ChartsPanel() {
         )}
 
         {tab === 'MonthlyProductionChart' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500">Month:</label>
             <select
               value={selectedMonthlyProdMonth ?? 'all'}
               onChange={e => setSelectedMonthlyProdMonth(e.target.value)}
-              className="px-2 py-1 text-sm border rounded"
+              className="px-1.5 py-0.5 text-xs border rounded"
             >
               <option value="all">All Months</option>
               {state.months?.map(month => (
@@ -591,9 +593,9 @@ export function ChartsPanel() {
         )}
       </div>
 
-      <div className="p-2">
+      <div className='p-0.5'>
         {isEmpty ? (
-          <div className="h-64 flex items-center justify-center text-gray-500 text-sm">Load data to view charts.</div>
+          <div className="h-40 flex items-center justify-center text-gray-500 text-xs">Load data to view charts.</div>
         ) : tab === 'DemandProductionChart' ? (
           <DemandProductionChart resource={selectedResource} />
         ) : tab === 'TeamProductionChart' ? (

@@ -29,6 +29,7 @@ type AppAction =
 
   | { type: 'UPDATE_TASK_TEAM'; taskId: string; newTeamId: string | null }
   | { type: 'UPDATE_TASK_HOURS'; taskId: string; startHour: number; defaultDuration: number }
+  | { type: 'BATCH_UPDATE_TASK_HOURS'; updates: Array<{ taskId: string; startHour: number; defaultDuration: number }> }
 
   | { type: 'UPDATE_TASKS'; tasks: Task[] }
   | { type: 'UPDATE_TEAMS'; teams: Team[] }
@@ -154,14 +155,49 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'UPDATE_TASK_HOURS': {
+      console.log('🔥 REDUCER: UPDATE_TASK_HOURS called for', action.taskId);
       const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
-          ? { ...task, duration: { ...task.duration, startHour: action.startHour, defaultDuration: action.defaultDuration } }
+          ? { 
+              ...task, 
+              task: { ...task.task }, 
+              duration: { 
+                ...task.duration, 
+                startHour: action.startHour, 
+                defaultDuration: action.defaultDuration 
+              } 
+            }
           : task
       );
+
       return { ...state, tasks: updatedTasks };
     };
 
+    case 'BATCH_UPDATE_TASK_HOURS': {
+      console.log('🔥 REDUCER: BATCH_UPDATE_TASK_HOURS called with', action.updates.length, 'updates');
+      
+      // Create a Map for O(1) lookup of updates by taskId
+      const updateMap = new Map(action.updates.map(u => [u.taskId, u]));
+      
+      // Map through all tasks and apply updates where they exist
+      const updatedTasks = state.tasks.map(task => {
+        const update = updateMap.get(task.task.id);
+        if (update) {
+          return {
+            ...task,
+            task: { ...task.task },
+            duration: {
+              ...task.duration,
+              startHour: update.startHour,
+              defaultDuration: update.defaultDuration
+            }
+          };
+        }
+        return task;
+      });
+
+      return { ...state, tasks: updatedTasks };
+    };
 
     
     case 'UPDATE_TASKS':

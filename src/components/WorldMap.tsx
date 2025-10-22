@@ -3,8 +3,8 @@ import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 're
 import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Task, Team } from '../types';
-import { findEarliestHour, effectiveDuration, isDisallowed, getTaskColor } from '../helper/taskUtils';
+import { ColorPalettes, Task, Team } from '../types';
+import { planSequentialLayoutHours, effectiveDuration, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 
@@ -16,13 +16,7 @@ proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 
 proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
 
 // Color palettes for avvForm (fixed) and barighet (dynamic)
-interface ColorPalettes {
-  avvForm: {
-    '�A': string;
-    'GA': string;
-    'SA': string;
-  };
-}
+
 const COLOR_PALETTES: ColorPalettes = {
   avvForm: {
     '�A': '#FF3B30',  // Bright red
@@ -86,7 +80,7 @@ export function WorldMap() {
   const dragStartRef = useRef({ x: 0, y: 0 });
 
   // Filter states
-  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['�A', 'GA', 'SA']);
+  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['ÖA', 'GA', 'SA']);
   const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
   const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
   const [showBarighetPopup, setShowBarighetPopup] = useState(false);
@@ -205,17 +199,17 @@ export function WorldMap() {
 
   const getColorForTask = (task: Task, mode: 'none' | 'avvForm' | 'barighet' = colorMode): string => {
       if (mode === 'none') return state.defaultColor;
-      
+
       if (mode === 'avvForm') {
         const formType = task.task.avvForm as keyof typeof COLOR_PALETTES.avvForm;
         return COLOR_PALETTES.avvForm[formType] || state.defaultColor;
       }
-      
+
       if (mode === 'barighet') {
         const barighetPalette = getBarighetColorPalette(getUniqueBarighet());
         return barighetPalette[task.task.barighet] || state.defaultColor;
       }
-      
+
       return state.defaultColor;
     };
 
@@ -242,8 +236,8 @@ export function WorldMap() {
           color: white;
           font-weight: bold;
           font-size: ${isSelected ? 16 : 12}px;
-          text-shadow: 
-            -1px -1px 0 black,  
+          text-shadow:
+            -1px -1px 0 black,
             1px -1px 0 black,
             -1px  1px 0 black,
             1px  1px 0 black;
@@ -284,8 +278,8 @@ export function WorldMap() {
           color: white;
           font-weight: bold;
           font-size: ${isSelected ? 16 : 12}px;
-          text-shadow: 
-            -1px -1px 0 black,  
+          text-shadow:
+            -1px -1px 0 black,
             1px -1px 0 black,
             -1px  1px 0 black,
             1px  1px 0 black;
@@ -350,6 +344,15 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === null) return [];
 
+    // Hide lines if any filters are active (not all options selected)
+    const allAvvForms = ['ÖA', 'GA', 'SA'];
+    const allBarighet = getUniqueBarighet();
+
+    const isAvvFormFiltered = selectedAvvForm.length !== allAvvForms.length;
+    const isBarighetFiltered = selectedBarighet.length !== allBarighet.length;
+
+    if (isAvvFormFiltered || isBarighetFiltered) return [];
+
     // Get the first month's period IDs
     const firstMonth = state.months[0];
     if (!firstMonth) return [];
@@ -369,10 +372,25 @@ export function WorldMap() {
 
     const sortedTasks: Task[] = [...visibleTasks].sort((a, b) => a.duration.startHour - b.duration.startHour);
 
+    // Get the selected team's maxWheelingDist_km
+    const selectedTeam = state.teams.find(t => t.id === state.selectedTeamId);
+    const maxWheelingDist_km = selectedTeam?.maxWheelingDist_km || 0;
+
     const lines = [];
     for (let i = 0; i < sortedTasks.length - 1; i++) {
       const currentTask: Task = sortedTasks[i];
       const nextTask: Task = sortedTasks[i + 1];
+
+      // Calculate distance in km between tasks (SWEREF99 coordinates are in meters)
+      const dx = nextTask.task.lon - currentTask.task.lon;
+      const dy = nextTask.task.lat - currentTask.task.lat;
+      const distanceMeters = Math.sqrt(dx * dx + dy * dy);
+      const distanceKm = distanceMeters / 1000;
+
+      // Determine line color based on distance vs maxWheelingDist
+      const lineColor = distanceKm <= maxWheelingDist_km
+        ? '#10B981'  // Bright green for distances within limit (good)
+        : '#EF4444';  // Bright red for distances exceeding limit (bad)
 
       // Convert SWEREF99 to WGS84 for display
       const currentPos: [number, number] = swerefToWGS84(currentTask.task.lat, currentTask.task.lon);
@@ -381,7 +399,7 @@ export function WorldMap() {
       lines.push({
         id: `${currentTask.task.id}-${nextTask.task.id}`,
         positions: [currentPos, nextPos],
-        color: getColorForTask(currentTask),
+        color: lineColor,
         weight: 2.5,
         opacity: 0.8
       });
@@ -564,94 +582,95 @@ export function WorldMap() {
   function DraggableUnassignedMarker({ task }: { task: Task }) {
     const map: L.Map = useMap();
     const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
-    const markerRef: React.RefObject<L.Marker<any>> = useRef<L.Marker>(null);
-    const [, setIsDragging] = useState(false);
+    const markerRef = useRef<L.Marker | null>(null);
 
     useEffect(() => {
       const marker: L.Marker<any> | null = markerRef.current;
       if (!marker) return;
 
-      let isDrag = false;
       let cloneElement: HTMLElement | null = null;
       let hasMoved = false;
       let startX = 0;
       let startY = 0;
+      let mouseDownTime = 0;
 
       const handleMouseDown = (e: L.LeafletMouseEvent) => {
-        e.originalEvent.stopPropagation();
-        e.originalEvent.preventDefault();
-
-        if (state.selectedTaskId !== task.task.id) {
-          dispatch({
-            type: 'SET_DRAGGING_TO_GANTT',
-            taskId: task.task.id
-          });
-        }
-
-        isDrag = false;
+        mouseDownTime = Date.now();
         hasMoved = false;
         startX = e.originalEvent.clientX;
         startY = e.originalEvent.clientY;
-        setIsDragging(true);
-
-        if (map?.dragging?.disable) map.dragging.disable();
-
-        const markerElement: HTMLElement | undefined = marker.getElement();
-        if (markerElement) {
-          cloneElement = markerElement.cloneNode(true) as HTMLElement;
-          cloneElement.style.position = 'fixed';
-          cloneElement.style.zIndex = '9999';
-          cloneElement.style.pointerEvents = 'none';
-          cloneElement.style.opacity = '0.7';
-          cloneElement.style.transform = 'none';
-
-          cloneElement.style.left = `${e.originalEvent.clientX}px`;
-          cloneElement.style.top = `${e.originalEvent.clientY}px`;
-
-          document.body.appendChild(cloneElement);
-        }
 
         const handleMouseMove = (e: MouseEvent) => {
           const dx = Math.abs(e.clientX - startX);
           const dy = Math.abs(e.clientY - startY);
-          
+
           // Consider it a drag if moved more than 5 pixels
           if (dx > 5 || dy > 5) {
-            isDrag = true;
-            hasMoved = true;
-          }
+            if (!hasMoved) {
+              e.stopPropagation();
+              e.preventDefault();
 
-          if (cloneElement) {
-            cloneElement.style.left = `${e.clientX}px`;
-            cloneElement.style.top = `${e.clientY}px`;
+              hasMoved = true;
+
+              if (map?.dragging?.disable) map.dragging.disable();
+
+              const markerElement: HTMLElement | undefined = marker.getElement();
+              if (markerElement) {
+                cloneElement = markerElement.cloneNode(true) as HTMLElement;
+                cloneElement.style.position = 'fixed';
+                cloneElement.style.zIndex = '9999';
+                cloneElement.style.pointerEvents = 'none';
+                cloneElement.style.opacity = '0.7';
+                cloneElement.style.transform = 'none';
+
+                cloneElement.style.left = `${e.clientX}px`;
+                cloneElement.style.top = `${e.clientY}px`;
+
+                document.body.appendChild(cloneElement);
+              }
+
+              // Dispatch dragging state only after confirming it's a drag
+              if (state.selectedTaskId !== task.task.id) {
+                dispatch({
+                  type: 'SET_DRAGGING_TO_GANTT',
+                  taskId: task.task.id
+                });
+              }
+            }
+
+            if (cloneElement) {
+              cloneElement.style.left = `${e.clientX}px`;
+              cloneElement.style.top = `${e.clientY}px`;
+            }
           }
         }
 
         const handleMouseUp = (e: MouseEvent) => {
-          setIsDragging(false);
-          dispatch({
-            type: 'SET_DRAGGING_TO_GANTT',
-            taskId: null
-          });
-
-          if (cloneElement && cloneElement.parentNode) {
-            cloneElement.parentNode.removeChild(cloneElement);
-            cloneElement = null;
-          }
-
-          setTimeout(() => {
-            if (map?.dragging?.enable) map.dragging.enable();
-          }, 0);
+          const clickDuration = Date.now() - mouseDownTime;
 
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseup', handleMouseUp);
 
-          // If it wasn't a drag (just a click), open the popup
-          if (!hasMoved) {
+          // If it wasn't a drag (just a click), trigger popup and selection
+          if (!hasMoved && clickDuration < 300) {
             handleMarkerClick(task.task.id);
-            // Manually open the popup
-            marker.openPopup();
-          } else {
+            setTimeout(() => {
+              marker.openPopup();
+            }, 50);
+          } else if (hasMoved) {
+            dispatch({
+              type: 'SET_DRAGGING_TO_GANTT',
+              taskId: null
+            });
+
+            if (cloneElement && cloneElement.parentNode) {
+              cloneElement.parentNode.removeChild(cloneElement);
+              cloneElement = null;
+            }
+
+            setTimeout(() => {
+              if (map?.dragging?.enable) map.dragging.enable();
+            }, 0);
             // It was a drag, handle the drop logic
             const elementUnderMouse: Element | null = document.elementFromPoint(e.clientX, e.clientY);
             const ganttChart: Element | null | undefined = elementUnderMouse?.closest('.gantt-chart-container');
@@ -668,49 +687,69 @@ export function WorldMap() {
 
                   if (timelineRect) {
                     const totalHours: number = state.totalHours;
-                    const filteredTasks: Task[] = state.tasks
-                      .filter(t => t.duration.teamId === teamId)
-                      .sort((a, b) => a.duration.startHour - b.duration.startHour)
 
-                    console.log(`Attempting to move task "${task.task.id}" to team ${teamId}`);
-                    console.log(`Task: ${effectiveDuration(task, teamId)}h, Existing tasks in team: ${filteredTasks.length}`);
+                    // Calculate drop position based on mouse X coordinate
+                    const relativeX = e.clientX - timelineRect.left;
+                    const dropHour = Math.max(0, Math.min(totalHours, (relativeX / timelineRect.width) * totalHours));
 
-                    const result: number | null = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
+                    console.log(`Attempting to move task "${task.task.id}" to team ${teamId} at hour ${dropHour}`);
+                    console.log(`Task: ${effectiveDuration(task, teamId)}h`);
 
-                    if (result !== null) {
-                      if (state.taskSnapshot.length === 0) {
-                        dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
-                      }
-                      
+                    if (state.taskSnapshot.length === 0) {
+                      dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
+                    }
+
+                    // Update team assignment first
+                    dispatch({
+                      type: 'UPDATE_TASK_TEAM',
+                      taskId: task.task.id,
+                      newTeamId: teamId
+                    });
+
+                    // Get all tasks in the target team (including the one we just moved)
+                    const newTeamSiblings = state.tasks
+                      .filter(t => t.duration.teamId === teamId || t.task.id === task.task.id)
+                      .map(t => (t.task.id === task.task.id ? { ...t, duration: { ...t.duration, teamId: teamId } } : t));
+
+                    // Use planSequentialLayoutHours to handle repositioning
+                    const plan = planSequentialLayoutHours(
+                      newTeamSiblings,
+                      task.task.id,
+                      dropHour,
+                      totalHours
+                    );
+                    const batchUpdates = plan['updates'].map(u => ({
+                      taskId: u.id,
+                      startHour: u.startHour,
+                      defaultDuration: u.defaultDuration
+                    }));
+
+                    if (batchUpdates.length > 0) {
+                      console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                      dispatch({
+                        type: 'BATCH_UPDATE_TASK_HOURS',
+                        updates: batchUpdates
+                      });
+                    }
+
+                    // Handle unassigned tasks (those pushed beyond maxHour)
+                    for (const id of plan['unassign']) {
                       dispatch({
                         type: 'UPDATE_TASK_TEAM',
-                        taskId: task.task.id,
-                        newTeamId: teamId
+                        taskId: id,
+                        newTeamId: null
                       });
-                      dispatch({
-                        type: 'UPDATE_TASK_HOURS',
-                        taskId: task.task.id,
-                        startHour: result,
-                        defaultDuration: task.duration.defaultDuration
-                      });
-                      dispatch({
-                        type: 'TOGGLE_COMPARISON_MODAL',
-                        toggledModal: true
-                      });
-
-                      // Success
-                      console.log(`✅ Task successfully placed at hour ${result}`);
-                    } else {
-                      console.log(`FAILED: No valid slot found for task in team ${teamId}`);
-                      console.log(`Reason: No gaps large enough or all slots conflict with invalid periods`);
-
-                      // Failure
-                      console.log(`❌ Unable to place task\n\nNo valid time slot found in this team.\nTry:\n• Removing or moving other tasks\n• Checking period restrictions\n• Using a different team`);
+                      console.log(`⚠️ Task ${id} was pushed beyond the timeline and unassigned`);
                     }
+
+                    dispatch({
+                      type: 'TOGGLE_COMPARISON_MODAL',
+                      toggledModal: true
+                    });
+
+                    // Success
+                    console.log(`✅ Task successfully placed at hour ${dropHour} (may have been adjusted)`);
                   }
-                }
-                else {
-                  console.log(`❌ Task not allowed in team ${teamId}`);
                 }
               }
             }
@@ -727,12 +766,16 @@ export function WorldMap() {
         marker.off('mousedown', handleMouseDown);
         if (map?.dragging?.enable) map.dragging.enable();
       };
-    }, [map, wgs84Pos, task.task.id]);
+    }, [map, wgs84Pos, task.task.id, state, dispatch]);
 
     return (
       <Marker
         key={task.task.id}
-        ref={markerRef}
+        ref={(ref) => {
+          if (ref) {
+            markerRef.current = ref;
+          }
+        }}
         position={wgs84Pos}
         icon={createUnassignedMarkerIcon(
           getColorForTask(task),
@@ -878,8 +921,8 @@ export function WorldMap() {
                   setShowBarighetPopup(false);
                 }}
                 className={`filter-button px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                  colorMode === 'avvForm' 
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-300' 
+                  colorMode === 'avvForm'
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-300'
                     : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
@@ -901,7 +944,7 @@ export function WorldMap() {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {['�A', 'GA', 'SA'].map(form => (
+                    {['ÖA', 'GA', 'SA'].map(form => (
                       <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                         <input
                           type="checkbox"
@@ -1035,6 +1078,17 @@ export function WorldMap() {
 
             {(() => {
               if (showAllTeams) {
+                // Get all assigned tasks for the selected team (unfiltered for numbering)
+                const allTeamTasks: Task[] = state.tasks
+                  .filter(task => task.duration.teamId === state.selectedTeamId)
+                  .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
+                // Create a map of task IDs to their index numbers
+                const taskIndexMap = new Map<string, number>();
+                allTeamTasks.forEach((task, index) => {
+                  taskIndexMap.set(task.task.id, index + 1);
+                });
+
                 const assignedTasks: Task[] = getVisibleTasks()
                   .filter(task => task.duration.teamId !== null)
                   .sort((a, b) => a.duration.startHour - b.duration.startHour);
@@ -1042,7 +1096,6 @@ export function WorldMap() {
                 const unassignedTasks: Task[] = state.toggledNull
                   ? getVisibleTasks().filter(task => task.duration.teamId === null)
                   : [];
-                let index: number = 0;
 
                 return (
                   <>
@@ -1051,13 +1104,13 @@ export function WorldMap() {
                       const markerColor: string = getColorForTask(task);
                       const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
                       const isSelectedTeam = task.duration.teamId === state.selectedTeamId;
-                      if (isSelectedTeam) index += 1;
+                      const markerIndex = isSelectedTeam ? taskIndexMap.get(task.task.id) : undefined;
 
                       return (
                         <Marker
                           key={task.task.id}
                           position={wgs84Pos}
-                          icon={isSelectedTeam ? createMarkerIcon(markerColor, isSelected, index) : createMarkerIcon(markerColor, isSelected)}
+                          icon={isSelectedTeam ? createMarkerIcon(markerColor, isSelected, markerIndex) : createMarkerIcon(markerColor, isSelected)}
                           eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
                           zIndexOffset={isSelectedTeam ? 20 : 10}
                         >
@@ -1084,6 +1137,17 @@ export function WorldMap() {
                 )
               }
 
+              // Get all assigned tasks for the selected team (unfiltered for numbering)
+              const allTeamTasks: Task[] = state.tasks
+                .filter(task => task.duration.teamId === state.selectedTeamId)
+                .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
+              // Create a map of task IDs to their index numbers
+              const taskIndexMap = new Map<string, number>();
+              allTeamTasks.forEach((task, index) => {
+                taskIndexMap.set(task.task.id, index + 1);
+              });
+
               const assignedTasks: Task[] = getVisibleTasks()
                 .filter(task => task.duration.teamId === state.selectedTeamId)
                 .sort((a, b) => a.duration.startHour - b.duration.startHour);
@@ -1094,10 +1158,10 @@ export function WorldMap() {
 
               return (
                 <>
-                  {assignedTasks.map((task, index) => {
+                  {assignedTasks.map((task) => {
                     const isSelected: boolean = state.selectedTaskId === task.task.id;
                     const markerColor: string = getColorForTask(task);
-                    const markerIndex: number = index + 1;
+                    const markerIndex: number | undefined = taskIndexMap.get(task.task.id);
                     const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
 
                     return (

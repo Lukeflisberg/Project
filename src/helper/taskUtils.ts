@@ -1,6 +1,9 @@
 import { Task, Period } from '../types';
 
 export const clamp = (v: number, min: number, max: number): number => Math.max(min, Math.min(max, v));
+export const endHour = (t: Task): number => t.duration.startHour + effectiveDuration(t);
+export const occStart = (t: Task) => t.duration.startHour;
+export const occEnd = (t: Task) => endHour(t);
 
 export const setupOf = (t: Task): number => {
   const n = t.duration.defaultSetup ?? 0;
@@ -18,8 +21,6 @@ export const isDisallowed = (t: Task, teamId?: string | null): boolean => {
   const ov = pid ? t.duration.specialTeams?.[pid] : undefined;
   return ov === 'X';
 };
-
-export const endHour = (t: Task): number => t.duration.startHour + effectiveDuration(t);
 
 export const findEarliestHour = (
   // Takes a task and a list of the other tasks. Then find the earliest starthour possible for that task where it doesnt overlap with any of the other tasks and doesnt lie in a invalid period
@@ -161,10 +162,107 @@ export function getTaskColor(task: Task): string {
   return task.task.color;
 }
 
-// Color stuff
-// Currently, the marker color thing should be working 
-// Just assign the color of the marker too it
-// But I had an idea of rather when I toggle the color, recolor ALL tasks
-// Then when untoggled, reset them
-// Then when rendering, just check if color exists, this could also be fixed by just appling color in filereader like I did with team
-// then i can just call gettaskcolor for color and  getcolorfromtask to set all tasks
+// ----------------------
+// Sequential Layout Planner
+// ----------------------
+// Returns planned (startHour, defaultDuration) for each task so none overlap, after a move.
+// Also returns tasks that should be unassigned (pushed beyond maxHour).
+export function planSequentialLayoutHours(
+  siblings: Task[],
+  movedTaskId: string,
+  movedNewStartHour: number,
+  maxHour: number
+): { updates: Array<{ id: string; startHour: number; defaultDuration: number }>; unassign: string[] } {
+  // Local copy of siblings
+  const local = siblings.map(t => ({ ...t }));
+
+  // Apply moved task's new start locally first (no snapping)
+  const moved = local.find(t => t.task.id === movedTaskId);
+  if (!moved) return { updates: [], unassign: [] };
+
+  // Allow task to start up to maxHour (can extend beyond)
+  moved.duration.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour));
+
+  // Sort other tasks by their current occupied start positions
+  const others = local.filter(t => t.task.id !== movedTaskId)
+                      .sort((a, b) => occStart(a) - occStart(b));
+
+  // Find where to insert the moved task based on its new occupied start
+  const movedOccStart = occStart(moved);
+  let insertIndex = 0;
+  while (insertIndex < others.length && occStart(others[insertIndex]) < movedOccStart) {
+    insertIndex++;
+  }
+
+  // Insert moved task at determined position
+  const orderedTasks = [
+    ...others.slice(0, insertIndex),
+    moved,
+    ...others.slice(insertIndex)
+  ];
+
+  // Sweep both forward and backwards ensuring no overlaps, keeping moved at or as close as possible to its desired position
+  const updates: Array<{ id: string; startHour: number; defaultDuration: number }> = [];
+  const unassign: string[] = [];
+  
+  // Create working array with current positions
+  const working = orderedTasks.map(t => ({
+    task: t,
+    occStart: occStart(t),
+    occEnd: occEnd(t),
+    duration: effectiveDuration(t, t.duration.teamId),
+  }));
+
+  // Resolve overlaps by pushing tasks to the right from the insertion point
+  let changed = true;
+  let iterations = 0;
+  const maxIterations = working.length * 2; // Prevent infinite loops
+
+  while (changed && iterations < maxIterations) {
+    changed = false;
+    iterations++;
+
+    // Forward pass: push tasks to the right if they overlap with previous task
+    for (let i = 1; i < working.length; i++) {
+      const prev = working[i - 1];
+      const curr = working[i];
+      
+      if (curr.occStart < prev.occEnd) {
+        // Overlap detected - push current task to the right
+        const newOccStart = prev.occEnd;
+        const newStart = newOccStart;
+
+        // Check if this would push the task beyond the boundary
+        if (newStart + curr.duration > maxHour) {
+          // Mark for unassignment
+          unassign.push(curr.task.task.id);
+          // Remove from working array to prevent further processing
+          working.splice(i, 1);
+          i--; // Adjust index after removal
+          changed = true;
+          continue;
+        }
+
+        const clampedStart = clamp(newStart, 0, Math.max(0, maxHour));
+        
+        if (clampedStart !== curr.task.duration.startHour) {
+          curr.task.duration.startHour = clampedStart;
+          curr.occStart = occStart(curr.task);
+          curr.occEnd = occEnd(curr.task);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // Generate updates for all tasks that weren't unassigned
+  for (const item of working) {
+    updates.push({
+      id: item.task.task.id,
+      startHour: item.task.duration.startHour,
+      defaultDuration: item.task.duration.defaultDuration
+    });
+  }
+
+  return { updates, unassign };
+}

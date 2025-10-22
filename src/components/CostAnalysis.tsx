@@ -1,28 +1,16 @@
 import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { calculateTotalCostBreakdown, getMonthTimeWindow } from '../helper/chartUtils';
+import { calculateTotalCostBreakdown } from '../helper/costUtils';
 import { Check, X, Landmark } from 'lucide-react';
 import { Task, Month } from '../types';
 
-// Pie chart colors
-const PIE_COLORS = [
-  '#10B981', 
-  '#3B82F6', 
-  '#F59E0B', 
-  '#EF4444', 
-  '#8B5CF6', 
-  '#EC4899', 
-  '#adadadff'
-];
+const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
 export function CostsPanel() {
   const { state, dispatch } = useApp();
-
-  const isEmpty: boolean = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
-
+  const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
   const hasSnapshot = state.taskSnapshot.length > 0;
 
-  // Calculate transport costs
   const transportCost_m0 = useMemo(() => 
     state.transportCosts.length > 0 ? state.transportCosts[0].cost : 0,
     [state.transportCosts]
@@ -32,63 +20,49 @@ export function CostsPanel() {
     [state.transportCosts]
   );
 
-  // Calculate costs
   const newCost = useMemo(() => 
-    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_all,
-    [state.tasks, state.teams, state.demand, state.periods, state.distances, transportCost_all]
+    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours).totalCost + transportCost_all,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all]
   );
+
   const newCost_m0 = useMemo(() => 
-    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances, state.months[0]).totalCost + transportCost_m0,
-    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.months, transportCost_m0]
+    calculateTotalCostBreakdown(state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months[0]).totalCost + transportCost_m0,
+    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months, transportCost_m0]
   );
 
   const baseCost = useMemo(() => 
-    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances).totalCost + transportCost_all,
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, transportCost_all]
+    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours).totalCost + transportCost_all,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all]
   );
+  
   const baseCost_m0 = useMemo(() => 
-    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months[0]).totalCost + transportCost_m0,
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months, transportCost_m0]
+    calculateTotalCostBreakdown(state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months[0]).totalCost + transportCost_m0,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months, transportCost_m0]
   );
 
-  const costDifference = newCost - baseCost;
-  const percentageChange = baseCost > 0
-    ? ((costDifference / baseCost) * 100).toFixed(0)
-    : 'inf';
-  const isImprovement = costDifference < 0;
+  const costDiff = newCost - baseCost;
+  const pctChange = baseCost > 0 ? ((costDiff / baseCost) * 100).toFixed(2) : 'inf';
+  const isImprovement = costDiff < 0;
 
-  const costDifference_m0 = newCost_m0 - baseCost_m0;
-  const percentageChange_m0 = baseCost_m0 > 0
-    ? ((costDifference_m0 / baseCost_m0) * 100).toFixed(0)
-    : 'inf';
-  const isImprovement_m0 = costDifference_m0 < 0;
+  const costDiff_m0 = newCost_m0 - baseCost_m0;
+  const pctChange_m0 = baseCost_m0 > 0 ? ((costDiff_m0 / baseCost_m0) * 100).toFixed(2) : 'inf';
+  const isImprovement_m0 = costDiff_m0 < 0;
 
-  // Pie chart data for all views - now accepts optional month parameter
   const getPieData = (tasks: Task[], month?: Month) => {
-    const costData = calculateTotalCostBreakdown(
-      tasks, 
-      state.teams, 
-      state.demand, 
-      state.periods, 
-      state.distances,
-      month
-    );
-    
+    const costData = calculateTotalCostBreakdown(tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, month);
     if (!costData) return [];
 
-    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandPenaltyCosts, industryValue } = costData;
+    const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCost, industryValue } = costData;
 
-    const costs = [
+    return [
       { name: 'Harvester', value: Math.abs(harvesterCosts), displayValue: harvesterCosts },
       { name: 'Forwarder', value: Math.abs(forwarderCosts), displayValue: forwarderCosts },
       { name: 'Traveling', value: Math.abs(travelingCosts), displayValue: travelingCosts },
       { name: 'Wheeling', value: Math.abs(wheelingCosts), displayValue: wheelingCosts },
       { name: 'Trailer', value: Math.abs(trailerCosts), displayValue: trailerCosts },
-      { name: 'Demand', value: Math.abs(demandPenaltyCosts), displayValue: demandPenaltyCosts },
+      { name: 'Demand', value: Math.abs(demandCost), displayValue: demandCost },
       { name: 'Ind_value', value: Math.abs(industryValue), displayValue: industryValue }
     ].filter(item => item.value > 0);
-
-    return costs;
   };
 
   const pieDataNew = useMemo(() => getPieData(state.tasks), [state.tasks, state.teams, state.demand, state.periods, state.distances]);
@@ -96,194 +70,170 @@ export function CostsPanel() {
   const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances]);
   const pieDatabase_m0 = useMemo(() => getPieData(state.taskSnapshot, state.months[0]), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months]);
 
-  // Handlers
-  function onAccept() {
+  const onAccept = () => {
     dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
     dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
-  }
-
-  function onDecline() {
-    dispatch({ type: 'UPDATE_TASKS', tasks: state.taskSnapshot });
-    dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
-    dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
   };
+
+  const onDecline = () => {
+    dispatch({ 
+      type: 'UPDATE_TASKS', 
+      tasks: state.taskSnapshot.map(task => ({...task, duration: {...task.duration}, task: {...task.task}}))
+    });
+    dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
+    dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+  };
+
+  const fmt = (v: number) => new Intl.NumberFormat('sv-SE', {minimumFractionDigits: 0, maximumFractionDigits: 0}).format(v);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="flex items-center justify-between px-4 py-2 border-b">
+      <div className="flex items-center justify-between px-3 py-1 border-b">
         <div className="flex items-center gap-2">
-          <Landmark className="text-emerald-600" size={20} />
-          <h2 className="font-semibold text-gray-800">Cost Analysis (kr)</h2>
+          <Landmark className="text-emerald-600" size={18} />
+          <h2 className="font-semibold text-gray-800 text-sm">Cost Analysis (kr)</h2>
         </div>
       </div>
 
       <div className="p-2">
         {isEmpty ? (
-          <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+          <div className="h-32 flex items-center justify-center text-gray-500 text-xs">
             Load data to view cost analysis.
           </div>
         ) : (
           <div className="flex gap-2">
-
-            {/* Left: Cost Distribution Chart with View Selector */}
-            <div className="flex-[2]">
-              {/* Cost Comparison Table */}
-              <div className="mb-4 overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Cost Type</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Base (1st)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">Base (All)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (1st)</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">New (All)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Transport', 'Demand', 'Ind_value'].map((costName, idx) => {
-                      const newItem = pieDataNew.find(item => item.name === costName);
-                      const newM0Item = pieDataNew_m0.find(item => item.name === costName);
-                      const prevItem = pieDatabase.find(item => item.name === costName);
-                      const prevM0Item = pieDatabase_m0.find(item => item.name === costName);
-                      
-                      // Handle Transport costs separately
-                      const isTransport = costName === 'Transport';
-                      
-                      // When no snapshot, show current values in base columns
-                      const baseM0Value = isTransport ? transportCost_m0 : (hasSnapshot ? (prevM0Item?.displayValue ?? 0) : (newM0Item?.displayValue ?? 0));
-                      const baseAllValue = isTransport ? transportCost_all : (hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0));
-                      const newM0Value = isTransport ? transportCost_m0 : (hasSnapshot ? (newM0Item?.displayValue ?? 0) : 0);
-                      const newAllValue = isTransport ? transportCost_all : (hasSnapshot ? (newItem?.displayValue ?? 0) : 0);
-                      
-                      const m0Diff = hasSnapshot ? newM0Value - baseM0Value : 0;
-                      const allDiff = hasSnapshot ? newAllValue - baseAllValue : 0;
-                      
-                      // Ind_value has inverse logic: increase is good, decrease is bad
-                      const isIndustryValue = costName === 'Ind_value';
-                      const m0IsImprovement = isIndustryValue ? m0Diff > 0 : m0Diff < 0;
-                      const allIsImprovement = isIndustryValue ? allDiff > 0 : allDiff < 0;
-                      
-                      // For display: costs should show - for decrease (good), + for increase (bad)
-                      // Ind_value should show + for increase (good), - for decrease (bad)
-                      const m0Sign = isIndustryValue ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+');
-                      const allSign = isIndustryValue ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+');
-                      
-                      return (
-                        <tr key={costName} className="hover:bg-gray-50">
-                          <td className="border border-gray-300 px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <div 
-                                className="w-3 h-3 rounded flex-shrink-0" 
-                                style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
-                              />
-                              <span className="font-medium text-gray-700">{costName}</span>
-                            </div>
-                          </td>
-                          <td className="border border-gray-300 px-3 py-2 text-right text-gray-800">
-                            {baseM0Value !== 0 ? formatCurrency(baseM0Value) : '—'}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-2 text-right text-gray-800">
-                            {baseAllValue !== 0 ? formatCurrency(baseAllValue) : '—'}
-                          </td>
-                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newM0Value !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
-                            isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'text-gray-800 bg-gray-50' : m0IsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
-                          }`}>
-                            {isTransport ? '—' : hasSnapshot && newM0Value !== 0 ? (
-                              <div>
-                                <div className="text-xs">
-                                  {m0Sign}{formatCurrency(Math.abs(m0Diff))}
-                                </div>
-                              </div>
-                            ) : '—'}
-                          </td>
-                          <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot && newAllValue !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
-                            isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'text-gray-800 bg-gray-50' : allIsImprovement ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
-                          }`}>
-                            {isTransport ? '—' : hasSnapshot && newAllValue !== 0 ? (
-                              <div>
-                                <div className="text-xs">
-                                  {allSign}{formatCurrency(Math.abs(allDiff))}
-                                </div>
-                              </div>
-                            ) : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-gray-100 font-bold">
-                      <td className="border border-gray-300 px-3 py-2 text-center text-gray-900">Total Cost</td>
-                      <td className="border border-gray-300 px-3 py-2 text-right text-gray-900">
-                        {formatCurrency(hasSnapshot ? baseCost_m0 : newCost_m0)}
-                      </td>
-                      <td className="border border-gray-300 px-3 py-2 text-right text-gray-900">
-                        {formatCurrency(hasSnapshot ? baseCost : newCost)}
-                      </td>
-                      <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot ? 'text-right' : 'text-center'} ${
-                        !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
-                      }`}>
-                        {hasSnapshot ? (
-                          <div>
-                            <div>{formatCurrency(newCost_m0)}</div>
-                            <div className="text-xs font-normal">
-                              {isImprovement_m0 ? '-' : '+'}{formatCurrency(Math.abs(costDifference_m0))} ({percentageChange_m0}%)
-                            </div>
+            <div style={{width: 'calc(100% - 200px)'}} className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Type</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Base (1st)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Base (All)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">New (1st)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">New (All)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Trailer', 'Transport'].map((name, i) => {
+                    const newItem = pieDataNew.find(it => it.name === name);
+                    const newM0 = pieDataNew_m0.find(it => it.name === name);
+                    const prevItem = pieDatabase.find(it => it.name === name);
+                    const prevM0 = pieDatabase_m0.find(it => it.name === name);
+                    
+                    const isTransport = name === 'Transport';
+                    const baseM0 = isTransport ? transportCost_m0 : (hasSnapshot ? (prevM0?.displayValue ?? 0) : (newM0?.displayValue ?? 0));
+                    const baseAll = isTransport ? transportCost_all : (hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0));
+                    const newM0Val = isTransport ? transportCost_m0 : (hasSnapshot ? (newM0?.displayValue ?? 0) : 0);
+                    const newAll = isTransport ? transportCost_all : (hasSnapshot ? (newItem?.displayValue ?? 0) : 0);
+                    
+                    const m0Diff = hasSnapshot ? newM0Val - baseM0 : 0;
+                    const allDiff = hasSnapshot ? newAll - baseAll : 0;
+                    const m0Improve = m0Diff < 0;
+                    const allImprove = allDiff < 0;
+                    
+                    return (
+                      <tr key={name} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded" style={{backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} />
+                            <span className="font-medium">{name}</span>
                           </div>
-                        ) : '—'}
-                      </td>
-                      <td className={`border border-gray-300 px-3 py-2 ${hasSnapshot ? 'text-right' : 'text-center'} ${
-                        !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
-                      }`}>
-                        {hasSnapshot ? (
-                          <div>
-                            <div>{formatCurrency(newCost)}</div>
-                            <div className="text-xs font-normal">
-                              {isImprovement ? '-' : '+'}{formatCurrency(Math.abs(costDifference))} ({percentageChange}%)
-                            </div>
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
+                          isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {isTransport ? '—' : hasSnapshot && newM0Val !== 0 ? `${m0Diff <= 0 ? '-' : '+'}${fmt(Math.abs(m0Diff))}` : '—'}
+                        </td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${
+                          isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {isTransport ? '—' : hasSnapshot && newAll !== 0 ? `${allDiff <= 0 ? '-' : '+'}${fmt(Math.abs(allDiff))}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  <tr className="bg-gray-100 font-bold border-t-2 border-gray-900">
+                    <td className="border border-gray-300 px-2 py-1 text-center">Total Cost</td>
+                    <td className="border border-gray-300 px-2 py-1 text-right">{fmt(hasSnapshot ? baseCost_m0 : newCost_m0)}</td>
+                    <td className="border border-gray-300 px-2 py-1 text-right">{fmt(hasSnapshot ? baseCost : newCost)}</td>
+                    <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot ? 'text-right' : 'text-center'} ${
+                      !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
+                    }`}>
+                      {hasSnapshot ? `${fmt(newCost_m0)} (${isImprovement_m0 ? '-' : '+'}${fmt(Math.abs(costDiff_m0))}, ${pctChange_m0}%)` : '—'}
+                    </td>
+                    <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot ? 'text-right' : 'text-center'} ${
+                      !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
+                    }`}>
+                      {hasSnapshot ? `${fmt(newCost)} (${isImprovement ? '-' : '+'}${fmt(Math.abs(costDiff))}, ${pctChange}%)` : '—'}
+                    </td>
+                  </tr>
+                  
+                  {['Demand', 'Ind_value'].map((name, idx) => {
+                    const i = 6 + idx;
+                    const newItem = pieDataNew.find(it => it.name === name);
+                    const newM0 = pieDataNew_m0.find(it => it.name === name);
+                    const prevItem = pieDatabase.find(it => it.name === name);
+                    const prevM0 = pieDatabase_m0.find(it => it.name === name);
+                    
+                    const baseM0 = hasSnapshot ? (prevM0?.displayValue ?? 0) : (newM0?.displayValue ?? 0);
+                    const baseAll = hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0);
+                    const newM0Val = hasSnapshot ? (newM0?.displayValue ?? 0) : 0;
+                    const newAll = hasSnapshot ? (newItem?.displayValue ?? 0) : 0;
+                    
+                    const m0Diff = hasSnapshot ? newM0Val - baseM0 : 0;
+                    const allDiff = hasSnapshot ? newAll - baseAll : 0;
+                    const isIndVal = name === 'Ind_value';
+                    const m0Improve = isIndVal ? m0Diff > 0 : m0Diff < 0;
+                    const allImprove = isIndVal ? allDiff > 0 : allDiff < 0;
+                    
+                    return (
+                      <tr key={name} className={`hover:bg-gray-50 ${idx === 0 ? 'border-t-2 border-gray-900' : ''}`}>
+                        <td className="border border-gray-300 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded" style={{backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} />
+                            <span className="font-medium">{name}</span>
                           </div>
-                        ) : '—'}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 ? 'text-right' : 'text-center'} font-medium ${
+                          !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {hasSnapshot && newM0Val !== 0 ? `${isIndVal ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+')}${fmt(Math.abs(m0Diff))}` : '—'}
+                        </td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 ? 'text-right' : 'text-center'} font-medium ${
+                          !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {hasSnapshot && newAll !== 0 ? `${isIndVal ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+')}${fmt(Math.abs(allDiff))}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
               </div>
             </div>
             
-            {/* Right: Action Buttons */}
-            <div className="flex-shrink-0 w-72">
-              <div className="space-y-3">
-                
-                {/* Action Buttons */}
-                {state.toggledModal && (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={onDecline}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-200 hover:bg-red-300 text-gray-800 font-semibold rounded-lg transition-colors"
-                    >
-                      <X size={20} />
-                      Decline
-                    </button>
-                    <button
-                      onClick={onAccept}
-                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-semibold rounded-lg transition-colors ${
-                        isImprovement
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                    >
-                      <Check size={20} />
-                      Accept
-                    </button>
-                  </div>
-                )}
+            {state.toggledModal && (
+              <div className="flex-shrink-0 w-48">
+                <div className="flex gap-2">
+                  <button onClick={onDecline} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-200 hover:bg-red-300 font-semibold rounded-lg text-sm">
+                    <X size={16} />
+                    Decline
+                  </button>
+                  <button onClick={onAccept} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-semibold rounded-lg text-sm ${
+                    isImprovement ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}>
+                    <Check size={16} />
+                    Accept
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

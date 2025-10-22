@@ -36,7 +36,7 @@ function AppContent() {
       <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
         
         {/* Top Row - Gantt (3/5w) and Map (2/5w) */}
-        <div className="flex gap-4 h-[60%] overflow-hidden">
+        <div className="flex gap-4 h-[70%] overflow-hidden">
           <div className="w-3/5">
             <GanttChart />
           </div>
@@ -46,7 +46,7 @@ function AppContent() {
         </div>
 
         {/* Bottom Row - Charts (50%w) and Unassigned (50%w) */}
-        <div className="flex gap-4 h-[40%]">
+        <div className="flex gap-4 h-[30%]">
           <div className="w-1/2">
             <ChartsPanel />
           </div>

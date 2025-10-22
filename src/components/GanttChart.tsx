@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { Task, Team, Period } from '../types';
 import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader'
 import { getPeriodData } from '../helper/periodUtils';
-import { effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor } from '../helper/taskUtils';
+import { occStart, occEnd, effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor, planSequentialLayoutHours } from '../helper/taskUtils';
 import { calculateTotalTaskDuration } from '../helper/chartUtils';
 
 // ----------------------
@@ -13,113 +13,6 @@ import { calculateTotalTaskDuration } from '../helper/chartUtils';
 // ----------------------
 // Default periods and their lengths used for fallback and initial state.
 const PERIOD_FALLBACK: Period = {id: "P0", name: "n/a", length_h: 1};
-
-const occStart = (t: Task) => t.duration.startHour;
-const occEnd = (t: Task) => endHour(t);
-
-// ----------------------
-// Sequential Layout Planner
-// ----------------------
-// Returns planned (startHour, defaultDuration) for each task so none overlap, after a move.
-// Also returns tasks that should be unassigned (pushed beyond maxHour).
-function planSequentialLayoutHours(
-  siblings: Task[],
-  movedTaskId: string,
-  movedNewStartHour: number,
-  maxHour: number
-): { updates: Array<{ id: string; startHour: number; defaultDuration: number }>; unassign: string[] } {
-  // Local copy of siblings
-  const local = siblings.map(t => ({ ...t }));
-
-  // Apply moved task's new start locally first (no snapping)
-  const moved = local.find(t => t.task.id === movedTaskId);
-  if (!moved) return { updates: [], unassign: [] };
-  const movedDur = effectiveDuration(moved, moved.duration.teamId);
-  moved.duration.startHour = clamp(movedNewStartHour, 0, Math.max(0, maxHour - movedDur));
-
-  // Sort other tasks by their current occupied start positions
-  const others = local.filter(t => t.task.id !== movedTaskId)
-                      .sort((a, b) => occStart(a) - occStart(b));
-
-  // Find where to insert the moved task based on its new occupied start
-  const movedOccStart = occStart(moved);
-  let insertIndex = 0;
-  while (insertIndex < others.length && occStart(others[insertIndex]) < movedOccStart) {
-    insertIndex++;
-  }
-
-  // Insert moved task at determined position
-  const orderedTasks = [
-    ...others.slice(0, insertIndex),
-    moved,
-    ...others.slice(insertIndex)
-  ];
-
-  // Sweep both forward and backwards ensuring no overlaps, keeping moved at or as close as possible to its desired position
-  const updates: Array<{ id: string; startHour: number; defaultDuration: number }> = [];
-  const unassign: string[] = [];
-  
-  // Create working array with current positions
-  const working = orderedTasks.map(t => ({
-    task: t,
-    occStart: occStart(t),
-    occEnd: occEnd(t),
-    duration: effectiveDuration(t, t.duration.teamId),
-  }));
-
-  // Resolve overlaps by pushing tasks to the right from the insertion point
-  let changed = true;
-  let iterations = 0;
-  const maxIterations = working.length * 2; // Prevent infinite loops
-
-  while (changed && iterations < maxIterations) {
-    changed = false;
-    iterations++;
-
-    // Forward pass: push tasks to the right if they overlap with previous task
-    for (let i = 1; i < working.length; i++) {
-      const prev = working[i - 1];
-      const curr = working[i];
-      
-      if (curr.occStart < prev.occEnd) {
-        // Overlap detected - push current task to the right
-        const newOccStart = prev.occEnd;
-        const newStart = newOccStart;
-
-        // Check if this would push the task beyond the boundary
-        if (newStart + curr.duration > maxHour) {
-          // Mark for unassignment
-          unassign.push(curr.task.task.id);
-          // Remove from working array to prevent further processing
-          working.splice(i, 1);
-          i--; // Adjust index after removal
-          changed = true;
-          continue;
-        }
-
-        const clampedStart = clamp(newStart, 0, Math.max(0, maxHour - curr.duration));
-        
-        if (clampedStart !== curr.task.duration.startHour) {
-          curr.task.duration.startHour = clampedStart;
-          curr.occStart = occStart(curr.task);
-          curr.occEnd = occEnd(curr.task);
-          changed = true;
-        }
-      }
-    }
-  }
-
-  // Generate updates for all tasks that weren't unassigned
-  for (const item of working) {
-    updates.push({
-      id: item.task.task.id,
-      startHour: item.task.duration.startHour,
-      defaultDuration: item.task.duration.defaultDuration
-    });
-  }
-
-  return { updates, unassign };
-}
 
 // ----------------------
 // Main GanttChart Component
@@ -156,7 +49,7 @@ export function GanttChart() {
   };
 
   // Calculate the left position and width of a task block in the timeline
-  const calculateTaskPosition = (task: Task) => {
+  const calculateTaskPosition = (task: Task): { left: string, width: string } => {
     const left = (Math.max(0, occStart(task)) / totalHours) * 100;
     const width = ((effectiveDuration(task, task.duration.teamId)) / totalHours) * 100;
     return { left: `${left}%`, width: `${width}%` };
@@ -214,7 +107,11 @@ export function GanttChart() {
         const predecessor = preds.sort((a,b) => occEnd(b) - occEnd(a))[0];
         const earliestOccStart = predecessor ? occEnd(predecessor) : 0;
         const desiredStart = occStart(t) - effectiveDuration(moving, teamId);
-        if ((desiredStart) >= earliestOccStart) return { teamId, taskId: t.task.id, side: 'left' };
+
+        // Tasks can extend beyond totalHours, just check if start is valid
+        if (desiredStart >= earliestOccStart && desiredStart < totalHours) {
+          return { teamId, taskId: t.task.id, side: 'left' };
+        }
       }
       if (inRightZone) {
         // Check if there is enough space after the target for snapping
@@ -223,9 +120,12 @@ export function GanttChart() {
         const succs = state.tasks.filter(x => x.duration.teamId === teamId && x.task.id !== t.task.id && x.task.id !== excludeTaskId && occStart(x) >= occEnd(t));
         const successor = succs.sort((a,b) => occStart(a) - occStart(b))[0];
         const desiredStart = occEnd(t);
-        const desiredEnd = desiredStart + effectiveDuration(moving, teamId);
-        const latestOccEnd = successor ? occStart(successor) : totalHours;
-        if (desiredEnd <= latestOccEnd) return { teamId, taskId: t.task.id, side: 'right' };
+
+        // Tasks can extend beyond totalHours
+        const canFit = successor ? (desiredStart + effectiveDuration(moving, teamId) <= occStart(successor)) : (desiredStart < totalHours);
+        if (canFit) {
+          return { teamId, taskId: t.task.id, side: 'right' };
+        }
       }
     }
 
@@ -238,8 +138,18 @@ export function GanttChart() {
     e.stopPropagation();
 
     if (state.taskSnapshot.length === 0) {
-      dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: state.tasks });
-    } 
+    // Deep clone the tasks array and each task object
+    dispatch({ 
+      type: 'SET_TASKSNAPSHOT', 
+      taskSnapshot: state.tasks.map(task => ({
+        ...task,
+        duration: { ...task.duration },
+        task: { ...task.task }
+      }))
+    });
+
+    console.log('created snapshot');
+  }
 
     dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_team: state.selectedTeamId });
 
@@ -254,6 +164,7 @@ export function GanttChart() {
     // Capture pointer offset within the task's occupied span (in hours) to preserve alignment on drop
     const timelineEl = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
     const rect0 = timelineEl?.getBoundingClientRect();
+    
     if (rect0) {
       const pointerHour0 = Math.max(0, Math.min(totalHours, ((e.clientX - rect0.left) / rect0.width) * totalHours));
       const startOcc0 = occStart(originalTask);
@@ -365,6 +276,9 @@ export function GanttChart() {
       const moveDistance = Math.sqrt(finalOffset.x ** 2 + finalOffset.y ** 2);
 
       if (moveDistance > 5) {
+        // Mark that changes where made
+        dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+
         // 1) Snap to neighbor edges (priority at drop)
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
@@ -390,18 +304,19 @@ export function GanttChart() {
                 desiredStart,
                 totalHours
               );
-              for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.task.id === u.id);
-                if (!orig) continue;
-                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                  dispatch({
-                    type: 'UPDATE_TASK_HOURS',
-                    taskId: u.id,
-                    startHour: u.startHour,
-                    defaultDuration: u.defaultDuration
-                  });
-                  console.log("Success");
-                }
+              const batchUpdates = plan['updates'].map(u => ({
+                taskId: u.id,
+                startHour: u.startHour,
+                defaultDuration: u.defaultDuration
+              }));
+
+              if (batchUpdates.length > 0) {
+                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                dispatch({
+                  type: 'BATCH_UPDATE_TASK_HOURS',
+                  updates: batchUpdates
+                });
+                console.log("Success");
               }
               taskUpdated = true;
             } else {
@@ -418,18 +333,19 @@ export function GanttChart() {
                 desiredStart,
                 totalHours
               );
-              for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.task.id === u.id);
-                if (!orig) continue;
-                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                  dispatch({
-                    type: 'UPDATE_TASK_HOURS',
-                    taskId: u.id,
-                    startHour: u.startHour,
-                    defaultDuration: u.defaultDuration
-                  });
-                  console.log("Success");
-                }
+              const batchUpdates = plan['updates'].map(u => ({
+                taskId: u.id,
+                startHour: u.startHour,
+                defaultDuration: u.defaultDuration
+              }));
+
+              if (batchUpdates.length > 0) {
+                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                dispatch({
+                  type: 'BATCH_UPDATE_TASK_HOURS',
+                  updates: batchUpdates
+                });
+                console.log("Success");
               }
               taskUpdated = true;
             }
@@ -516,18 +432,19 @@ export function GanttChart() {
                       currentNewStart, 
                       totalHours
                     );
-                    for (const u of plan['updates']) {
-                      const orig = state.tasks.find(t => t.task.id === u.id);
-                      if (!orig) continue;
-                      if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                        dispatch({ 
-                          type: 'UPDATE_TASK_HOURS', 
-                          taskId: u.id, 
-                          startHour: u.startHour, 
-                          defaultDuration: u.defaultDuration 
-                        });
-                        console.log("Success");
-                      }
+                    const batchUpdates = plan['updates'].map(u => ({
+                      taskId: u.id,
+                      startHour: u.startHour,
+                      defaultDuration: u.defaultDuration
+                    }));
+
+                    if (batchUpdates.length > 0) {
+                      console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                      dispatch({
+                        type: 'BATCH_UPDATE_TASK_HOURS',
+                        updates: batchUpdates
+                      });
+                      console.log("Success");
                     }
                     taskUpdated = true;
                   } else {
@@ -549,18 +466,19 @@ export function GanttChart() {
                           return t;
                         });
                       const plan = planSequentialLayoutHours(newTeamSibs as Task[], taskId, desiredStart, totalHours);
-                      for (const u of plan['updates']) {
-                        const orig = state.tasks.find(t => t.task.id === u.id);
-                        if (!orig) continue;
-                        if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                          dispatch({ 
-                            type: 'UPDATE_TASK_HOURS', 
-                            taskId: u.id,
-                            startHour: u.startHour, 
-                            defaultDuration: u.defaultDuration 
-                          });
-                          console.log("Success");
-                        }
+                      const batchUpdates = plan['updates'].map(u => ({
+                        taskId: u.id,
+                        startHour: u.startHour,
+                        defaultDuration: u.defaultDuration
+                      }));
+
+                      if (batchUpdates.length > 0) {
+                        console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                        dispatch({
+                          type: 'BATCH_UPDATE_TASK_HOURS',
+                          updates: batchUpdates
+                        });
+                        console.log("Success");
                       }
                       taskUpdated = true;
                     }
@@ -589,18 +507,19 @@ export function GanttChart() {
                   desiredStart,
                   totalHours
                 );
-                for (const u of plan['updates']) {
-                  const orig = state.tasks.find(t => t.task.id === u.id);
-                  if (!orig) continue;
-                  if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                    dispatch({
-                      type: 'UPDATE_TASK_HOURS',
-                      taskId: u.id,
-                      startHour: u.startHour,
-                      defaultDuration: u.defaultDuration
-                    });
-                    console.log("Success");
-                  }
+                const batchUpdates = plan['updates'].map(u => ({
+                  taskId: u.id,
+                  startHour: u.startHour,
+                  defaultDuration: u.defaultDuration
+                }));
+
+                if (batchUpdates.length > 0) {
+                  console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                  dispatch({
+                    type: 'BATCH_UPDATE_TASK_HOURS',
+                    updates: batchUpdates
+                  });
+                  console.log("Success");
                 }
                 taskUpdated = true;
               } else {
@@ -617,18 +536,19 @@ export function GanttChart() {
                   desiredStart,
                   totalHours
                 );
-                for (const u of plan['updates']) {
-                  const orig = state.tasks.find(t => t.task.id === u.id);
-                  if (!orig) continue;
-                  if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                    dispatch({
-                      type: 'UPDATE_TASK_HOURS',
-                      taskId: u.id,
-                      startHour: u.startHour,
-                      defaultDuration: u.defaultDuration
-                    });
-                    console.log("Success");
-                  }
+                const batchUpdates = plan['updates'].map(u => ({
+                  taskId: u.id,
+                  startHour: u.startHour,
+                  defaultDuration: u.defaultDuration
+                }));
+
+                if (batchUpdates.length > 0) {
+                  console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                  dispatch({
+                    type: 'BATCH_UPDATE_TASK_HOURS',
+                    updates: batchUpdates
+                  });
+                  console.log("Success");
                 }
                 taskUpdated = true;
               }
@@ -649,7 +569,7 @@ export function GanttChart() {
             const proposedEnd = proposedStart + effectiveDuration(currentTask, effTeamForDrop);
 
             // Prevent drop in invalid period for horizontal/vertical moves
-            if (isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
+            if (proposedStart >= totalHours || isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
               console.log("Invalid Period");
               cancelDrag();
               return;
@@ -670,17 +590,19 @@ export function GanttChart() {
                 totalHours
               );
 
-              for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.task.id === u.id);
-                if (!orig) continue;
-                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                  dispatch({
-                    type: 'UPDATE_TASK_HOURS',
-                    taskId: u.id,
-                    startHour: u.startHour,
-                    defaultDuration: u.defaultDuration
-                  });
-                }
+              const batchUpdates = plan['updates'].map(u => ({
+                taskId: u.id,
+                startHour: u.startHour,
+                defaultDuration: u.defaultDuration
+              }));
+
+              if (batchUpdates.length > 0) {
+                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                dispatch({
+                  type: 'BATCH_UPDATE_TASK_HOURS',
+                  updates: batchUpdates
+                });
+                console.log("Success");
               }
 
               for (const id of plan['unassign']) {
@@ -704,17 +626,19 @@ export function GanttChart() {
                 totalHours
               );
 
-              for (const u of plan['updates']) {
-                const orig = state.tasks.find(t => t.task.id === u.id);
-                if (!orig) continue;
-                if (orig.duration.startHour !== u.startHour || orig.duration.defaultDuration !== u.defaultDuration) {
-                  dispatch({
-                    type: 'UPDATE_TASK_HOURS',
-                    taskId: u.id,
-                    startHour: u.startHour,
-                    defaultDuration: u.defaultDuration
-                  });
-                }
+              const batchUpdates = plan['updates'].map(u => ({
+                taskId: u.id,
+                startHour: u.startHour,
+                defaultDuration: u.defaultDuration
+              }));
+
+              if (batchUpdates.length > 0) {
+                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                dispatch({
+                  type: 'BATCH_UPDATE_TASK_HOURS',
+                  updates: batchUpdates
+                });
+                console.log("Success");
               }
 
               for (const id of plan['unassign']) {
@@ -730,8 +654,12 @@ export function GanttChart() {
           }
         }
 
-        // A move has been made
-        dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+        if (taskUpdated) {
+          // Only show modal if this is the first edit in the session
+          if (state.taskSnapshot.length > 0 && !state.toggledModal) {
+            dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+          }
+        }
       } else {
         // Click (no real drag)
         const teamId = state.tasks.find(t => t.task.id === taskId)?.duration.teamId ?? 'all';
@@ -982,8 +910,7 @@ export function GanttChart() {
 
           const foundTask = _tasks.find(t => t.task.id === task);
           if (foundTask) {
-            const effDur = effectiveDuration(foundTask as Task, team);
-            const clampedStart = clamp(start, 0, Math.max(0, totalHours - effDur));
+            const clampedStart = clamp(start, 0, Math.max(0, totalHours));
 
             dispatch({
               type: 'UPDATE_TASK_HOURS',
@@ -1031,7 +958,7 @@ export function GanttChart() {
           console.log(`Overlap detected. Initial newStart: ${newStart}`);
 
           // Check if newStart is in a valid period for curr
-          while (newStart + effectiveDuration(curr) <= totalHours) {
+          while (newStart < totalHours) {
             if (isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
               // Found a valid position
               break;
@@ -1061,7 +988,7 @@ export function GanttChart() {
           }
 
           // If the end is out of range or couldnt find valid period
-          if (newStart + effectiveDuration(curr) > totalHours || 
+          if (newStart >= totalHours || 
               !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
             console.log(`${newStart} will be out of range or in invalid period for ${totalHours}`);
             dispatch({
@@ -1088,8 +1015,8 @@ export function GanttChart() {
           }
         } else {
           // Ensure it doesn't overflow
-          if (curr.duration.startHour + effectiveDuration(curr) > totalHours) {
-            console.log(`Curr is overflowing. Curr ends at ${curr.duration.startHour + effectiveDuration(curr)} but totalHours is only ${totalHours}`);
+          if (curr.duration.startHour >= totalHours) {
+            console.log(`Curr is overflowing. Curr starts at ${curr.duration.startHour} but totalHours is only ${totalHours}`);
             dispatch({
               type: 'UPDATE_TASK_TEAM',
               taskId: curr.task.id,
@@ -1109,46 +1036,28 @@ export function GanttChart() {
       ref={ganttRef}
       className="gantt-chart-container flex flex-col relative bg-white rounded-lg shadow-lg p-4 h-full overflow-hidden"
     >
-      {/* Header: Title and Import Buttons */}
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar className="text-green-600" size={24} />
-        <h2 className="text-xl font-semibold text-gray-800">Schedule</h2>
+      <div className="flex items-center gap-2 mb-2">
+        <Calendar className="text-green-600" size={20} />
+        <h2 className="text-lg font-semibold text-gray-800">Schedule</h2>
 
-        {/* Import buttons */}
-        <div className="ml-auto flex items-center gap-4">
-          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
-            <Upload size={18} /> Import Data
-            <input
-              type="file"
-              accept=".json"
-              style={{ display: 'none' }}
-              onChange={handleImportData}
-            />
+        <div className="ml-auto flex items-center gap-2">
+          <label className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
+            <Upload size={14} /> Import Data
+            <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportData} />
           </label>
-          <label className="flex items-center gap-2 px-3 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
-            <Upload size={18} /> Import Solution
-            <input
-              type="file"
-              accept=".json"
-              style={{ display: 'none' }}
-              onChange={handleImportSolution}
-            />
+          <label className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 cursor-pointer">
+            <Upload size={14} /> Import Solution
+            <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportSolution} />
           </label>
         </div>
       </div>
 
-      {/* Main Gantt Body */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* Left: Teams List */}
         <div className="w-24 flex-shrink-0 flex flex-col border-r border-gray-200">
-
-          {/* Sticky team heading */}
-          <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
+          <div className="h-8 flex items-center justify-center font-medium text-xs text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
             Teams
           </div>
 
-          {/* Scrollable team rows */}
           <div className="flex-1 overflow-y-scroll overflow-x-hidden" style={{ direction: 'rtl' }} onScroll={(e) => {
             const scrollTop = e.currentTarget.scrollTop;
             const durationCol = ganttRef.current?.querySelector('.duration-column');
@@ -1170,9 +1079,8 @@ export function GanttChart() {
               const isSelected = state.selectedTeamId === team.id;
               const highlight = isDropZone || isSelected;
 
-              // Decide row classes
               const rowClasses = [
-                "h-8 flex items-center border-b px-2 relative transition-all",
+                "h-6 flex items-center border-b px-2 relative transition-all",
                 dis
                   ? "border-l-4 border-l-red-500"
                   : highlight
@@ -1188,7 +1096,6 @@ export function GanttChart() {
                   data-team-id={team.id}
                   onClick={() => dispatch({ type: 'SET_SELECTED_TEAM', teamId: team.id })}
                 >
-                  {/* Disallowed team overlay */}
                   {dis && (
                     <div className="absolute inset-0 pointer-events-none z-10"
                       style={{
@@ -1201,13 +1108,12 @@ export function GanttChart() {
                     />
                   )}
 
-                  {/* Team info */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <div 
-                      className="w-3 h-4 rounded-full"
+                      className="w-2.5 h-3 rounded-full"
                       style={{ backgroundColor: state.defaultColor }} 
                     />
-                    <span className="text-sm font-medium text-gray-700">{team.id}</span>
+                    <span className="text-xs font-medium text-gray-700">{team.id}</span>
                   </div>
                 </div>
               );
@@ -1215,15 +1121,11 @@ export function GanttChart() {
           </div>
         </div>
 
-        {/* Middle: Total Duration */}
         <div className="w-12 flex flex-col border-r border-gray-200">
-
-          {/* Sticky total duration heading */}
-          <div className="h-10 flex items-center justify-center font-medium text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
+          <div className="h-8 flex items-center justify-center font-medium text-xs text-gray-700 border-b border-gray-200 bg-white sticky top-0 z-10">
             util
           </div>
 
-          {/* Scrollable duration rows */}
           <div className="duration-column flex-1 overflow-y-hidden overflow-x-hidden">
             {state.teams.map(team => {
               const relevantTask = state.dragging_to_gantt 
@@ -1236,17 +1138,16 @@ export function GanttChart() {
               
               const isTeamDisallowed = relevantTask ? isDisallowed(relevantTask as Task, team.id) : false;
               const rowTasks = state.tasks.filter(t => t.duration.teamId === team.id);
-              const totalDuration: number = calculateTotalTaskDuration(rowTasks);
+              const totalDuration: number = calculateTotalTaskDuration(rowTasks, state.totalHours);
               const isSelected = state.selectedTeamId === team.id;
               
               return (
                 <div
                   key={team.id}
-                  className={`h-8 border-b border-gray-100 relative`}
+                  className={`h-6 border-b border-gray-100 relative`}
                   data-team-row
                   data-team-id={team.id}
                 >
-                  {/* Disallowed team overlay */}
                   {isTeamDisallowed && (
                     <div className="absolute inset-0 pointer-events-none z-10"
                       style={{
@@ -1255,16 +1156,13 @@ export function GanttChart() {
                         borderLeft: 'none',
                         borderRight: 'none'
                       }}
-                    >
-                    </div>
+                    />
                   )}
 
-                  {/* Selected team overlay */}
                   {isSelected && (
                     <div className='absolute inset-0 pointer-events-none bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed border-r-0 flex items-center justify-center'></div>
                   )}
 
-                  {/* Duration info */}
                   <div className="flex items-center justify-center h-full">
                     <span className="text-xs font-medium text-gray-600 text-center">
                       {Math.round((totalDuration / state.totalHours) * 100)}%
@@ -1276,22 +1174,15 @@ export function GanttChart() {
           </div>
         </div>
 
-        {/* Right: Timeline */}
         <div className="flex-1 flex flex-col overflow-hidden">
-
-          {/* Timeline container */}
-          <div className="timeline-content relative flex flex-col h-full">
-
-            {/* Horizontal scroll wrapper */}
-            <div className="timeline-column flex-1 overflow-hidden">
-
-              {/* Sticky periods header row */}
-              <div className="h-10 border-b border-gray-200 relative bg-white sticky top-0 z-10"> 
+          <div className="timeline-content relative flex flex-col h-full" style={{ minWidth: 0 }}>
+            <div className="timeline-column flex-1 overflow-x-auto overflow-y-hidden">
+              <div className="h-8 border-b border-gray-200 relative bg-white sticky top-0 z-10"> 
                 <div className="flex h-full w-max">
                     {periods.map((p, idx) => ( 
                       <div 
                         key={p.id}
-                        className="absolute top-0 h-full flex items-center justify-center text-xs text-gray-600 border-r border-gray-100" 
+                        className="absolute top-0 h-full flex items-center justify-center text-[10px] text-gray-600 border-r border-gray-100" 
                         style={{
                           left: `${(periodOffsets[idx] / totalHours) * 100}%`,
                           width: `${(periods[idx].length_h / totalHours) * 100}%`
@@ -1303,7 +1194,6 @@ export function GanttChart() {
                 </div>
               </div>
 
-              {/* Timeline rows */}
               {state.teams.map(team => {
                 const relevantTask = state.dragging_to_gantt
                   ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
@@ -1319,12 +1209,10 @@ export function GanttChart() {
                 return (
                   <div
                     key={team.id} 
-                    className={`h-8 border-b border-gray-100 relative`}
+                    className={`h-6 border-b border-gray-100 relative`}
                     data-team-row="true"
                     data-team-id={team.id}
                   >
-
-                  {/* Disallowed team overlay */}
                   {isTeamDisallowed && (
                     <div className="absolute inset-0 pointer-events-none"
                       style={{
@@ -1333,16 +1221,13 @@ export function GanttChart() {
                         borderLeft: 'none',
                         borderRight: 'none'
                       }}
-                    >
-                    </div>
+                    />
                   )}
 
-                  {/* Selected team overlay */}
                   {isSelected && (
                     <div className='absolute inset-0 pointer-events-none bg-blue-200 bg-opacity-30 border-blue-400 border-2 border-dashed border-l-0 flex items-center justify-center'></div>
                   )}
 
-                  {/* Grid lines at period boundaries */}
                   {periods.map((p, idx) => (
                     <div
                       key={`${team.id}-grid-${p.id}`}
@@ -1354,7 +1239,6 @@ export function GanttChart() {
                     />
                   ))}
 
-                  {/* Invalid period overlays when task is selected or being dragged */}
                   {(state.dragging_to_gantt || state.selectedTaskId || draggedTask) && (() => {
                     const relevantTask = state.dragging_to_gantt
                     ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
@@ -1385,13 +1269,11 @@ export function GanttChart() {
                             borderTop: 'none',
                             borderBottom: 'none'
                           }}
-                        >
-                        </div>
+                        />
                       );
                     });
                   })()}
 
-                  {/* Edge guides on all tasks (wider, animated, labeled) */}
                   {(draggedTask) && getTasksByTeam(team.id).map(t => {
                     if (t.task.id !== state.dragging_from_gantt) {
                       const startPct = (occStart(t) / totalHours) * 100;
@@ -1400,7 +1282,6 @@ export function GanttChart() {
                       const isRightActive = !!(snapTarget && snapTarget.teamId === team.id && snapTarget.taskId === t.task.id && snapTarget.side === 'right');
                       return (
                         <div key={`${t.task.id}-guides`}>
-                          {/* Left guide */}
                           <div
                             className="absolute top-0 bottom-0 pointer-events-none"
                             style={{ left: `${startPct}%`, marginLeft: -8, width: 16, zIndex: 20 }}
@@ -1417,7 +1298,6 @@ export function GanttChart() {
                               )}
                             </div>
                           </div>
-                          {/* Right guide */}
                           <div
                             className="absolute top-0 bottom-0 pointer-events-none"
                             style={{ left: `${endPct}%`, marginLeft: -8, width: 16, zIndex: 20 }}
@@ -1438,7 +1318,6 @@ export function GanttChart() {
                       )};
                   })}
 
-                {/* Tasks */}
                 {getTasksByTeam(team.id).map(task => {
                   const position = calculateTaskPosition(task);
                   const isSelected = state.selectedTaskId === task.task.id;
@@ -1460,14 +1339,13 @@ export function GanttChart() {
                   return (
                     <div
                       key={task.task.id}
-                      className={`group absolute top-1.5 bottom-1.5 rounded px-1 py-0.5 text-[10px] font-medium text-white cursor-move select-none 
+                      className={`group absolute top-0.5 bottom-0.5 rounded px-1 py-0.5 text-[10px] font-medium text-white cursor-move select-none 
                         ${isSelected ? 'ring-4 ring-yellow-400 ring-opacity-100 scale-105' : ''} 
                         ${isBeingDragged ? 'opacity-80 shadow-xl' : 'hover:shadow-md'}
                       `}
                       style={{ backgroundColor: getTaskColor(task), ...position, ...dragStyle, overflow: 'visible' } as CSSProperties } 
                       onMouseDown={(e) => handleTaskMouseDown(e, task.task.id)}
                     >
-                      {/* Setup visual indicator */}
                       {(task.duration.defaultSetup ?? 0) > 0 && (
                         <div
                           className="absolute inset-y-0 left-0 pointer-events-none"
@@ -1481,17 +1359,14 @@ export function GanttChart() {
                         />
                       )}
 
-                      {/* Task text */}
                       <div
                         className="flex items-center justify-center h-full relative overflow-hidden"
                         style={{
                           marginLeft: `${(((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`,
                           width: `${100 - (((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`
                         }}
-                      >
-                      </div>
+                      />
 
-                      {/* Tooltip with fade + upward slide */}
                       <div className="
                         absolute bottom-full mb-1 left-1/2 -translate-x-1/2
                         px-2 py-1 rounded bg-black text-white text-[10px] whitespace-nowrap shadow
@@ -1503,7 +1378,6 @@ export function GanttChart() {
                         {task.task.id}
                       </div>
 
-                      {/* Disallowed overlay */}
                       {disallowed && (
                         <div className="absolute inset-0 bg-red-600/30 flex items-center justify-center pointer-events-none">
                           <span className="text-white font-semibold text-[10px] drop-shadow">Not allowed</span>
@@ -1513,7 +1387,6 @@ export function GanttChart() {
                   );
                 })}
 
-                {/* Drop zone */}
                 {dropZone?.teamId === team.id && (() => {
                   const moving = draggedTask ? state.tasks.find(t => t.task.id === draggedTask) : null;
                   const dis = moving ? isDisallowed(moving as Task, team.id) : false;
@@ -1533,7 +1406,6 @@ export function GanttChart() {
             </div>
           </div>
 
-          {/* Global drop hint when dragging from unassigned */}
           {state.toggledDrop && (
               <div className="absolute inset-0 bg-green-100 bg-opacity-50 border-2 border-dashed border-green-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
                 <div className="text-center">
