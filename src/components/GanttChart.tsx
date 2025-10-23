@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { Calendar, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -26,7 +26,18 @@ export function GanttChart() {
   const [snapTarget, setSnapTarget] = useState<{ teamId: string; taskId: string; side: 'left' | 'right' } | null>(null);
   const [, setSnapLeftPct] = useState<number | null>(null);
   const [, setDragOffsetOcc] = useState(0);
+  const [dragHoverTaskId, setDragHoverTaskId] = useState<string | null>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const taskId = document.body.getAttribute('data-dragging-to-gantt');
+      setDragHoverTaskId(taskId || null);
+    });
+    
+    observer.observe(document.body, { attributes: true });
+    return () => observer.disconnect();
+  }, []);
 
   // Calculate periods, offsets, and total hours for the timeline
   const periods = state.periods?.length ? state.periods : [PERIOD_FALLBACK];
@@ -1066,8 +1077,8 @@ export function GanttChart() {
             if (timelineCol) timelineCol.scrollTop = scrollTop;
           }}>
             {state.teams.map(team => {
-              const relevantTask = state.dragging_to_gantt 
-                ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
+              const relevantTask = dragHoverTaskId 
+                ? state.tasks.find(t => t.task.id === dragHoverTaskId) 
                 : state.selectedTaskId 
                 ? state.tasks.find(t => t.task.id === state.selectedTaskId) 
                 : draggedTask 
@@ -1128,8 +1139,8 @@ export function GanttChart() {
 
           <div className="duration-column flex-1 overflow-y-hidden overflow-x-hidden">
             {state.teams.map(team => {
-              const relevantTask = state.dragging_to_gantt 
-                ? state.tasks.find(t => t.task.id === state.dragging_to_gantt) 
+              const relevantTask = dragHoverTaskId 
+                ? state.tasks.find(t => t.task.id === dragHoverTaskId) 
                 : state.selectedTaskId 
                 ? state.tasks.find(t => t.task.id === state.selectedTaskId) 
                 : draggedTask 
@@ -1195,8 +1206,8 @@ export function GanttChart() {
               </div>
 
               {state.teams.map(team => {
-                const relevantTask = state.dragging_to_gantt
-                  ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
+                const relevantTask = dragHoverTaskId
+                  ? state.tasks.find(t => t.task.id === dragHoverTaskId)
                   : state.selectedTaskId
                     ? state.tasks.find(t => t.task.id === state.selectedTaskId)
                     : draggedTask
@@ -1239,9 +1250,9 @@ export function GanttChart() {
                     />
                   ))}
 
-                  {(state.dragging_to_gantt || state.selectedTaskId || draggedTask) && (() => {
-                    const relevantTask = state.dragging_to_gantt
-                    ? state.tasks.find(t => t.task.id === state.dragging_to_gantt)
+                  {(dragHoverTaskId || state.selectedTaskId || draggedTask) && (() => {
+                    const relevantTask = dragHoverTaskId
+                    ? state.tasks.find(t => t.task.id === dragHoverTaskId)
                     : state.selectedTaskId
                       ? state.tasks.find(t => t.task.id === state.selectedTaskId)
                       : draggedTask

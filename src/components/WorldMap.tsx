@@ -413,6 +413,8 @@ export function WorldMap() {
   };
 
   const handleMarkerDragEnd = (taskId: string, mousePosition: { x: number, y: number }) => {
+    document.body.setAttribute('data-dragging-to-gantt', '');
+    
     // Clear the dragging state
     dispatch({ type: 'SET_DRAGGING_TO_GANTT', taskId: null });
   
@@ -1024,7 +1026,9 @@ export function WorldMap() {
                           draggable={true}
                           eventHandlers={{
                             click: () => handleMarkerClick(task.task.id, 'unassigned'),
-
+                            dragstart: () => {
+                              document.body.setAttribute('data-dragging-to-gantt', task.task.id || '');
+                            },
                             dragend: (e) => {
                               const marker = e.target;
                               
@@ -1131,6 +1135,9 @@ export function WorldMap() {
                         draggable={true} // Make it so that the markers position is reset on drag end
                         eventHandlers={{
                           click: () => handleMarkerClick(task.task.id, 'unassigned'),
+                          dragstart: () => {
+                            document.body.setAttribute('data-dragging-to-gantt', task.task.id || '');
+                          },
                           dragend: (e) => {
                             const marker = e.target;
                             

@@ -1,0 +1,1 @@
+export const currentDraggingTask = { teamId: null as string | null };

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useRef } from 'react';
 import { AppState, Task, Team, Period, Month, Resource, Demand, Distance, ProductionGoals, AssortmentsGraph, TransportCosts } from '../types';
 
 // ----------------------
