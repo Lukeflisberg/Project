@@ -112,11 +112,10 @@ function DemandProductionChart({ resource, demandType }: { resource: string | nu
 function TeamProductionChart({ monthId }: { monthId: string | null }) {
   const { state } = useApp();
 
-  const { data, allProducts } = useMemo(() => {
-    if (!monthId) {
-      return { data: [], allProducts: [] };
-    }
-
+  // Get all unique products across all teams
+  const allProducts = useMemo(() => {
+    if (!monthId) return [];
+    
     const monthlyProductionData = calculateProductionPerTeam(
       state.tasks,
       monthId,
@@ -126,62 +125,13 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
       state.totalHours
     );
 
-    // Collect all unique products across all teams
-    const productSet = new Set<string>();
+    const productsSet = new Set<string>();
     monthlyProductionData.forEach(({ products }) => {
-      Object.keys(products).forEach(product => productSet.add(product));
+      Object.keys(products).forEach(product => productsSet.add(product));
     });
-    const allProducts = Array.from(productSet).sort();
-
-    // Transform the team's products into chart data with team names on x-axis
-    const result = monthlyProductionData.map(({ teamId, volume, products }) => {
-      // Find the production goal for this team and month
-      let minGoal: number | null = null;
-      let maxGoal: number | null = null;
-
-      if (monthId === 'all') {
-        // Sum all goals for this team across all months
-        const teamGoals = state.productionGoals.filter(g => g.team === teamId);
-        if (teamGoals.length > 0) {
-          minGoal = teamGoals.reduce((sum, g) => sum + (g.minGoal ?? 0), 0);
-          maxGoal = teamGoals.reduce((sum, g) => sum + (g.maxGoal ?? 0), 0);
-        }
-      } else {
-        // Find the specific goal for this month
-        const goal = state.productionGoals.find(
-          g => g.monthID === monthId && g.team === teamId
-        );
-        minGoal = goal?.minGoal ?? null;
-        maxGoal = goal?.maxGoal ?? null;
-      }
-
-      return {
-        name: teamId,
-        totalQuantity: volume,
-        minGoal,
-        maxGoal,
-        ...products // Spread individual product quantities
-      };
-    });
-
-    return { data: result, allProducts };
-  }, [state.tasks, state.months, state.periods, state.productionGoals, monthId]);
-
-  if (!data.length) {
-    return (
-      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
-        No production data available for this team.
-      </div>
-    );
-  }
-
-  if (!allProducts.length) {
-    return (
-      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
-        No product data available.
-      </div>
-    );
-  }
+    
+    return Array.from(productsSet).sort();
+  }, [state.tasks, state.months, state.periods, monthId]);
 
   // Generate colors for each product
   const productColors = useMemo(() => {
@@ -197,30 +147,85 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     return colorMap;
   }, [allProducts]);
 
-  // Custom label component to render goal lines on each bar
-  const GoalLinesLabel = (props: any) => {
-    const { x, y, width, height, value, index } = props;
-    const entry = data[index];
+  const data = useMemo(() => {
+    if (!monthId) {
+      return [];
+    }
+
+    const monthlyProductionData = calculateProductionPerTeam(
+      state.tasks,
+      monthId,
+      state.months, 
+      createPeriodBoundaries(state.periods),
+      state.assortments_graph,
+      state.totalHours
+    );
+
+    const result = monthlyProductionData.map(({ teamId, volume, products }) => {
+      // Find the production goal for this team and month
+      let minGoal: number | null = null;
+      let maxGoal: number | null = null;
+
+      if (monthId === 'all') {
+        const teamGoals = state.productionGoals.filter(g => g.team === teamId);
+        if (teamGoals.length > 0) {
+          minGoal = teamGoals.reduce((sum, g) => sum + (g.minGoal ?? 0), 0);
+          maxGoal = teamGoals.reduce((sum, g) => sum + (g.maxGoal ?? 0), 0);
+        }
+      } else {
+        const goal = state.productionGoals.find(
+          g => g.monthID === monthId && g.team === teamId
+        );
+        minGoal = goal?.minGoal ?? null;
+        maxGoal = goal?.maxGoal ?? null;
+      }
+
+      // Create an object with all products, setting 0 for missing ones
+      const productData: Record<string, number> = {};
+      allProducts.forEach(product => {
+        productData[product] = products[product] || 0;
+      });
+
+      return {
+        name: teamId,
+        totalQuantity: volume,
+        minGoal,
+        maxGoal,
+        ...productData
+      };
+    });
+
+    return result;
+  }, [state.tasks, state.months, state.periods, state.productionGoals, monthId, allProducts]);
+
+  if (!data.length) {
+    return (
+      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
+        No production data available for this team.
+      </div>
+    );
+  }
+
+  // Custom shape component for the overlay goal lines
+  const GoalLines = (props: any) => {
+    const { x, y, width, height, index } = props;
+    const dataPoint = data[index];
     
-    if (!entry || !entry.minGoal || !entry.maxGoal) {
+    if (!dataPoint || dataPoint.minGoal === null || dataPoint.maxGoal === null || dataPoint.totalQuantity <= 0) {
       return null;
     }
 
-    // Calculate the Y-axis scale based on the chart
-    // We need to get the max value to scale properly
-    const maxDataValue = Math.max(...data.map(d => Math.max(d.totalQuantity, d.maxGoal || 0)));
-    const chartBottom = y + height;
-    
-    // Calculate positions
-    const minY = chartBottom - (entry.minGoal / maxDataValue) * height;
-    const maxY = chartBottom - (entry.maxGoal / maxDataValue) * height;
-    
-    const lineWidth = 30;
-    const centerX = x + width / 2 - 22.5;
-    const lineStart = (centerX - lineWidth / 2);
-    const lineEnd = (centerX + lineWidth / 2);
+    // Calculate the scale based on the bar dimensions
+    const barBottom = y + height;
+    const pixelsPerUnit = height / dataPoint.totalQuantity;
 
-    console.log(`width: ${width}\ncenterX: ${centerX}\nlineStart:${lineStart}\nlineEnd:${lineEnd}`)
+    // Calculate y positions for goals
+    const minY = barBottom - (dataPoint.minGoal * pixelsPerUnit);
+    const maxY = barBottom - (dataPoint.maxGoal * pixelsPerUnit);
+    const centerX = x + width / 2;
+    const lineWidth = width * 0.8;
+    const lineStart = centerX - lineWidth / 2;
+    const lineEnd = centerX + lineWidth / 2;
 
     return (
       <g>
@@ -230,25 +235,27 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           y1={minY}
           x2={lineEnd}
           y2={minY}
-          stroke="black"
+          stroke="#000"
           strokeWidth={2}
         />
+        
         {/* Max goal horizontal line */}
         <line
           x1={lineStart}
           y1={maxY}
           x2={lineEnd}
           y2={maxY}
-          stroke="black"
+          stroke="#000"
           strokeWidth={2}
         />
+        
         {/* Vertical connecting line */}
         <line
           x1={centerX}
           y1={minY}
           x2={centerX}
           y2={maxY}
-          stroke="black"
+          stroke="#000"
           strokeWidth={1.5}
         />
       </g>
@@ -258,7 +265,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
   return (
     <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 45, left: 0 }}>
+        <BarChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
@@ -266,21 +273,20 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
             interval={0}
             angle={-45}
             textAnchor="end"
-            height={60}
           />
           <YAxis tick={{ fontSize: 10 }} />
           <Tooltip 
             content={({ active, payload }) => {
               if (active && payload && payload.length) {
-                const dataPoint = payload[0].payload;
+                const data = payload[0].payload;
                 return (
-                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm text-xs max-h-64 overflow-y-auto">
-                    <p className="font-semibold mb-1">{dataPoint.name}</p>
-                    <p className="font-medium">Total: {Number(dataPoint.totalQuantity).toFixed(2)}</p>
+                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm text-xs">
+                    <p className="font-semibold">{data.name}</p>
+                    <p className="font-medium mt-1">Total Production: {Number(data.totalQuantity).toFixed(2)}</p>
                     <div className="mt-1 space-y-0.5">
                       {allProducts.map(product => {
-                        const value = dataPoint[product];
-                        if (value && value > 0) {
+                        const value = data[product];
+                        if (value > 0) {
                           return (
                             <p key={product} style={{ color: productColors[product] }}>
                               {product}: {Number(value).toFixed(2)}
@@ -290,11 +296,11 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
                         return null;
                       })}
                     </div>
-                    {dataPoint.minGoal !== null && (
-                      <p className="mt-1">Min Goal: {Number(dataPoint.minGoal).toFixed(2)}</p>
+                    {data.minGoal !== null && (
+                      <p className="mt-1">Min Goal: {Number(data.minGoal).toFixed(2)}</p>
                     )}
-                    {dataPoint.maxGoal !== null && (
-                      <p>Max Goal: {Number(dataPoint.maxGoal).toFixed(2)}</p>
+                    {data.maxGoal !== null && (
+                      <p>Max Goal: {Number(data.maxGoal).toFixed(2)}</p>
                     )}
                   </div>
                 );
@@ -305,26 +311,25 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           <Legend wrapperStyle={{ fontSize: '11px' }} />
           
           {/* Stacked bars for each product */}
-          {allProducts.map(product => (
+          {allProducts.map((product) => (
             <Bar 
               key={product}
               dataKey={product}
-              name={product}
               stackId="products"
-              barSize={40}
               fill={productColors[product]}
+              name={product}
             />
           ))}
           
-          {/* Invisible bar to trigger goal lines rendering */}
-          <Bar
+          {/* Invisible bar to overlay goal lines on top of the stack */}
+          <Bar 
             dataKey="totalQuantity"
             fill="transparent"
-            label={<GoalLinesLabel />}
+            shape={<GoalLines />}
             isAnimationActive={false}
+            legendType="none"
           />
-          
-        </ComposedChart>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
