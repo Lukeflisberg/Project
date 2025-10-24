@@ -94,8 +94,23 @@ export function calculateProductionPerTeam(
     monthFilter: string,
     months: Month[],
     periodBoundaries: PeriodBoundary[],
+    assortmentGraph: Array<{ assortment: string; assortment_group: string; include: number }>,
     totalHour: number
 ): TeamProductionSummary[] {
+    // Create mapping from assortment to assortment_group
+    const assortmentToGroup = new Map<string, string>();
+    const excludedAssortments = new Set<string>();
+    
+    if (assortmentGraph) {
+        for (const item of assortmentGraph) {
+            if (item.include === 1) {
+                assortmentToGroup.set(item.assortment, item.assortment_group);
+            } else if (item.include === 0) {
+                excludedAssortments.add(item.assortment);
+            }
+        }
+    }
+
     let monthStart: number;
     let monthEnd: number;
 
@@ -141,11 +156,14 @@ export function calculateProductionPerTeam(
             const teamProducts = teamMap.get(task.duration.teamId)!;
 
             // Add proportional production for each product
-            for (const [productName, quantity] of Object.entries(task.production)) {
-                if (!teamProducts[productName]) {
-                    teamProducts[productName] = 0;
+            for (const [key, quantity] of Object.entries(task.production)) {
+                // Skip if this assortment is explicitly excluded
+                if (excludedAssortments.has(key)) {
+                    continue;
                 }
-                teamProducts[productName] += quantity * proportion;
+
+                const groupKey = assortmentToGroup.get(key) || key;
+                teamProducts[groupKey] = (teamProducts[groupKey] || 0) + quantity * proportion;
             }
         }
     }
@@ -153,8 +171,8 @@ export function calculateProductionPerTeam(
     // Convert map to array
     const result: TeamProductionSummary[] = [];
     for (const [teamId, products] of teamMap.entries()) {
-        const volume = Object.values(products).reduce((sum, qty) => sum + qty, 0);
-        result.push({ teamId, volume });
+        const volume = Object.values(products).reduce((sum, quantity) => sum + quantity, 0);
+        result.push({ teamId, volume, products });
     }
 
     // Sort by teamId to ensure consistent ordering
@@ -238,6 +256,7 @@ export function calculateProductionForMonth(
 
 export function calculateDemandPerPeriod(
     demand: Demand[],
+    demandType: string,
     assortmentGraph?: Array<{ assortment: string; assortment_group: string; include: number }>
 ): QuantityByPeriod {
     // Create mapping from assortment to assortment_group if available
@@ -265,7 +284,9 @@ export function calculateDemandPerPeriod(
 
         // Get demand for each period and aggregate by group
         for (let i = 0; i < demands.length; i++) {
-            result[groupKey][i] += demands[i].demand;
+            demandType === 'min' 
+                ? result[groupKey][i] += demands[i].demand // Change too demandMin
+                : result[groupKey][i] += demands[i].demand; // Change too demandGoal
         }
     }
 

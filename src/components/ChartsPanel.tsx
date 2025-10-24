@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateTotalTaskDuration, calculateMonthlyTaskDuration, createPeriodBoundaries, calculateProductionPerPeriod, calculateDemandPerPeriod, getMonthTimeWindow, calculateProductionForMonth, calculateProductionPerTeam } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, ReferenceLine, Line, Customized } from 'recharts';
 
 // Color palette
 const COLORS = {
@@ -18,7 +18,7 @@ function usePeriods() {
   return periodNames;
 }
 
-function DemandProductionChart({ resource }: { resource: string | null }) {
+function DemandProductionChart({ resource, demandType }: { resource: string | null; demandType: 'min' | 'goal' }) {
   const { state } = useApp();
   const periodNames = usePeriods();
 
@@ -28,7 +28,7 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
 
     const boundaries = createPeriodBoundaries(state.periods);
     const prodMap = calculateProductionPerPeriod(state.tasks, boundaries, state.assortments_graph); 
-    const demMap = calculateDemandPerPeriod(state.demand, state.assortments_graph); 
+    const demMap = calculateDemandPerPeriod(state.demand, demandType, state.assortments_graph); 
 
     const keys = Array.from(new Set([...Object.keys(prodMap), ...Object.keys(demMap)]));
     const res = resource && keys.includes(resource) ? resource : (keys[0] ?? null);
@@ -67,7 +67,7 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
     }
 
     return result;
-  }, [periodNames, state.periods, state.tasks, state.demand, state.assortments_graph, resource]);
+  }, [periodNames, state.periods, state.tasks, state.demand, state.assortments_graph, resource, demandType]);
 
   if (!series.length) {
     return <div className="flex items-center justify-center h-40 text-xs text-gray-500">No period/demand/production data available.</div>;
@@ -112,9 +112,9 @@ function DemandProductionChart({ resource }: { resource: string | null }) {
 function TeamProductionChart({ monthId }: { monthId: string | null }) {
   const { state } = useApp();
 
-  const data = useMemo(() => {
+  const { data, allProducts } = useMemo(() => {
     if (!monthId) {
-      return [];
+      return { data: [], allProducts: [] };
     }
 
     const monthlyProductionData = calculateProductionPerTeam(
@@ -122,11 +122,19 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
       monthId,
       state.months, 
       createPeriodBoundaries(state.periods),
+      state.assortments_graph,
       state.totalHours
     );
 
-    // Transform the team's products into chart data with product names on x-axis
-    const result = monthlyProductionData.map(({ teamId, volume }) => {
+    // Collect all unique products across all teams
+    const productSet = new Set<string>();
+    monthlyProductionData.forEach(({ products }) => {
+      Object.keys(products).forEach(product => productSet.add(product));
+    });
+    const allProducts = Array.from(productSet).sort();
+
+    // Transform the team's products into chart data with team names on x-axis
+    const result = monthlyProductionData.map(({ teamId, volume, products }) => {
       // Find the production goal for this team and month
       let minGoal: number | null = null;
       let maxGoal: number | null = null;
@@ -149,14 +157,14 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
 
       return {
         name: teamId,
-        quantity: volume,
+        totalQuantity: volume,
         minGoal,
-        maxGoal
+        maxGoal,
+        ...products // Spread individual product quantities
       };
     });
 
-    // console.log('TeamProductionChart data:', result);
-    return result;
+    return { data: result, allProducts };
   }, [state.tasks, state.months, state.periods, state.productionGoals, monthId]);
 
   if (!data.length) {
@@ -167,76 +175,82 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     );
   }
 
-  // Custom shape component for bars with goal lines
-  const CustomBar = (props: any) => {
-    const { x, y, width, height, index } = props;
-    const dataPoint = data[index];
+  if (!allProducts.length) {
+    return (
+      <div className="flex items-center justify-center h-40 text-xs text-gray-500">
+        No product data available.
+      </div>
+    );
+  }
+
+  // Generate colors for each product
+  const productColors = useMemo(() => {
+    const colors = [
+      '#10B981', '#3B82F6', '#EC4899', '#F59E0B', '#8B5CF6',
+      '#06B6D4', '#EF4444', '#14B8A6', '#F97316', '#6366F1',
+      '#0a5800ff'
+    ];
+    const colorMap: Record<string, string> = {};
+    allProducts.forEach((product, idx) => {
+      colorMap[product] = colors[idx % colors.length];
+    });
+    return colorMap;
+  }, [allProducts]);
+
+  // Custom label component to render goal lines on each bar
+  const GoalLinesLabel = (props: any) => {
+    const { x, y, width, height, value, index } = props;
+    const entry = data[index];
     
-    if (!dataPoint) {
+    if (!entry || !entry.minGoal || !entry.maxGoal) {
       return null;
     }
 
+    // Calculate the Y-axis scale based on the chart
+    // We need to get the max value to scale properly
+    const maxDataValue = Math.max(...data.map(d => Math.max(d.totalQuantity, d.maxGoal || 0)));
+    const chartBottom = y + height;
+    
+    // Calculate positions
+    const minY = chartBottom - (entry.minGoal / maxDataValue) * height;
+    const maxY = chartBottom - (entry.maxGoal / maxDataValue) * height;
+    
+    const lineWidth = 30;
+    const centerX = x + width / 2 - 22.5;
+    const lineStart = (centerX - lineWidth / 2);
+    const lineEnd = (centerX + lineWidth / 2);
+
+    console.log(`width: ${width}\ncenterX: ${centerX}\nlineStart:${lineStart}\nlineEnd:${lineEnd}`)
+
     return (
       <g>
-        {/* The actual bar */}
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          fill="#10B981"
+        {/* Min goal horizontal line */}
+        <line
+          x1={lineStart}
+          y1={minY}
+          x2={lineEnd}
+          y2={minY}
+          stroke="black"
+          strokeWidth={2}
         />
-        
-        {/* Goal lines - only if goals exist and bar has a value */}
-        {dataPoint.minGoal !== null && dataPoint.maxGoal !== null && dataPoint.quantity > 0 && (
-          (() => {
-            // Calculate the scale based on the bar dimensions
-            const barBottom = y + height; // This is where value = 0
-            const pixelsPerUnit = height / dataPoint.quantity;
-
-            // Calculate y positions for goals
-            const minY = barBottom - (dataPoint.minGoal * pixelsPerUnit);
-            const maxY = barBottom - (dataPoint.maxGoal * pixelsPerUnit);
-            const centerX = x + width / 2;
-            const lineWidth = width * 0.8;
-            const lineStart = centerX - lineWidth / 2;
-            const lineEnd = centerX + lineWidth / 2;
-
-            return (
-              <g>
-                {/* Min goal horizontal line */}
-                <line
-                  x1={lineStart}
-                  y1={minY}
-                  x2={lineEnd}
-                  y2={minY}
-                  stroke="#000"
-                  strokeWidth={2}
-                />
-                
-                {/* Max goal horizontal line */}
-                <line
-                  x1={lineStart}
-                  y1={maxY}
-                  x2={lineEnd}
-                  y2={maxY}
-                  stroke="#000"
-                  strokeWidth={2}
-                />
-                
-                {/* Vertical connecting line */}
-                <line
-                  x1={centerX}
-                  y1={minY}
-                  x2={centerX}
-                  y2={maxY}
-                  stroke="#000"
-                  strokeWidth={1.5}
-                />
-              </g>
-            );
-          })()
-        )}
+        {/* Max goal horizontal line */}
+        <line
+          x1={lineStart}
+          y1={maxY}
+          x2={lineEnd}
+          y2={maxY}
+          stroke="black"
+          strokeWidth={2}
+        />
+        {/* Vertical connecting line */}
+        <line
+          x1={centerX}
+          y1={minY}
+          x2={centerX}
+          y2={maxY}
+          stroke="black"
+          strokeWidth={1.5}
+        />
       </g>
     );
   };
@@ -244,7 +258,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
   return (
     <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 45, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} />
           <XAxis 
             dataKey="name" 
@@ -252,21 +266,35 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
             interval={0}
             angle={-45}
             textAnchor="end"
+            height={60}
           />
           <YAxis tick={{ fontSize: 10 }} />
           <Tooltip 
             content={({ active, payload }) => {
               if (active && payload && payload.length) {
-                const data = payload[0].payload;
+                const dataPoint = payload[0].payload;
                 return (
-                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm text-xs">
-                    <p className="font-semibold">{data.name}</p>
-                    <p>Production: {Number(data.quantity).toFixed(2)}</p>
-                    {data.minGoal !== null && (
-                      <p>Min Goal: {Number(data.minGoal).toFixed(2)}</p>
+                  <div className="bg-white p-2 border border-gray-300 rounded shadow-sm text-xs max-h-64 overflow-y-auto">
+                    <p className="font-semibold mb-1">{dataPoint.name}</p>
+                    <p className="font-medium">Total: {Number(dataPoint.totalQuantity).toFixed(2)}</p>
+                    <div className="mt-1 space-y-0.5">
+                      {allProducts.map(product => {
+                        const value = dataPoint[product];
+                        if (value && value > 0) {
+                          return (
+                            <p key={product} style={{ color: productColors[product] }}>
+                              {product}: {Number(value).toFixed(2)}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                    {dataPoint.minGoal !== null && (
+                      <p className="mt-1">Min Goal: {Number(dataPoint.minGoal).toFixed(2)}</p>
                     )}
-                    {data.maxGoal !== null && (
-                      <p>Max Goal: {Number(data.maxGoal).toFixed(2)}</p>
+                    {dataPoint.maxGoal !== null && (
+                      <p>Max Goal: {Number(dataPoint.maxGoal).toFixed(2)}</p>
                     )}
                   </div>
                 );
@@ -275,12 +303,28 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
             }}
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />
-          <Bar 
-            dataKey="quantity" 
-            name="Production Quantity"
-            shape={<CustomBar />}
+          
+          {/* Stacked bars for each product */}
+          {allProducts.map(product => (
+            <Bar 
+              key={product}
+              dataKey={product}
+              name={product}
+              stackId="products"
+              barSize={40}
+              fill={productColors[product]}
+            />
+          ))}
+          
+          {/* Invisible bar to trigger goal lines rendering */}
+          <Bar
+            dataKey="totalQuantity"
+            fill="transparent"
+            label={<GoalLinesLabel />}
+            isAnimationActive={false}
           />
-        </BarChart>
+          
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
@@ -462,6 +506,14 @@ export function ChartsPanel() {
     }
   }, [resources, selectedResource]);
 
+  const [selectedDemand, setSelectedDemand] = useState<'min' | 'goal'>('min');
+  useEffect(() => {
+    // Default to 'min' if selected demand not in list
+    if (selectedTeamProdMonth !== 'min' && !['min', 'goal'].includes(selectedDemand!)) {
+      setSelectedDemand('min');
+    }
+  }, [selectedDemand]);
+
   // Dropdown options for TeamProductionChart
   const [selectedTeamProdMonth, setSelectedTeamProdMonth] = useState<string>('all');
   useEffect(() => {
@@ -537,6 +589,20 @@ export function ChartsPanel() {
             </select>
           </div>
         )}
+
+        {tab === 'DemandProductionChart' && (
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500">Demand:</label>
+            <select
+              value={selectedDemand ?? ''}
+              onChange={e => setSelectedDemand(e.target.value as 'min' | 'goal')}
+              className="px-1.5 py-0.5 text-xs border rounded"
+            >
+              <option value='min'>Min</option>
+              <option value='goal'>Goal</option>
+            </select>
+          </div>
+        )}
         
         {tab === 'TeamProductionChart' && (
           <div className="flex items-center gap-1.5">
@@ -597,7 +663,7 @@ export function ChartsPanel() {
         {isEmpty ? (
           <div className="h-40 flex items-center justify-center text-gray-500 text-xs">Load data to view charts.</div>
         ) : tab === 'DemandProductionChart' ? (
-          <DemandProductionChart resource={selectedResource} />
+          <DemandProductionChart resource={selectedResource} demandType={selectedDemand} />
         ) : tab === 'TeamProductionChart' ? (
           <TeamProductionChart monthId={selectedTeamProdMonth} />
         ) : tab === 'WorkEfficiencyChart' ? (

@@ -81,7 +81,7 @@ export function WorldMap() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['ÖA', 'GA', 'SA']);
+  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['�A', 'GA', 'SA']);
   const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
   const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
   const [showBarighetPopup, setShowBarighetPopup] = useState(false);
@@ -219,7 +219,7 @@ export function WorldMap() {
         background-color: ${color};
         width: ${size}px;
         height: ${size}px;
-        border-radius: 50%;
+        border-radius: 0;
         border: ${isSelected ? '4px' : '1px'} ${isSelected ? 'solid white' : 'solid black'};
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         display: flex;
@@ -261,7 +261,7 @@ export function WorldMap() {
         background-color: ${color};
         width: ${size}px;
         height: ${size}px;
-        border-radius: 0;
+        border-radius: 50%;
         border: ${isSelected ? '4px' : '1px'} ${isSelected ? 'solid white' : 'solid black'};
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         display: flex;
@@ -341,7 +341,7 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === null) return [];
 
-    const allAvvForms = ['ÖA', 'GA', 'SA'];
+    const allAvvForms = ['�A', 'GA', 'SA'];
     const allBarighet = getUniqueBarighet();
 
     const isAvvFormFiltered = selectedAvvForm.length !== allAvvForms.length;
@@ -831,7 +831,7 @@ export function WorldMap() {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {['ÖA', 'GA', 'SA'].map(form => (
+                    {['�A', 'GA', 'SA'].map(form => (
                       <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                         <input
                           type="checkbox"

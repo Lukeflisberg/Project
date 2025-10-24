@@ -4,6 +4,7 @@ import { endHour } from "./taskUtils";
 
 export function calculateTotalCostBreakdown(
     tasks: Task[], 
+    teamFilter: string,
     teams: Team[], 
     demands: Demand[], 
     periods: Period[], 
@@ -11,8 +12,14 @@ export function calculateTotalCostBreakdown(
     totalHour: number,
     monthFilter?: Month  // Optional month for filtered calculations
 ): CostBreakdown {
-    const assignedTasks = tasks.filter(t => t.duration.teamId !== null).sort((a, b) => a.duration.startHour - b.duration.startHour);
+    const assignedTasks = teamFilter === 'all' 
+        ? tasks.filter(t => t.duration.teamId !== null).sort((a, b) => a.duration.startHour - b.duration.startHour)
+        : tasks.filter(t => t.duration.teamId === teamFilter).sort((a, b,) => a.duration.startHour - b.duration.startHour);
     
+    const filteredTeams = teamFilter === 'all' 
+        ? teams
+        : teams.filter(t => t.id === teamFilter);
+
     // Calculate time window if month is provided
     let timeWindow: TimeWindow | undefined;
     if (monthFilter) {
@@ -75,7 +82,7 @@ export function calculateTotalCostBreakdown(
     let wheelingCosts: number = 0;
     let trailerCosts: number = 0;
 
-    for (const team of teams) {
+    for (const team of filteredTeams) {
         const teamTasks: Task[] = assignedTasks.filter(t => t.duration.teamId === team.id);
        
         // Iterate through consecutive pairs of tasks
@@ -97,19 +104,49 @@ export function calculateTotalCostBreakdown(
                 console.error(`No distance from ${fromId} to ${toId}`);
                 continue;
             }
-            
-            // Check if this movement occurs within the time window
-            // Movement happens at the end of fromTask
-            const movementTime = endHour(fromTask);
-            const includeMovement = movementTime >= timeWindow.start && movementTime < timeWindow.end;
+                
+            ///////////////////////////
 
-            if (includeMovement) {
+            // option1: travel cost occures when the next task starts
+            // option2: travel cost occures during the time between the intial task and the next task
+
+            // option 1:
+            if (endHour(fromTask) < timeWindow.end) {
+                // get the time between the tasks
+                const travelStartHour = endHour(fromTask);
+                const travelEndHour = toTask.duration.startHour;
+                const timeBetween = travelEndHour - travelStartHour;
+
+                // check the proportion of travel time that falls within the timeWindow
+                const overlapStart = Math.max(travelStartHour, timeWindow.start);
+                const overlapEnd = Math.min(travelEndHour, timeWindow.end);
+                const overlap = Math.max(0, overlapEnd - overlapStart);
+
+                // calculate costs based on that
+                const proportion =  overlap / timeBetween;
+                console.log('Travel Start: ', travelStartHour, '\nTravel End: ', travelEndHour, '\nOverlap Start: ', overlapStart, '\nOverlap End: ', overlapEnd, '\nOverlap: ', overlap, '\nTime Between: ', timeBetween, '\nProportion: ', proportion);
+
+                const adjustedDistance = distance * proportion;
+
                 if (distance > team.maxWheelingDist_km) {
-                    trailerCosts += team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost;
+                    trailerCosts += (team.fixMovingCostWithTrailer + (adjustedDistance / team.trailerAverageSpeed) * team.trailerCost);
                 } else {
-                    wheelingCosts += distance * team.fixMovingCostWithoutTrailer;
+                    wheelingCosts += (adjustedDistance * team.fixMovingCostWithoutTrailer);
                 }
             }
+
+            // option 2:
+            // if (toTask.duration.startHour < timeWindow.end) {
+            //     const includeMovement = endHour(fromTask) >= timeWindow.start && endHour(fromTask) < timeWindow.end;
+
+            //     if (includeMovement) {
+            //         if (distance > team.maxWheelingDist_km) {
+            //             trailerCosts += team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost;
+            //         } else {
+            //             wheelingCosts += distance * team.fixMovingCostWithoutTrailer;
+            //         }
+            //     }
+            // }
         }
     }
 

@@ -1329,10 +1329,11 @@ export function GanttChart() {
                       )};
                   })}
 
-                {getTasksByTeam(team.id).map(task => {
+                {getTasksByTeam(team.id).map((task, taskIndex) => {
                   const position = calculateTaskPosition(task);
                   const isSelected = state.selectedTaskId === task.task.id;
                   const isBeingDragged = draggedTask === task.task.id;
+                  const isTeamSelected = state.selectedTeamId === team.id;
 
                   const dragStyle = isBeingDragged
                     ? {
@@ -1371,12 +1372,18 @@ export function GanttChart() {
                       )}
 
                       <div
-                        className="flex items-center justify-center h-full relative overflow-hidden"
+                        className="flex items-center justify-center h-full relative"
                         style={{
                           marginLeft: `${(((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`,
                           width: `${100 - (((task.duration.defaultSetup ?? 0) / effDur) * 100)}%`
                         }}
-                      />
+                      >
+                        {isTeamSelected && (
+                          <span className="text-white font-bold text-[11px] drop-shadow-md whitespace-nowrap">
+                            {taskIndex + 1}
+                          </span>
+                        )}
+                      </div>
 
                       <div className="
                         absolute bottom-full mb-1 left-1/2 -translate-x-1/2

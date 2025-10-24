@@ -26,7 +26,7 @@ export interface AssortmentsGraph {
 }
 
 export interface TransportCosts {
-  monthId: number;
+  monthID: number;
   cost: number;
 }
 
@@ -229,6 +229,7 @@ export interface PeriodBoundary {
 export interface TeamProductionSummary {
     teamId: string;
     volume: number;
+    products: Record<string, number>;
 }
 
 export interface TimeWindow {
