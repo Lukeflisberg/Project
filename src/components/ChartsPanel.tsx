@@ -206,58 +206,87 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     );
   }
 
-  // Custom shape component for the overlay goal lines
-  const GoalLines = (props: any) => {
-    const { x, y, width, height, index } = props;
+  // Custom shape for the last product in stack to add goal lines on top
+  const TopBarWithGoals = (props: any) => {
+    const { x, y, width, height, index, fill } = props;
     const dataPoint = data[index];
     
-    if (!dataPoint || dataPoint.minGoal === null || dataPoint.maxGoal === null || dataPoint.totalQuantity <= 0) {
+    if (!dataPoint) {
       return null;
     }
 
-    // Calculate the scale based on the bar dimensions
-    const barBottom = y + height;
-    const pixelsPerUnit = height / dataPoint.totalQuantity;
-
-    // Calculate y positions for goals
-    const minY = barBottom - (dataPoint.minGoal * pixelsPerUnit);
-    const maxY = barBottom - (dataPoint.maxGoal * pixelsPerUnit);
-    const centerX = x + width / 2;
-    const lineWidth = width * 0.8;
-    const lineStart = centerX - lineWidth / 2;
-    const lineEnd = centerX + lineWidth / 2;
-
     return (
       <g>
-        {/* Min goal horizontal line */}
-        <line
-          x1={lineStart}
-          y1={minY}
-          x2={lineEnd}
-          y2={minY}
-          stroke="#000"
-          strokeWidth={2}
+        {/* The actual bar segment */}
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={fill}
         />
         
-        {/* Max goal horizontal line */}
-        <line
-          x1={lineStart}
-          y1={maxY}
-          x2={lineEnd}
-          y2={maxY}
-          stroke="#000"
-          strokeWidth={2}
-        />
-        
-        {/* Vertical connecting line */}
-        <line
-          x1={centerX}
-          y1={minY}
-          x2={centerX}
-          y2={maxY}
-          stroke="#000"
-          strokeWidth={1.5}
-        />
+        {/* Goal lines - only if goals exist and bar has a value */}
+        {dataPoint.minGoal !== null && dataPoint.maxGoal !== null && dataPoint.totalQuantity > 0 && (
+          (() => {            
+            // Get the value of this specific segment
+            const lastProduct = allProducts[allProducts.length - 1];
+            const thisSegmentValue = (dataPoint as any)[lastProduct] || 0;
+            
+            // Calculate pixels per unit based on this segment
+            let pixelsPerUnit: number;
+            if (thisSegmentValue > 0 && height > 0) {
+              pixelsPerUnit = height / thisSegmentValue;
+            } else {
+              return null;
+            }
+            
+            // Calculate where the bottom of the stack is
+            const stackBottom = y + height + ((dataPoint.totalQuantity - thisSegmentValue) * pixelsPerUnit);
+            
+            // Now calculate goal positions from the stack bottom
+            const minY = stackBottom - (dataPoint.minGoal * pixelsPerUnit);
+            const maxY = stackBottom - (dataPoint.maxGoal * pixelsPerUnit);
+            const centerX = x + width / 2;
+            const lineWidth = width * 0.8;
+            const lineStart = centerX - lineWidth / 2;
+            const lineEnd = centerX + lineWidth / 2;
+
+            return (
+              <g>
+                {/* Min goal horizontal line */}
+                <line
+                  x1={lineStart}
+                  y1={minY}
+                  x2={lineEnd}
+                  y2={minY}
+                  stroke="#000"
+                  strokeWidth={2}
+                />
+                
+                {/* Max goal horizontal line */}
+                <line
+                  x1={lineStart}
+                  y1={maxY}
+                  x2={lineEnd}
+                  y2={maxY}
+                  stroke="#000"
+                  strokeWidth={2}
+                />
+                
+                {/* Vertical connecting line */}
+                <line
+                  x1={centerX}
+                  y1={minY}
+                  x2={centerX}
+                  y2={maxY}
+                  stroke="#000"
+                  strokeWidth={1.5}
+                />
+              </g>
+            );
+          })()
+        )}
       </g>
     );
   };
@@ -310,8 +339,8 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />
           
-          {/* Stacked bars for each product */}
-          {allProducts.map((product) => (
+          {/* Stacked bars for each product except the last */}
+          {allProducts.slice(0, -1).map((product) => (
             <Bar 
               key={product}
               dataKey={product}
@@ -321,14 +350,17 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
             />
           ))}
           
-          {/* Invisible bar to overlay goal lines on top of the stack */}
-          <Bar 
-            dataKey="totalQuantity"
-            fill="transparent"
-            shape={<GoalLines />}
-            isAnimationActive={false}
-            legendType="none"
-          />
+          {/* Last product bar with goal lines overlay */}
+          {allProducts.length > 0 && (
+            <Bar 
+              key={allProducts[allProducts.length - 1]}
+              dataKey={allProducts[allProducts.length - 1]}
+              stackId="products"
+              fill={productColors[allProducts[allProducts.length - 1]]}
+              name={allProducts[allProducts.length - 1]}
+              shape={<TopBarWithGoals />}
+            />
+          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
