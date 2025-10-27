@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { AppState, Task, Team, Period, Month, Resource, Demand, Distance, ProductionGoals, AssortmentsGraph, TransportCosts } from '../types';
 
 // ----------------------
@@ -34,7 +34,11 @@ type AppAction =
   | { type: 'UPDATE_TASKS'; tasks: Task[] }
   | { type: 'UPDATE_TEAMS'; teams: Team[] }
 
-  | { type: 'RESET_STATE' };
+  | { type: 'RESET_STATE' }
+
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
+  | { type: 'PUSH_HISTORY' };
   
 // ----------------------
 // Initial Application State
@@ -239,3 +243,5 @@ export function useApp() {
   }
   return context;
 }
+
+// For history, just use a list of snapshots rather. As the other shit doesnt work

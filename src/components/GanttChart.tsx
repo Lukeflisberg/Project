@@ -7,6 +7,7 @@ import { importDataFromFile, importSolutionFromFile } from '../helper/fileReader
 import { getPeriodData } from '../helper/periodUtils';
 import { occStart, occEnd, effectiveDuration, isDisallowed, clamp, endHour, isInValidPeriod, isInInvalidPeriod, getTaskColor, planSequentialLayoutHours } from '../helper/taskUtils';
 import { calculateTotalTaskDuration } from '../helper/chartUtils';
+import { historyManager } from '../context/HistoryManager';
 
 // ----------------------
 // Period Configuration
@@ -158,7 +159,7 @@ export function GanttChart() {
         task: { ...task.task }
       }))
     });
-
+    
     console.log('created snapshot');
   }
 
@@ -681,6 +682,9 @@ export function GanttChart() {
 
       // Cleanup drag state and listeners
       cancelDrag();
+    
+      // Push the state
+      historyManager.push(state.tasks);
     };
 
     // Add global mouse event listeners for drag
@@ -1037,6 +1041,10 @@ export function GanttChart() {
         }
       }
     }
+
+    useEffect(() => {
+      historyManager.init(state.tasks);
+    }, []);
   }  
 
   // ----------------------

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateTotalTaskDuration, calculateMonthlyTaskDuration, createPeriodBoundaries, calculateProductionPerPeriod, calculateDemandPerPeriod, getMonthTimeWindow, calculateProductionForMonth, calculateProductionPerTeam } from '../helper/chartUtils';
-import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, ReferenceLine, Line, Customized } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart } from 'recharts';
 
 // Color palette
 const COLORS = {
@@ -112,8 +112,8 @@ function DemandProductionChart({ resource, demandType }: { resource: string | nu
 function TeamProductionChart({ monthId }: { monthId: string | null }) {
   const { state } = useApp();
 
-  // Get all unique products across all teams
-  const allProducts = useMemo(() => {
+  // Get all unique avvForms across all teams
+  const allAvvForms = useMemo(() => {
     if (!monthId) return [];
     
     const monthlyProductionData = calculateProductionPerTeam(
@@ -121,31 +121,30 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
       monthId,
       state.months, 
       createPeriodBoundaries(state.periods),
-      state.assortments_graph,
       state.totalHours
     );
 
-    const productsSet = new Set<string>();
-    monthlyProductionData.forEach(({ products }) => {
-      Object.keys(products).forEach(product => productsSet.add(product));
+    const avvFormsSet = new Set<string>();
+    monthlyProductionData.forEach(({ avvForms }) => {
+      Object.keys(avvForms).forEach(avvForm => avvFormsSet.add(avvForm));
     });
     
-    return Array.from(productsSet).sort();
+    return Array.from(avvFormsSet).sort();
   }, [state.tasks, state.months, state.periods, monthId]);
 
-  // Generate colors for each product
-  const productColors = useMemo(() => {
+  // Generate colors for each avvForm
+  const avvFormColors = useMemo(() => {
     const colors = [
       '#10B981', '#3B82F6', '#EC4899', '#F59E0B', '#8B5CF6',
       '#06B6D4', '#EF4444', '#14B8A6', '#F97316', '#6366F1',
       '#0a5800ff'
     ];
     const colorMap: Record<string, string> = {};
-    allProducts.forEach((product, idx) => {
-      colorMap[product] = colors[idx % colors.length];
+    allAvvForms.forEach((avvForm, idx) => {
+      colorMap[avvForm] = colors[idx % colors.length];
     });
     return colorMap;
-  }, [allProducts]);
+  }, [allAvvForms]);
 
   const data = useMemo(() => {
     if (!monthId) {
@@ -157,11 +156,10 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
       monthId,
       state.months, 
       createPeriodBoundaries(state.periods),
-      state.assortments_graph,
       state.totalHours
     );
 
-    const result = monthlyProductionData.map(({ teamId, volume, products }) => {
+    const result = monthlyProductionData.map(({ teamId, volume, avvForms }) => {
       // Find the production goal for this team and month
       let minGoal: number | null = null;
       let maxGoal: number | null = null;
@@ -180,10 +178,10 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
         maxGoal = goal?.maxGoal ?? null;
       }
 
-      // Create an object with all products, setting 0 for missing ones
-      const productData: Record<string, number> = {};
-      allProducts.forEach(product => {
-        productData[product] = products[product] || 0;
+      // Create an object with all avvForms, setting 0 for missing ones
+      const avvFormData: Record<string, number> = {};
+      allAvvForms.forEach(avvForm => {
+        avvFormData[avvForm] = avvForms[avvForm] || 0;
       });
 
       return {
@@ -191,12 +189,12 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
         totalQuantity: volume,
         minGoal,
         maxGoal,
-        ...productData
+        ...avvFormData
       };
     });
 
     return result;
-  }, [state.tasks, state.months, state.periods, state.productionGoals, monthId, allProducts]);
+  }, [state.tasks, state.months, state.periods, state.productionGoals, monthId, allAvvForms]);
 
   if (!data.length) {
     return (
@@ -206,13 +204,25 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
     );
   }
 
-  // Custom shape for the last product in stack to add goal lines on top
-  const TopBarWithGoals = (props: any) => {
-    const { x, y, width, height, index, fill } = props;
+  // Custom shape that adds goal lines on top of the topmost bar segment
+  const BarWithGoals = (props: any) => {
+    const { x, y, width, height, index, fill, dataKey } = props;
     const dataPoint = data[index];
     
     if (!dataPoint) {
       return null;
+    }
+
+    // Check if this is the topmost non-zero segment for this bar
+    const currentAvvFormIndex = allAvvForms.indexOf(dataKey);
+    let isTopSegment = true;
+    
+    // Check if any avvForm above this one has a non-zero value
+    for (let i = currentAvvFormIndex + 1; i < allAvvForms.length; i++) {
+      if ((dataPoint as any)[allAvvForms[i]] > 0) {
+        isTopSegment = false;
+        break;
+      }
     }
 
     return (
@@ -226,12 +236,27 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           fill={fill}
         />
         
-        {/* Goal lines - only if goals exist and bar has a value */}
-        {dataPoint.minGoal !== null && dataPoint.maxGoal !== null && dataPoint.totalQuantity > 0 && (
+        {/* Goal lines - only render on the topmost segment */}
+        {isTopSegment && dataPoint.minGoal !== null && dataPoint.maxGoal !== null && dataPoint.totalQuantity > 0 && (
           (() => {            
-            // Get the value of this specific segment
-            const lastProduct = allProducts[allProducts.length - 1];
-            const thisSegmentValue = (dataPoint as any)[lastProduct] || 0;
+            // Find the first non-zero avvForm from the end (which should be this segment)
+            let thisSegmentValue = 0;
+            let segmentValueBelow = 0;
+            
+            for (let i = allAvvForms.length - 1; i >= 0; i--) {
+              const avvForm = allAvvForms[i];
+              const value = (dataPoint as any)[avvForm] || 0;
+              
+              if (value > 0) {
+                thisSegmentValue = value;
+                
+                // Calculate the sum of all values below this segment
+                for (let j = 0; j < i; j++) {
+                  segmentValueBelow += (dataPoint as any)[allAvvForms[j]] || 0;
+                }
+                break;
+              }
+            }
             
             // Calculate pixels per unit based on this segment
             let pixelsPerUnit: number;
@@ -242,7 +267,7 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
             }
             
             // Calculate where the bottom of the stack is
-            const stackBottom = y + height + ((dataPoint.totalQuantity - thisSegmentValue) * pixelsPerUnit);
+            const stackBottom = y + height + (segmentValueBelow * pixelsPerUnit);
             
             // Now calculate goal positions from the stack bottom
             const minY = stackBottom - (dataPoint.minGoal * pixelsPerUnit);
@@ -313,12 +338,12 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
                     <p className="font-semibold">{data.name}</p>
                     <p className="font-medium mt-1">Total Production: {Number(data.totalQuantity).toFixed(2)}</p>
                     <div className="mt-1 space-y-0.5">
-                      {allProducts.map(product => {
-                        const value = data[product];
+                      {allAvvForms.map(avvForm => {
+                        const value = data[avvForm];
                         if (value > 0) {
                           return (
-                            <p key={product} style={{ color: productColors[product] }}>
-                              {product}: {Number(value).toFixed(2)}
+                            <p key={avvForm} style={{ color: avvFormColors[avvForm] }}>
+                              {avvForm}: {Number(value).toFixed(2)}
                             </p>
                           );
                         }
@@ -339,28 +364,17 @@ function TeamProductionChart({ monthId }: { monthId: string | null }) {
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />
           
-          {/* Stacked bars for each product except the last */}
-          {allProducts.slice(0, -1).map((product) => (
+          {/* Stacked bars for each avvForm - all use the same shape to check if topmost */}
+          {allAvvForms.map((avvForm) => (
             <Bar 
-              key={product}
-              dataKey={product}
-              stackId="products"
-              fill={productColors[product]}
-              name={product}
+              key={avvForm}
+              dataKey={avvForm}
+              stackId="avvForms"
+              fill={avvFormColors[avvForm]}
+              name={avvForm}
+              shape={<BarWithGoals />}
             />
           ))}
-          
-          {/* Last product bar with goal lines overlay */}
-          {allProducts.length > 0 && (
-            <Bar 
-              key={allProducts[allProducts.length - 1]}
-              dataKey={allProducts[allProducts.length - 1]}
-              stackId="products"
-              fill={productColors[allProducts[allProducts.length - 1]]}
-              name={allProducts[allProducts.length - 1]}
-              shape={<TopBarWithGoals />}
-            />
-          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -383,7 +397,7 @@ function MonthlyProductionChart({ monthId }: { monthId: string | null }) {
       state.assortments_graph,
       state.totalHours
     );
-    console.log("data: ", monthlyProductionData);
+    // console.log("data: ", monthlyProductionData);
 
     // Transform the products object into chart data with product names on x-axis
     return Object.entries(monthlyProductionData.products).map(([productName, quantity]) => ({

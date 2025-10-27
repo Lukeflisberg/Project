@@ -111,10 +111,10 @@ export function UnassignedTasks() {
                     .sort((a, b) => a.duration.startHour - b.duration.startHour)
               
               const result = findEarliestHour(task, filteredTasks, totalHours, state.periods, teamId);
-              console.log("Total hours: ", totalHours);
-              console.log("Task stats: ", task);
-              console.log("Tasks: ", state.tasks);
-              console.log("Calculated earliest: ", result);
+              // console.log("Total hours: ", totalHours);
+              // console.log("Task stats: ", task);
+              // console.log("Tasks: ", state.tasks);
+              // console.log("Calculated earliest: ", result);
               
               if (result !== null) {
                 dispatch({

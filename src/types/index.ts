@@ -229,7 +229,7 @@ export interface PeriodBoundary {
 export interface TeamProductionSummary {
     teamId: string;
     volume: number;
-    products: Record<string, number>;
+    avvForms: Record<string, number>;
 }
 
 export interface TimeWindow {
@@ -246,4 +246,10 @@ export interface CostBreakdown {
     demandCost: number;
     industryValue: number;
     totalCost: number;
+}
+
+export interface HistoryState {
+  past: AppState[];
+  present: AppState;
+  future: AppState[];
 }

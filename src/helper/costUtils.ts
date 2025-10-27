@@ -124,7 +124,7 @@ export function calculateTotalCostBreakdown(
 
                 // calculate costs based on that
                 const proportion =  overlap / timeBetween;
-                console.log('Travel Start: ', travelStartHour, '\nTravel End: ', travelEndHour, '\nOverlap Start: ', overlapStart, '\nOverlap End: ', overlapEnd, '\nOverlap: ', overlap, '\nTime Between: ', timeBetween, '\nProportion: ', proportion);
+                // console.log('Travel Start: ', travelStartHour, '\nTravel End: ', travelEndHour, '\nOverlap Start: ', overlapStart, '\nOverlap End: ', overlapEnd, '\nOverlap: ', overlap, '\nTime Between: ', timeBetween, '\nProportion: ', proportion);
 
                 const adjustedDistance = distance * proportion;
 

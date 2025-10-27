@@ -31,76 +31,76 @@ export const findEarliestHour = (
   future_teamId: string
 ): number | null => {  
   const taskDuration = effectiveDuration(t, future_teamId);
-  console.log(`\nFinding earliest hour for task (duration: ${taskDuration}h, total available: ${totalHour}h)`);
+  // console.log(`\nFinding earliest hour for task (duration: ${taskDuration}h, total available: ${totalHour}h)`);
   
   // Handle case where there are no existing tasks
   if (tasks.length === 0) {
-    console.log(`No existing tasks - checking from hour 0`);
+    // console.log(`No existing tasks - checking from hour 0`);
     
     // Check if task fits within total hours
     if (taskDuration <= totalHour && isInValidPeriod(t, 0, taskDuration, periods)) {
-      console.log(`✓ Task fits at hour 0`);
+      // console.log(`✓ Task fits at hour 0`);
       return 0;
     }
 
     // Try to find the first valid period
-    console.log(`✗ Hour 0 invalid, searching through periods...`);
+    // console.log(`✗ Hour 0 invalid, searching through periods...`);
     let cumulativeHour = 0;
     for (const { id, length_h } of periods) {
       if (!t.duration.invalidPeriods?.includes(id)) {
         if (taskDuration <= length_h && cumulativeHour + taskDuration <= totalHour) {
-          console.log(`✓ Found valid slot at hour ${cumulativeHour} (in period ${id})`);
+          // console.log(`✓ Found valid slot at hour ${cumulativeHour} (in period ${id})`);
           return cumulativeHour;
         }
       }
       cumulativeHour += length_h;
     }
 
-    console.log(`✗ No valid period found for task`);
+    // console.log(`✗ No valid period found for task`);
     return null;
   }
 
-  console.log(`Checking ${tasks.length} existing tasks for gaps`);
+  // console.log(`Checking ${tasks.length} existing tasks for gaps`);
 
   // Check if task can fit before the first task
   const firstTaskStart = tasks[0].duration.startHour;
-  console.log(`\n▪ Gap before first task: [0 → ${firstTaskStart}] (${firstTaskStart}h available)`);
+  // console.log(`\n▪ Gap before first task: [0 → ${firstTaskStart}] (${firstTaskStart}h available)`);
   if (taskDuration <= firstTaskStart && 
       isInValidPeriod(t, 0, taskDuration, periods)) {
-    console.log(`  ✓ Task fits at hour 0`);
+    // console.log(`  ✓ Task fits at hour 0`);
     return 0;
   }
-  console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
+  // console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
 
   // Iterate over gaps between consecutive tasks
   for (let i = 1; i < tasks.length; i++) {
     const currStart = tasks[i].duration.startHour;
     const prevEnd = endHour(tasks[i-1]);
-    const gapSize = currStart - prevEnd;
+    // const gapSize = currStart - prevEnd;
 
-    console.log(`\n▪ Gap ${i}: [${prevEnd} → ${currStart}] (${gapSize}h available)`);
+    // console.log(`\n▪ Gap ${i}: [${prevEnd} → ${currStart}] (${gapSize}h available)`);
 
     // Check if t can be fitted between tasks and in valid periods
     if (prevEnd + taskDuration <= currStart &&
         isInValidPeriod(t, prevEnd, taskDuration, periods)) {
-      console.log(`  ✓ Task fits at hour ${prevEnd}`);
+      // console.log(`  ✓ Task fits at hour ${prevEnd}`);
       return prevEnd;
     }
-    console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
+    // console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
   }
 
   // Check if t can be fitted after the final task and before total hours
   const lastTask = tasks[tasks.length - 1];
   const potentialStart = endHour(lastTask);
-  const remainingHours = totalHour - potentialStart;
-  console.log(`\n▪ Gap after last task: [${potentialStart} → ${totalHour}] (${remainingHours}h available)`);
+  // const remainingHours = totalHour - potentialStart;
+  // console.log(`\n▪ Gap after last task: [${potentialStart} → ${totalHour}] (${remainingHours}h available)`);
   
   if (potentialStart + taskDuration <= totalHour && 
       isInValidPeriod(t, potentialStart, taskDuration, periods)) {
-    console.log(`  ✓ Task fits at hour ${potentialStart}`);
+    // console.log(`  ✓ Task fits at hour ${potentialStart}`);
     return potentialStart;
   }
-  console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
+  // console.log(`  ✗ Gap too small or invalid period (need ${taskDuration}h)`);
 
   // Can't be fitted anywhere
   console.log(`\n⚠️  No valid slot found - task cannot be placed`);

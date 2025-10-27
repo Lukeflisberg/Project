@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateTotalCostBreakdown } from '../helper/costUtils';
-import { Check, X, Landmark } from 'lucide-react';
+import { Check, X, Landmark, Undo2, Redo2 } from 'lucide-react';
 import { Task, Month, TransportCosts } from '../types';
+import { historyManager } from '../context/HistoryManager';
+import { tasksEqual } from '../helper/historyUtils';
 
 const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
@@ -12,11 +14,15 @@ export function CostsPanel() {
   const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
   const hasSnapshot = state.taskSnapshot.length > 0;
 
+  // Get undo/redo state
+  const canUndo = historyManager.canUndo;
+  const canRedo = historyManager.canRedo;
+
   const transportEntry: TransportCosts | undefined = state.transportCosts.find(t => t.monthID === 1);
 
   const transportCost_m0 = useMemo(() => 
     (state.transportCosts.length > 0 && transportEntry) ? transportEntry.cost : 0,
-    [state.transportCosts]
+    [state.transportCosts, transportEntry]
   );
   const transportCost_all = useMemo(() => 
     state.transportCosts.reduce((sum, tc) => sum + tc.cost, 0),
@@ -25,34 +31,16 @@ export function CostsPanel() {
 
   const newCost = useMemo(() => 
     calculateTotalCostBreakdown(state.tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
+    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
   );
-
-  // const newCost_m0 = useMemo(() => 
-  //   calculateTotalCostBreakdown(state.tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months[0]).totalCost + transportCost_m0,
-  //   [state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months, transportCost_m0, selectedTeam]
-  // );
 
   const baseCost = useMemo(() => 
     calculateTotalCostBreakdown(state.taskSnapshot, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
     [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
   );
-  
-  // const baseCost_m0 = useMemo(() => 
-  //   calculateTotalCostBreakdown(state.taskSnapshot, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months[0]).totalCost + transportCost_m0,
-  //   [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, state.months, transportCost_m0, selectedTeam]
-  // );
 
   const costDiff = newCost - baseCost;
-  // const pctChange = baseCost > 0 ? ((costDiff / baseCost) * 100).toFixed(2) : 'inf';
   const isImprovement = costDiff < 0;
-
-  // const costDiff_m0 = newCost_m0 - baseCost_m0;
-  // const pctChange_m0 = baseCost_m0 > 0 ? ((costDiff_m0 / baseCost_m0) * 100).toFixed(2) : 'inf';
-  // const isImprovement_m0 = costDiff_m0 < 0;
-  // Note: pct changes are not required as they are only shown in total cost which is currently commented out
-  // also, wheeling and trailer will sometimes have '-' values, this is correct as sometimes the tasks will
-  // have travel distances that matches these criterias
 
   const getPieData = (tasks: Task[], month?: Month) => {
     const costData = calculateTotalCostBreakdown(tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, month);
@@ -76,18 +64,60 @@ export function CostsPanel() {
   const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, selectedTeam]);
   const pieDatabase_m0 = useMemo(() => getPieData(state.taskSnapshot, state.months[0]), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months, selectedTeam]);
 
+  const handleUndo = () => {
+    const previousState = historyManager.undo();
+    if (previousState) {
+      dispatch({ type: 'UPDATE_TASKS', tasks: previousState });
+    }
+
+    const hasSnapshot = state.taskSnapshot.length > 0;
+    const isEqual = tasksEqual(historyManager.present(), state.taskSnapshot);
+
+    if (hasSnapshot && isEqual) {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    } else {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+    }
+  };
+
+  const handleRedo = () => {
+    const nextState = historyManager.redo();
+    if (nextState) {
+      dispatch({ type: 'UPDATE_TASKS', tasks: nextState });
+    }
+
+    const hasSnapshot = state.taskSnapshot.length > 0;
+    const isEqual = tasksEqual(historyManager.present(), state.taskSnapshot);
+
+    if (hasSnapshot && isEqual) {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    } else {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+    }
+  };
+
   const onAccept = () => {
     dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
     dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    historyManager.clear();
+
+    // Re-initialize with current state
+    historyManager.init(state.tasks);
   };
 
   const onDecline = () => {
-    dispatch({ 
-      type: 'UPDATE_TASKS', 
-      tasks: state.taskSnapshot.map(task => ({...task, duration: {...task.duration}, task: {...task.task}}))
-    });
+    const restoredTasks = state.taskSnapshot.map(task => ({
+      ...task, 
+      duration: {...task.duration}, 
+      task: {...task.task}
+    }));
+    dispatch({ type: 'UPDATE_TASKS', tasks: restoredTasks });
     dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
     dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    historyManager.clear();
+
+    // Re-initialize with restored state
+    historyManager.init(restoredTasks);
   };
 
   const fmt = (v: number) => new Intl.NumberFormat('sv-SE', {minimumFractionDigits: 0, maximumFractionDigits: 0}).format(v);
@@ -100,6 +130,34 @@ export function CostsPanel() {
           <h2 className="font-semibold text-gray-800 text-sm">Cost Analysis (SEK)</h2>
         </div>
         <div className="flex items-center gap-2">
+          {/* Undo/Redo buttons */}
+          <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className={`p-1 rounded transition-colors ${
+                canUndo 
+                  ? 'hover:bg-gray-100 text-gray-700 cursor-pointer' 
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={16} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className={`p-1 rounded transition-colors ${
+                canRedo 
+                  ? 'hover:bg-gray-100 text-gray-700 cursor-pointer' 
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <Redo2 size={16} />
+            </button>
+          </div>
+          
           <label className="text-xs text-gray-600">Team:</label>
           <select 
             value={selectedTeam} 
@@ -116,6 +174,7 @@ export function CostsPanel() {
         </div>
       </div>
 
+      {/* Rest of your component remains the same */}
       <div className="p-2">
         {isEmpty ? (
           <div className="h-32 flex items-center justify-center text-gray-500 text-xs">
@@ -126,6 +185,7 @@ export function CostsPanel() {
             <div style={{width: 'calc(100% - 200px)'}} className="overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
+                {/* Your existing table code */}
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Type</th>
@@ -136,6 +196,7 @@ export function CostsPanel() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Your existing table rows - keeping all the complex logic intact */}
                   {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Harvesting', 'Trailer', 'Transport'].map((name, i) => {
                     const isTransport = name === 'Transport';
                     const isHarvesting = name === 'Harvesting';
@@ -143,7 +204,6 @@ export function CostsPanel() {
                     let baseM0, baseAll, newM0Val, newAll;
                     
                     if (isHarvesting) {
-                      // Sum of Harvester, Forwarder, Traveling, and Wheeling
                       const harvBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0);
                       const forwBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0);
                       const travBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0);
@@ -214,22 +274,6 @@ export function CostsPanel() {
                     );
                   })}
                   
-                  {/* <tr className="bg-gray-100 font-bold border-t-2 border-gray-900">
-                    <td className="border border-gray-300 px-2 py-1 text-center">Total Cost</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right">{fmt(hasSnapshot ? baseCost_m0 : newCost_m0)}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right">{fmt(hasSnapshot ? baseCost : newCost)}</td>
-                    <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot ? 'text-right' : 'text-center'} ${
-                      !hasSnapshot ? 'text-gray-400' : isImprovement_m0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
-                    }`}>
-                      {hasSnapshot ? `${fmt(newCost_m0)} (${isImprovement_m0 ? '-' : '+'}${fmt(Math.abs(costDiff_m0))}, ${pctChange_m0}%)` : '—'}
-                    </td>
-                    <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot ? 'text-right' : 'text-center'} ${
-                      !hasSnapshot ? 'text-gray-400' : isImprovement ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'
-                    }`}>
-                      {hasSnapshot ? `${fmt(newCost)} (${isImprovement ? '-' : '+'}${fmt(Math.abs(costDiff))}, ${pctChange}%)` : '—'}
-                    </td>
-                  </tr> */}
-                  
                   {['Demand', 'Ind_value'].map((name, idx) => {
                     const i = 6 + idx;
                     const newItem = pieDataNew.find(it => it.name === name);
@@ -249,7 +293,6 @@ export function CostsPanel() {
                     const allImprove = isIndVal ? allDiff > 0 : allDiff < 0;
                     
                     return (
-                      // <tr key={name} className={`hover:bg-gray-50 ${idx === 0 ? 'border-t-2 border-gray-900' : ''}`}>
                       <tr key={name} className={`hover:bg-gray-50`}>
                         <td className="border border-gray-300 px-2 py-1">
                           <div className="flex items-center gap-1.5">

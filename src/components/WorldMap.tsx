@@ -4,10 +4,10 @@ import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { ColorPalettes, Task, Team } from '../types';
-import { planSequentialLayoutHours, effectiveDuration, isDisallowed } from '../helper/taskUtils';
+import { planSequentialLayoutHours, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
-import { startOfYesterday } from 'date-fns';
+import { historyManager } from '../context/HistoryManager';
 
 const DEFAULT_POSITION: { x: number, y: number } = { x: 1156, y: 66 };
 const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 475 };
@@ -43,15 +43,15 @@ const swerefToWGS84 = (northing: number, easting: number): [number, number] => {
   }
 };
 
-const wgs84ToSWEREF = (lat: number, lon: number): [number, number] => {
-  try {
-    const [easting, northing] = proj4('EPSG:4326', 'EPSG:3006', [lon, lat]);
-    return [northing, easting];
-  } catch (error) {
-    console.error('Error converting coordinates:', error, { lat, lon });
-    return [6900000, 500000];
-  }
-};
+// const wgs84ToSWEREF = (lat: number, lon: number): [number, number] => {
+//   try {
+//     const [easting, northing] = proj4('EPSG:4326', 'EPSG:3006', [lon, lat]);
+//     return [northing, easting];
+//   } catch (error) {
+//     console.error('Error converting coordinates:', error, { lat, lon });
+//     return [6900000, 500000];
+//   }
+// };
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -541,6 +541,9 @@ export function WorldMap() {
     } else {
       console.log('Dropped outside Gantt chart');
     }
+    
+    // Push the state
+    historyManager.push(state.tasks);
   };
 
   const handleTeamToggle = (teamId: string | null) => {

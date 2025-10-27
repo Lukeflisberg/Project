@@ -94,23 +94,8 @@ export function calculateProductionPerTeam(
     monthFilter: string,
     months: Month[],
     periodBoundaries: PeriodBoundary[],
-    assortmentGraph: Array<{ assortment: string; assortment_group: string; include: number }>,
     totalHour: number
 ): TeamProductionSummary[] {
-    // Create mapping from assortment to assortment_group
-    const assortmentToGroup = new Map<string, string>();
-    const excludedAssortments = new Set<string>();
-    
-    if (assortmentGraph) {
-        for (const item of assortmentGraph) {
-            if (item.include === 1) {
-                assortmentToGroup.set(item.assortment, item.assortment_group);
-            } else if (item.include === 0) {
-                excludedAssortments.add(item.assortment);
-            }
-        }
-    }
-
     let monthStart: number;
     let monthEnd: number;
 
@@ -127,12 +112,13 @@ export function calculateProductionPerTeam(
         monthEnd = Math.min(end, totalHour); // Clamp to totalHour
     }
 
-    // Group tasks by team and calculate proportional production
+    // Group tasks by team and calculate proportional production per avvForm
     const teamMap = new Map<string, Record<string, number>>();
 
     for (const task of tasks) {
         if (!task.duration.teamId) continue;
         if (!task.production) continue;
+        if (!task.task.avvForm) continue;
         
         const taskStart = task.duration.startHour;
         const taskEnd = endHour(task);
@@ -153,26 +139,21 @@ export function calculateProductionPerTeam(
                 teamMap.set(task.duration.teamId, {});
             }
 
-            const teamProducts = teamMap.get(task.duration.teamId)!;
+            const teamAvvForms = teamMap.get(task.duration.teamId)!;
 
-            // Add proportional production for each product
-            for (const [key, quantity] of Object.entries(task.production)) {
-                // Skip if this assortment is explicitly excluded
-                if (excludedAssortments.has(key)) {
-                    continue;
-                }
-
-                const groupKey = assortmentToGroup.get(key) || key;
-                teamProducts[groupKey] = (teamProducts[groupKey] || 0) + quantity * proportion;
-            }
+            // Calculate total production for this task
+            const totalProduction = Object.values(task.production).reduce((sum, quantity) => sum + quantity, 0);
+            
+            // Add proportional production to the avvForm
+            teamAvvForms[task.task.avvForm] = (teamAvvForms[task.task.avvForm] || 0) + totalProduction * proportion;
         }
     }
 
     // Convert map to array
     const result: TeamProductionSummary[] = [];
-    for (const [teamId, products] of teamMap.entries()) {
-        const volume = Object.values(products).reduce((sum, quantity) => sum + quantity, 0);
-        result.push({ teamId, volume, products });
+    for (const [teamId, avvForms] of teamMap.entries()) {
+        const volume = Object.values(avvForms).reduce((sum, quantity) => sum + quantity, 0);
+        result.push({ teamId, volume, avvForms });
     }
 
     // Sort by teamId to ensure consistent ordering
@@ -256,7 +237,7 @@ export function calculateProductionForMonth(
 
 export function calculateDemandPerPeriod(
     demand: Demand[],
-    demandType: string,
+    demandType?: string,
     assortmentGraph?: Array<{ assortment: string; assortment_group: string; include: number }>
 ): QuantityByPeriod {
     // Create mapping from assortment to assortment_group if available
@@ -284,9 +265,13 @@ export function calculateDemandPerPeriod(
 
         // Get demand for each period and aggregate by group
         for (let i = 0; i < demands.length; i++) {
-            demandType === 'min' 
-                ? result[groupKey][i] += demands[i].demand // Change too demandMin
-                : result[groupKey][i] += demands[i].demand; // Change too demandGoal
+            if (!demandType) {
+                result[groupKey][i] += demands[i].demand;
+            } else {
+                demandType === 'min' 
+                    ? result[groupKey][i] += demands[i].demand // Change too demandMin
+                    : result[groupKey][i] += demands[i].demand // Change too demandGoal
+            }
         }
     }
 
