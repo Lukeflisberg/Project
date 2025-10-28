@@ -328,8 +328,14 @@ export function WorldMap() {
       );
     }
 
-    tasks = tasks.filter(task => selectedAvvForm.includes(task.task.avvForm));
-    tasks = tasks.filter(task => selectedBarighet.includes(task.task.barighet));
+    tasks = tasks.filter(task => 
+      task.duration.teamId === state.selectedTeamId || 
+      selectedAvvForm.includes(task.task.avvForm)
+    );
+    tasks = tasks.filter(task => 
+      task.duration.teamId === state.selectedTeamId || 
+      selectedBarighet.includes(task.task.barighet)
+    );
 
     return tasks;
   };
@@ -343,13 +349,13 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === null) return [];
 
-    const allAvvForms = getUniqueAvvForm();
-    const allBarighet = getUniqueBarighet();
+    // const allAvvForms = getUniqueAvvForm();
+    // const allBarighet = getUniqueBarighet();
     
-    const isAvvFormFiltered = selectedAvvForm.length !== allAvvForms.length;
-    const isBarighetFiltered = selectedBarighet.length !== allBarighet.length;
+    // const isAvvFormFiltered = selectedAvvForm.length !== allAvvForms.length;
+    // const isBarighetFiltered = selectedBarighet.length !== allBarighet.length;
     
-    if (isAvvFormFiltered || isBarighetFiltered) return [];
+    // if (isAvvFormFiltered || isBarighetFiltered) return [];
 
     const firstMonth = state.months[0];
     if (!firstMonth) return [];

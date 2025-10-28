@@ -118,6 +118,13 @@ export function CostsPanel() {
 
     // Re-initialize with current state
     historyManager.init(state.tasks);
+
+    // Update history state
+    dispatch({
+      type: 'UPDATE_HISTORY_STATE',
+      historyIndex: historyManager.currentIndex,
+      historyLength: historyManager.length
+    });
   };
 
   const onDecline = () => {
@@ -133,6 +140,13 @@ export function CostsPanel() {
 
     // Re-initialize with restored state
     historyManager.init(restoredTasks);
+
+    // Update history state
+    dispatch({
+      type: 'UPDATE_HISTORY_STATE',
+      historyIndex: historyManager.currentIndex,
+      historyLength: historyManager.length
+    });
   };
 
   const fmt = (v: number) => new Intl.NumberFormat('sv-SE', {minimumFractionDigits: 0, maximumFractionDigits: 0}).format(v);
