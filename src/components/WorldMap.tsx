@@ -43,6 +43,16 @@ const swerefToWGS84 = (northing: number, easting: number): [number, number] => {
   }
 };
 
+// const wgs84ToSWEREF = (lat: number, lon: number): [number, number] => {
+//   try {
+//     const [easting, northing] = proj4('EPSG:4326', 'EPSG:3006', [lon, lat]);
+//     return [northing, easting];
+//   } catch (error) {
+//     console.error('Error converting coordinates:', error, { lat, lon });
+//     return [6900000, 500000];
+//   }
+// };
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -395,6 +405,7 @@ export function WorldMap() {
     });
 
     if (type === 'unassigned') {
+      // Return the opposite (null or taskId)
       dispatch({ type: 'SET_DRAGGING_TO_GANTT', taskId: state.dragging_to_gantt === taskId ? null : taskId });
     }
 
@@ -404,6 +415,7 @@ export function WorldMap() {
   const handleMarkerDragEnd = (taskId: string, mousePosition: { x: number, y: number }) => {
     document.body.setAttribute('data-dragging-to-gantt', '');
     
+    // Clear the dragging state
     dispatch({ type: 'SET_DRAGGING_TO_GANTT', taskId: null });
   
     const ganttElement = document.querySelector('.gantt-chart-container');
@@ -417,6 +429,7 @@ export function WorldMap() {
       
       console.log('Dropped inside Gantt chart!', taskId);
       
+      // Get the timeline-content element (this is the actual timeline area)
       const timelineContent = document.querySelector('.timeline-content');
       if (!timelineContent) {
         console.log('Timeline content not found');
@@ -425,33 +438,40 @@ export function WorldMap() {
       
       const timelineRect = timelineContent.getBoundingClientRect();
       
+      // Check if dropped inside the timeline area
       if (mousePosition.x >= timelineRect.left && 
           mousePosition.x <= timelineRect.right &&
           mousePosition.y >= timelineRect.top && 
           mousePosition.y <= timelineRect.bottom) {
         
+        // Get all team rows
         const teamRows = document.querySelectorAll('[data-team-row="true"]');
         
+        // Find which team row the task was dropped on (by Y position)
         for (const teamRow of teamRows) {
           const teamRowRect = teamRow.getBoundingClientRect();
           
+          // Check if the drop Y position is within this team row
           if (mousePosition.y >= teamRowRect.top && 
               mousePosition.y <= teamRowRect.bottom) {
             
             const teamId = teamRow.getAttribute('data-team-id');
             console.log('Dropped on team:', teamId);
             
+            // Find the task being moved
             const task = state.tasks.find(t => t.task.id === taskId);
             if (!task) {
               console.error('Task not found:', taskId);
               return;
             }
             
+            // Check if task is allowed on this team
             if (isDisallowed(task, teamId)) {
               console.log(`Task ${taskId} is not allowed on team ${teamId}`);
               return;
             }
 
+            // Before any changes are made, create a snapshot
             if (state.taskSnapshot.length === 0) {
               dispatch({
                 type: 'SET_TASKSNAPSHOT',
@@ -465,16 +485,19 @@ export function WorldMap() {
               newTeamId: teamId
             });
             
+            // Calculate drop hour based on x position within timeline
             const relativeX = mousePosition.x - timelineRect.left;
             const timelineWidth = timelineRect.width;
             const dropHour = Math.floor((relativeX / timelineWidth) * state.totalHours);
             
             console.log('Drop hour:', dropHour);
             
+            // Get all tasks in the target team (including the one we just moved)
             const newTeamSiblings = state.tasks
               .filter(t => t.duration.teamId === teamId || t.task.id === task.task.id)
               .map(t => (t.task.id === task.task.id ? { ...t, duration: { ...t.duration, teamId: teamId } } : t));
 
+            // Use planSequentialLayoutHours to handle repositioning
             const plan = planSequentialLayoutHours(
               newTeamSiblings,
               task.task.id,
@@ -496,6 +519,7 @@ export function WorldMap() {
               });
             }
 
+            // Handle unassigned tasks (those pushed beyond maxHour)
             for (const id of plan['unassign']) {
               dispatch({
                 type: 'UPDATE_TASK_TEAM',
@@ -518,6 +542,7 @@ export function WorldMap() {
       console.log('Dropped outside Gantt chart');
     }
     
+    // Push the state
     historyManager.push(state.tasks);
   };
 
@@ -940,7 +965,118 @@ export function WorldMap() {
             })}
 
             {(() => {
-              // Build task index map for selected team
+              if (showAllTeams) {
+                const allTeamTasks: Task[] = state.tasks
+                  .filter(task => task.duration.teamId === state.selectedTeamId)
+                  .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
+                const taskIndexMap = new Map<string, number>();
+                allTeamTasks.forEach((task, index) => {
+                  taskIndexMap.set(task.task.id, index + 1);
+                });
+
+                const assignedTasks: Task[] = getVisibleTasks()
+                  .filter(task => task.duration.teamId !== null)
+                  .sort((a, b) => a.duration.startHour - b.duration.startHour);
+
+                const unassignedTasks: Task[] = state.toggledNull
+                  ? getVisibleTasks().filter(task => task.duration.teamId === null)
+                  : [];
+
+                return (
+                  <>
+                    {assignedTasks.map((task) => {
+                      const isSelected: boolean = state.selectedTaskId === task.task.id;
+                      const markerColor: string = getColorForTask(task);
+                      const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+                      const isSelectedTeam = task.duration.teamId === state.selectedTeamId;
+                      const markerIndex = isSelectedTeam ? taskIndexMap.get(task.task.id) : undefined;
+
+                      return (
+                        <Marker
+                          key={task.task.id}
+                          position={wgs84Pos}
+                          icon={isSelectedTeam ? createMarkerIcon(markerColor, isSelected, markerIndex) : createMarkerIcon(markerColor, isSelected)}
+                          eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
+                          zIndexOffset={isSelectedTeam ? 20 : 10}
+                        >
+                          <Popup>
+                            <div className="p-2">
+                              <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                              <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
+                              <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                              <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                <MapPin size={12} />
+                                N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                              </div>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
+
+                    {unassignedTasks.map((task) => {
+                      const isSelected: boolean = state.selectedTaskId === task.task.id;
+                      const markerColor: string = getColorForTask(task);
+                      const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
+
+                      return (
+                        <Marker
+                          key={task.task.id}
+                          position={wgs84Pos}
+                          icon={createUnassignedMarkerIcon(markerColor, isSelected)}
+                          draggable={true}
+                          eventHandlers={{
+                            click: () => handleMarkerClick(task.task.id, 'unassigned'),
+                            dragstart: () => {
+                              document.body.setAttribute('data-dragging-to-gantt', task.task.id || '');
+                            },
+                            dragend: (e) => {
+                              const marker = e.target;
+                              
+                              // Get the container point (pixel coordinates on the map)
+                              const map = marker._map;
+                              const latLng = marker.getLatLng();
+                              const containerPoint = map.latLngToContainerPoint(latLng);
+                              
+                              // Convert to screen coordinates
+                              const mapContainer = map.getContainer();
+                              const rect = mapContainer.getBoundingClientRect();
+                              const mousePosition = { 
+                                x: rect.left + containerPoint.x, 
+                                y: rect.top + containerPoint.y 
+                              };
+                              
+                              // Reset marker to original position immediately
+                              marker.setLatLng(wgs84Pos);
+                              
+                              // Pass both task ID and mouse position to handler
+                              handleMarkerDragEnd(task.task.id, mousePosition);
+                            }
+                          }}
+                          zIndexOffset={30}
+                        >
+                          <Popup>
+                            <div className="p-2">
+                              <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                              <p className="text-sm text-orange-600 font-medium">Unassigned (Draggable)</p>
+                              <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                              <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                <MapPin size={12} />
+                                N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-2 italic">Drag to reposition</p>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
+                  </>
+                )
+              }
+
               const allTeamTasks: Task[] = state.tasks
                 .filter(task => task.duration.teamId === state.selectedTeamId)
                 .sort((a, b) => a.duration.startHour - b.duration.startHour);
@@ -950,71 +1086,21 @@ export function WorldMap() {
                 taskIndexMap.set(task.task.id, index + 1);
               });
 
-              // Get assigned tasks (filtered differently based on showAllTeams)
               const assignedTasks: Task[] = getVisibleTasks()
-                .filter(task => 
-                  showAllTeams 
-                    ? task.duration.teamId !== null 
-                    : task.duration.teamId === state.selectedTeamId
-                )
+                .filter(task => task.duration.teamId === state.selectedTeamId)
                 .sort((a, b) => a.duration.startHour - b.duration.startHour);
 
-              // Get unassigned tasks if toggled
-              const unassignedTasks: Task[] = state.toggledNull
+              const unassignedTasks = state.toggledNull
                 ? getVisibleTasks().filter(task => task.duration.teamId === null)
                 : [];
-
-              // Helper to create unassigned marker drag handlers
-              const createDragHandlers = (task: Task, wgs84Pos: [number, number]) => ({
-                click: () => handleMarkerClick(task.task.id, 'unassigned'),
-                dragstart: () => {
-                  document.body.setAttribute('data-dragging-to-gantt', task.task.id || '');
-                },
-                dragend: (e: any) => {
-                  const marker = e.target;
-                  const map = marker._map;
-                  const latLng = marker.getLatLng();
-                  const containerPoint = map.latLngToContainerPoint(latLng);
-                  const mapContainer = map.getContainer();
-                  const rect = mapContainer.getBoundingClientRect();
-                  const mousePosition = { 
-                    x: rect.left + containerPoint.x, 
-                    y: rect.top + containerPoint.y 
-                  };
-                  marker.setLatLng(wgs84Pos);
-                  handleMarkerDragEnd(task.task.id, mousePosition);
-                }
-              });
-
-              // Helper to render task popup
-              const TaskPopup = ({ task, isUnassigned }: { task: Task; isUnassigned?: boolean }) => (
-                <Popup>
-                  <div className="p-2">
-                    <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
-                    {isUnassigned ? (
-                      <p className="text-sm text-orange-600 font-medium">Unassigned (Draggable)</p>
-                    ) : (
-                      <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
-                    )}
-                    <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
-                    <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                      <MapPin size={12} />
-                      N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
-                    </div>
-                    {isUnassigned && <p className="text-xs text-gray-400 mt-2 italic">Drag to reposition</p>}
-                  </div>
-                </Popup>
-              );
 
               return (
                 <>
                   {assignedTasks.map((task) => {
                     const isSelected: boolean = state.selectedTaskId === task.task.id;
                     const markerColor: string = getColorForTask(task);
+                    const markerIndex: number | undefined = taskIndexMap.get(task.task.id);
                     const wgs84Pos: [number, number] = swerefToWGS84(task.task.lat, task.task.lon);
-                    const isSelectedTeam = task.duration.teamId === state.selectedTeamId;
-                    const markerIndex = isSelectedTeam ? taskIndexMap.get(task.task.id) : undefined;
 
                     return (
                       <Marker
@@ -1022,9 +1108,19 @@ export function WorldMap() {
                         position={wgs84Pos}
                         icon={createMarkerIcon(markerColor, isSelected, markerIndex)}
                         eventHandlers={{ click: () => handleMarkerClick(task.task.id) }}
-                        zIndexOffset={isSelectedTeam ? 20 : 10}
                       >
-                        <TaskPopup task={task} />
+                        <Popup>
+                          <div className="p-2">
+                            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                            <p className="text-sm text-gray-600">Team: {task.duration.teamId === null ? 'Unassigned' : task.duration.teamId}</p>
+                            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <MapPin size={12} />
+                              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                            </div>
+                          </div>
+                        </Popup>
                       </Marker>
                     );
                   })}
@@ -1039,11 +1135,50 @@ export function WorldMap() {
                         key={task.task.id}
                         position={wgs84Pos}
                         icon={createUnassignedMarkerIcon(markerColor, isSelected)}
-                        draggable={true}
-                        eventHandlers={createDragHandlers(task, wgs84Pos)}
+                        draggable={true} // Make it so that the markers position is reset on drag end
+                        eventHandlers={{
+                          click: () => handleMarkerClick(task.task.id, 'unassigned'),
+                          dragstart: () => {
+                            document.body.setAttribute('data-dragging-to-gantt', task.task.id || '');
+                          },
+                          dragend: (e) => {
+                            const marker = e.target;
+                            
+                            // Get the container point (pixel coordinates on the map)
+                            const map = marker._map;
+                            const latLng = marker.getLatLng();
+                            const containerPoint = map.latLngToContainerPoint(latLng);
+                            
+                            // Convert to screen coordinates
+                            const mapContainer = map.getContainer();
+                            const rect = mapContainer.getBoundingClientRect();
+                            const mousePosition = { 
+                              x: rect.left + containerPoint.x, 
+                              y: rect.top + containerPoint.y 
+                            };
+                            
+                            // Reset marker to original position immediately
+                            marker.setLatLng(wgs84Pos);
+                            
+                            // Pass both task ID and mouse position to handler
+                            handleMarkerDragEnd(task.task.id, mousePosition);
+                          }
+                        }}
                         zIndexOffset={30}
                       >
-                        <TaskPopup task={task} isUnassigned />
+                        <Popup>
+                          <div className="p-2">
+                            <h3 className="font-semibold text-gray-800">{task.task.id}</h3>
+                            <p className="text-sm text-orange-600 font-medium">Unassigned (Draggable)</p>
+                            <p className="text-sm text-gray-600">Avvform: {task.task.avvForm}</p>
+                            <p className="text-sm text-gray-600">Barighet: {task.task.barighet}</p>
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <MapPin size={12} />
+                              N: {task.task.lat.toFixed(2)}, E: {task.task.lon.toFixed(2)}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 italic">Drag to reposition</p>
+                          </div>
+                        </Popup>
                       </Marker>
                     );
                   })}

@@ -155,18 +155,10 @@ export function calculateTotalCostBreakdown(
     const productionByPeriod = calculateProductionPerPeriod(assignedTasks, periodBoundaries, undefined, totalHour); 
     const demandByPeriod = calculateDemandPerPeriod(demands);
 
-    console.log('\n========== DEMAND PENALTY & INDUSTRY VALUE CALCULATION ==========');
-    console.log('Period Boundaries:', periodBoundaries.map(p => ({ id: p.id, start: p.total })));
-    console.log('\nProduction by Period:', productionByPeriod);
-    console.log('\nDemand by Period:', demandByPeriod);
-
     let demandCost = 0;
     let industryValue = 0;
 
     if (monthFilter && monthFilter.periods) {
-        console.log('\n--- MONTHLY CALCULATION MODE ---');
-        console.log('Month Filter Periods:', Array.from(monthFilter.periods));
-        
         // Monthly calculation with inventory balance tracking
         const monthPeriodIds = new Set(monthFilter.periods);
         const inventoryBalance: { [key: string]: number } = {};
@@ -179,7 +171,6 @@ export function calculateTotalCostBreakdown(
                 monthPeriodIndices.push(index - 1); // Adjust for productionByPeriod indexing
             }
         });
-        console.log('\nMonth Period Indices:', monthPeriodIndices);
 
         // Extract month-specific production and demand data
         const m0_productionByPeriod: { [key: string]: number[] } = {};
@@ -194,143 +185,78 @@ export function calculateTotalCostBreakdown(
             m0_demandByPeriod[product] = monthPeriodIndices.map(idx => demandByPeriod[product][idx] || 0);
         });
 
-        console.log('\nMonth-Specific Production:', m0_productionByPeriod);
-        console.log('Month-Specific Demand:', m0_demandByPeriod);
-
         // Calculate inventory balance period by period within the month
-        console.log('\n--- INVENTORY BALANCE CALCULATION ---');
         Object.keys(m0_productionByPeriod).forEach(product => {
             let balance = 0;
-            console.log(`\nProduct: ${product}`);
 
             m0_productionByPeriod[product].forEach((production, index) => {
                 const demand = m0_demandByPeriod[product]?.[index] || 0;
-                const previousBalance = balance;
                 balance = balance + production - demand;
-                console.log(`  Period ${index}: Production=${production}, Demand=${demand}, Balance: ${previousBalance} + ${production} - ${demand} = ${balance}`);
             });
 
             inventoryBalance[product] = balance;
-            console.log(`  Final Balance for ${product}: ${balance}`);
         });
 
-        console.log('\n--- DEMAND COST CALCULATION ---');
-        const demandCostBreakdown = demands.map(d => {
+        // Calculate demand cost based on cumulative balance within the month
+        demandCost = demands.map(d => {
             const totalDemand = m0_demandByPeriod[d.Product]?.reduce((sum, val) => sum + val, 0) || 0;
             const balance = inventoryBalance[d.Product] || 0;
             const remainder = balance - totalDemand;
-            
-            console.log(`\nProduct: ${d.Product}`);
-            console.log(`  Total Demand: ${totalDemand}`);
-            console.log(`  Final Balance: ${balance}`);
-            console.log(`  Remainder: ${balance} - ${totalDemand} = ${remainder}`);
 
-            let cost = 0;
             if (remainder > 0) {
                 // Overproduction penalty
-                cost = remainder * d.demand[0].costAboveAckumGoal;
-                console.log(`  Overproduction: ${remainder} × ${d.demand[0].costAboveAckumGoal} = ${cost}`);
+                return remainder * d.demand[0].costAboveAckumGoal;
             } else {
                 // Underproduction penalty
-                cost = -remainder * d.demand[0].costBelowAckumGoal;
-                console.log(`  Underproduction: ${-remainder} × ${d.demand[0].costBelowAckumGoal} = ${cost}`);
+                return -remainder * d.demand[0].costBelowAckumGoal;
             }
-            
-            return cost;
-        });
-        
-        demandCost = demandCostBreakdown.reduce((sum, val) => sum + val, 0);
-        console.log(`\nTotal Demand Cost: ${demandCost}`);
+        }).reduce((sum, val) => sum + val, 0);
 
         // Calculate industry value for the month
-        console.log('\n--- INDUSTRY VALUE CALCULATION ---');
         Object.keys(m0_productionByPeriod).forEach(product => {
             const totalProduction = m0_productionByPeriod[product].reduce((sum, val) => sum + val, 0);
             deliveredVolume[product] = totalProduction;
-            console.log(`Product ${product}: Total Production = ${totalProduction}`);
         });
 
-        const industryValueBreakdown = demands.map(d => {
-            const volume = deliveredVolume[d.Product] || 0;
-            const value = volume * d.value_prod;
-            console.log(`  ${d.Product}: ${volume} × ${d.value_prod} = ${value}`);
-            return value;
-        });
-        
-        industryValue = industryValueBreakdown.reduce((sum, val) => sum + val, 0);
-        console.log(`\nTotal Industry Value: ${industryValue}`);
+        industryValue = demands.map(d => {
+            return (deliveredVolume[d.Product] || 0) * d.value_prod;
+        }).reduce((sum, val) => sum + val, 0);
         
     } else {
-        console.log('\n--- FULL HORIZON CALCULATION MODE ---');
-        
         // Original calculation for full horizon
         const inventoryBalance: { [key: string]: number } = {};
 
-        console.log('\n--- INVENTORY BALANCE CALCULATION ---');
         Object.keys(productionByPeriod).forEach(product => {
             let balance = 0;
-            console.log(`\nProduct: ${product}`);
 
             productionByPeriod[product].forEach((production, index) => {
                 const demand = demandByPeriod[product][index] || 0;
-                const previousBalance = balance;
                 balance = balance + production - demand;
-                console.log(`  Period ${index}: Production=${production}, Demand=${demand}, Balance: ${previousBalance} + ${production} - ${demand} = ${balance}`);
             });
 
             inventoryBalance[product] = balance;
-            console.log(`  Final Balance for ${product}: ${balance}`);
         });
 
-        console.log('\n--- DEMAND COST CALCULATION ---');
-        const demandCostBreakdown = demands.map(d => {
-            const totalDemand = demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
-            const balance = inventoryBalance[d.Product];
-            const remainder = balance - totalDemand;
-            
-            console.log(`\nProduct: ${d.Product}`);
-            console.log(`  Total Demand: ${totalDemand}`);
-            console.log(`  Final Balance: ${balance}`);
-            console.log(`  Remainder: ${balance} - ${totalDemand} = ${remainder}`);
+        demandCost = demands.map(d => {
+            const remainder = inventoryBalance[d.Product] - demandByPeriod[d.Product].reduce((sum, val) => sum + val, 0);
 
-            let cost = 0;
             if (remainder > 0) {
-                cost = remainder * d.demand[0].costAboveAckumGoal;
-                console.log(`  Overproduction: ${remainder} × ${d.demand[0].costAboveAckumGoal} = ${cost}`);
+                return remainder * d.demand[0].costAboveAckumGoal;
             } else {
-                cost = -remainder * d.demand[0].costBelowAckumGoal;
-                console.log(`  Underproduction: ${-remainder} × ${d.demand[0].costBelowAckumGoal} = ${cost}`);
+                return -remainder * d.demand[0].costBelowAckumGoal;
             }
-            
-            return cost;
-        });
-        
-        demandCost = demandCostBreakdown.reduce((sum, val) => sum + val, 0);
-        console.log(`\nTotal Demand Cost: ${demandCost}`);
+        }).reduce((sum, val) => sum + val, 0);
 
-        console.log('\n--- INDUSTRY VALUE CALCULATION ---');
         let deliveredVolume: { [key: string]: number } = {};
         Object.keys(productionByPeriod).forEach(product => {
             const totalProduction = productionByPeriod[product].reduce((sum, val) => sum + val, 0);
             deliveredVolume[product] = totalProduction;
-            console.log(`Product ${product}: Total Production = ${totalProduction}`);
         });
 
-        const industryValueBreakdown = demands.map(d => {
-            const volume = deliveredVolume[d.Product];
-            const value = volume * d.value_prod;
-            console.log(`  ${d.Product}: ${volume} × ${d.value_prod} = ${value}`);
-            return value;
-        });
-        
-        industryValue = industryValueBreakdown.reduce((sum, val) => sum + val, 0);
-        console.log(`\nTotal Industry Value: ${industryValue}`);
+        industryValue = demands.map(d => {
+            return deliveredVolume[d.Product] * d.value_prod;
+        }).reduce((sum, val) => sum + val, 0);
     }
-
-    console.log('\n========== FINAL RESULTS ==========');
-    console.log(`Demand Penalty Cost: ${demandCost}`);
-    console.log(`Industry Value: ${industryValue}`);
-    console.log('===================================\n');
 
     return {
         harvesterCosts: harvesterCosts,

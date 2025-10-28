@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateTotalCostBreakdown } from '../helper/costUtils';
 import { Check, X, Landmark, Undo2, Redo2 } from 'lucide-react';
-import { Task, Month } from '../types';
+import { Task, Month, TransportCosts } from '../types';
 import { historyManager } from '../context/HistoryManager';
 import { tasksEqual } from '../helper/historyUtils';
-import { earliestMonth } from '../helper/monthUtils';
 
 const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
@@ -15,28 +14,36 @@ export function CostsPanel() {
   const isEmpty = !state.periods.length && !state.tasks.length && !state.teams.length && !state.demand.length;
   const hasSnapshot = state.taskSnapshot.length > 0;
 
-  const firstMonth = earliestMonth(state.months);
+  // Get undo/redo state
+  const canUndo = historyManager.canUndo;
+  const canRedo = historyManager.canRedo;
 
-  const transportEntry = state.transportCosts.find(t => t.monthID === firstMonth);
-  const transportCost_m0 = transportEntry?.cost ?? 0;
+  const transportEntry: TransportCosts | undefined = state.transportCosts.find(t => t.monthID === 1);
+
+  const transportCost_m0 = useMemo(() => 
+    (state.transportCosts.length > 0 && transportEntry) ? transportEntry.cost : 0,
+    [state.transportCosts, transportEntry]
+  );
   const transportCost_all = useMemo(() => 
     state.transportCosts.reduce((sum, tc) => sum + tc.cost, 0),
     [state.transportCosts]
   );
 
-  // console.log(
-  //   "Transport costs: ", state.transportCosts, 
-  //   "\nFirst month: ", firstMonth,
-  //   "\nTransport Entry: ", transportEntry, 
-  //   "\nTransportCost_m0: ", transportCost_m0, 
-  //   "\nTransportCost_all: ", transportCost_all
-  // );
+  const newCost = useMemo(() => 
+    calculateTotalCostBreakdown(state.tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
+    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
+  );
+
+  const baseCost = useMemo(() => 
+    calculateTotalCostBreakdown(state.taskSnapshot, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
+    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
+  );
+
+  const costDiff = newCost - baseCost;
+  const isImprovement = costDiff < 0;
 
   const getPieData = (tasks: Task[], month?: Month) => {
-    const costData = calculateTotalCostBreakdown(
-      tasks, selectedTeam, state.teams, state.demand, 
-      state.periods, state.distances, state.totalHours, month
-    );
+    const costData = calculateTotalCostBreakdown(tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, month);
     if (!costData) return [];
 
     const { harvesterCosts, forwarderCosts, travelingCosts, wheelingCosts, trailerCosts, demandCost, industryValue } = costData;
@@ -52,42 +59,49 @@ export function CostsPanel() {
     ].filter(item => item.value > 0);
   };
 
-  const pieDataNew = useMemo(() => getPieData(state.tasks), 
-    [state.tasks, state.teams, state.demand, state.periods, state.distances, selectedTeam]);
-  const pieDataNew_m0 = useMemo(() => getPieData(state.tasks, state.months[0]), 
-    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.months, selectedTeam]);
-  const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), 
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, selectedTeam]);
-  const pieDatabase_m0 = useMemo(() => getPieData(state.taskSnapshot, state.months[0]), 
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months, selectedTeam]);
+  const pieDataNew = useMemo(() => getPieData(state.tasks), [state.tasks, state.teams, state.demand, state.periods, state.distances, selectedTeam]);
+  const pieDataNew_m0 = useMemo(() => getPieData(state.tasks, state.months[0]), [state.tasks, state.teams, state.demand, state.periods, state.distances, state.months, selectedTeam]);
+  const pieDatabase = useMemo(() => getPieData(state.taskSnapshot), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, selectedTeam]);
+  const pieDatabase_m0 = useMemo(() => getPieData(state.taskSnapshot, state.months[0]), [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.months, selectedTeam]);
 
-  const newCost = useMemo(() => 
-    calculateTotalCostBreakdown(state.tasks, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
-    [state.tasks, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
-  );
-
-  const baseCost = useMemo(() => 
-    calculateTotalCostBreakdown(state.taskSnapshot, selectedTeam, state.teams, state.demand, state.periods, state.distances, state.totalHours, undefined).totalCost + transportCost_all,
-    [state.taskSnapshot, state.teams, state.demand, state.periods, state.distances, state.totalHours, transportCost_all, selectedTeam]
-  );
-
-  const costDiff = newCost - baseCost;
-  const isImprovement = costDiff < 0;
-
-  const handleHistoryAction = (action: 'undo' | 'redo') => {
-    const newState = action === 'undo' ? historyManager.undo() : historyManager.redo();
-    if (newState) {
-      dispatch({ type: 'UPDATE_TASKS', tasks: newState });
+  const handleUndo = () => {
+    const previousState = historyManager.undo();
+    if (previousState) {
+      dispatch({ type: 'UPDATE_TASKS', tasks: previousState });
     }
 
-    const isEqual = hasSnapshot && tasksEqual(historyManager.present(), state.taskSnapshot);
-    dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: !isEqual });
+    const hasSnapshot = state.taskSnapshot.length > 0;
+    const isEqual = tasksEqual(historyManager.present(), state.taskSnapshot);
+
+    if (hasSnapshot && isEqual) {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    } else {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+    }
+  };
+
+  const handleRedo = () => {
+    const nextState = historyManager.redo();
+    if (nextState) {
+      dispatch({ type: 'UPDATE_TASKS', tasks: nextState });
+    }
+
+    const hasSnapshot = state.taskSnapshot.length > 0;
+    const isEqual = tasksEqual(historyManager.present(), state.taskSnapshot);
+
+    if (hasSnapshot && isEqual) {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
+    } else {
+      dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: true });
+    }
   };
 
   const onAccept = () => {
     dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
     dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
     historyManager.clear();
+
+    // Re-initialize with current state
     historyManager.init(state.tasks);
   };
 
@@ -101,98 +115,12 @@ export function CostsPanel() {
     dispatch({ type: 'SET_TASKSNAPSHOT', taskSnapshot: [] });
     dispatch({ type: 'TOGGLE_COMPARISON_MODAL', toggledModal: false });
     historyManager.clear();
+
+    // Re-initialize with restored state
     historyManager.init(restoredTasks);
   };
 
-  const getValue = (dataSet: any[], name: string) => 
-    dataSet.find(it => it.name === name)?.displayValue ?? 0;
-
-  const getRowData = (name: string) => {
-    if (name === 'Harvesting') {
-      const types = ['Harvester', 'Forwarder', 'Traveling', 'Wheeling'];
-      const sumValues = (dataSet: any[]) => 
-        types.reduce((sum, type) => sum + getValue(dataSet, type), 0);
-
-      return {
-        baseM0: sumValues(hasSnapshot ? pieDatabase_m0 : pieDataNew_m0),
-        baseAll: sumValues(hasSnapshot ? pieDatabase : pieDataNew),
-        newM0: hasSnapshot ? sumValues(pieDataNew_m0) : 0,
-        newAll: hasSnapshot ? sumValues(pieDataNew) : 0
-      };
-    }
-    
-    if (name === 'Transport') {
-      return {
-        baseM0: transportCost_m0,
-        baseAll: transportCost_all,
-        newM0: transportCost_m0,
-        newAll: transportCost_all
-      };
-    }
-
-    return {
-      baseM0: hasSnapshot ? getValue(pieDatabase_m0, name) : getValue(pieDataNew_m0, name),
-      baseAll: hasSnapshot ? getValue(pieDatabase, name) : getValue(pieDataNew, name),
-      newM0: hasSnapshot ? getValue(pieDataNew_m0, name) : 0,
-      newAll: hasSnapshot ? getValue(pieDataNew, name) : 0
-    };
-  };
-
-  const fmt = (v: number) => new Intl.NumberFormat('sv-SE', {
-    minimumFractionDigits: 0, 
-    maximumFractionDigits: 0
-  }).format(v);
-
-  const renderRow = (name: string, index: number) => {
-    const isTransport = name === 'Transport';
-    const isHarvesting = name === 'Harvesting';
-    const isIndVal = name === 'Ind_value';
-    
-    const { baseM0, baseAll, newM0, newAll } = getRowData(name);
-    const m0Diff = hasSnapshot ? newM0 - baseM0 : 0;
-    const allDiff = hasSnapshot ? newAll - baseAll : 0;
-    const m0Improve = isIndVal ? m0Diff > 0 : m0Diff < 0;
-    const allImprove = isIndVal ? allDiff > 0 : allDiff < 0;
-
-    const getCellClass = (diff: number, improve: boolean, hasValue: boolean) => {
-      if (isTransport) return 'text-gray-400 bg-gray-100';
-      if (!hasSnapshot) return 'text-gray-400';
-      if (!hasValue) return 'text-center';
-      if (diff === 0) return 'bg-gray-50 text-right';
-      return `${improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'} text-right`;
-    };
-
-    const formatDiff = (diff: number, isIndValue: boolean) => {
-      if (diff === 0) return '—';
-      const sign = isIndValue ? (diff >= 0 ? '+' : '-') : (diff <= 0 ? '-' : '+');
-      return `${sign}${fmt(Math.abs(diff))}`;
-    };
-
-    return (
-      <tr key={name} className={`hover:bg-gray-50 ${isHarvesting ? 'border-t-2 border-gray-900' : ''}`}>
-        <td className="border border-gray-300 px-2 py-1">
-          <div className="flex items-center gap-1.5">
-            {!isHarvesting && (
-              <div className="w-2.5 h-2.5 rounded" style={{backgroundColor: PIE_COLORS[index % PIE_COLORS.length]}} />
-            )}
-            <span className={isHarvesting ? 'font-bold' : 'font-medium'}>{name}</span>
-          </div>
-        </td>
-        <td className={`border border-gray-300 px-2 py-1 text-right ${(isTransport || isHarvesting) ? 'italic font-bold' : ''}`}>
-          {baseM0 !== 0 ? fmt(baseM0) : '—'}
-        </td>
-        <td className={`border border-gray-300 px-2 py-1 text-right ${(isTransport || isHarvesting) ? 'italic font-bold' : ''}`}>
-          {baseAll !== 0 ? fmt(baseAll) : '—'}
-        </td>
-        <td className={`border border-gray-300 px-2 py-1 font-medium ${(isTransport || isHarvesting) ? 'italic font-bold' : ''} ${getCellClass(m0Diff, m0Improve, newM0 !== 0)}`}>
-          {isTransport ? '—' : hasSnapshot && newM0 !== 0 ? formatDiff(m0Diff, isIndVal) : '—'}
-        </td>
-        <td className={`border border-gray-300 px-2 py-1 font-medium ${(isTransport || isHarvesting) ? 'italic font-bold' : ''} ${getCellClass(allDiff, allImprove, newAll !== 0)}`}>
-          {isTransport ? '—' : hasSnapshot && newAll !== 0 ? formatDiff(allDiff, isIndVal) : '—'}
-        </td>
-      </tr>
-    );
-  };
+  const fmt = (v: number) => new Intl.NumberFormat('sv-SE', {minimumFractionDigits: 0, maximumFractionDigits: 0}).format(v);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -202,23 +130,32 @@ export function CostsPanel() {
           <h2 className="font-semibold text-gray-800 text-sm">Cost Analysis (SEK)</h2>
         </div>
         <div className="flex items-center gap-2">
+          {/* Undo/Redo buttons */}
           <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-            {[
-              { action: 'undo' as const, icon: Undo2, canDo: historyManager.canUndo, label: 'Undo (Ctrl+Z)' },
-              { action: 'redo' as const, icon: Redo2, canDo: historyManager.canRedo, label: 'Redo (Ctrl+Shift+Z)' }
-            ].map(({ action, icon: Icon, canDo, label }) => (
-              <button
-                key={action}
-                onClick={() => handleHistoryAction(action)}
-                disabled={!canDo}
-                className={`p-1 rounded transition-colors ${
-                  canDo ? 'hover:bg-gray-100 text-gray-700 cursor-pointer' : 'text-gray-300 cursor-not-allowed'
-                }`}
-                title={label}
-              >
-                <Icon size={16} />
-              </button>
-            ))}
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className={`p-1 rounded transition-colors ${
+                canUndo 
+                  ? 'hover:bg-gray-100 text-gray-700 cursor-pointer' 
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={16} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className={`p-1 rounded transition-colors ${
+                canRedo 
+                  ? 'hover:bg-gray-100 text-gray-700 cursor-pointer' 
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <Redo2 size={16} />
+            </button>
           </div>
           
           <label className="text-xs text-gray-600">Team:</label>
@@ -229,12 +166,15 @@ export function CostsPanel() {
           >
             <option value="all">All Teams</option>
             {state.teams.map(team => (
-              <option key={team.id} value={team.id}>{team.id}</option>
+              <option key={team.id} value={team.id}>
+                {team.id}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
+      {/* Rest of your component remains the same */}
       <div className="p-2">
         {isEmpty ? (
           <div className="h-32 flex items-center justify-center text-gray-500 text-xs">
@@ -245,21 +185,138 @@ export function CostsPanel() {
             <div style={{width: 'calc(100% - 200px)'}} className="overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
-                  <thead>
-                    <tr className="bg-gray-100">
-                      {['Type', 'Base (1st)', 'Base (All)', 'New (1st)', 'New (All)'].map(header => (
-                        <th key={header} className="border border-gray-300 px-2 py-1 text-center font-semibold">
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Harvesting', 'Trailer', 'Transport', 'Demand', 'Ind_value'].map((name, i) => 
-                      renderRow(name, i)
-                    )}
-                  </tbody>
-                </table>
+                {/* Your existing table code */}
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Type</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Base (1st)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Base (All)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">New (1st)</th>
+                    <th className="border border-gray-300 px-2 py-1 text-center font-semibold">New (All)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Your existing table rows - keeping all the complex logic intact */}
+                  {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Harvesting', 'Trailer', 'Transport'].map((name, i) => {
+                    const isTransport = name === 'Transport';
+                    const isHarvesting = name === 'Harvesting';
+                    
+                    let baseM0, baseAll, newM0Val, newAll;
+                    
+                    if (isHarvesting) {
+                      const harvBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0);
+                      const forwBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0);
+                      const travBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0);
+                      const wheelBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Wheeling')?.displayValue ?? 0);
+                      
+                      const harvBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Harvester')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Harvester')?.displayValue ?? 0);
+                      const forwBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Forwarder')?.displayValue ?? 0);
+                      const travBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Traveling')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Traveling')?.displayValue ?? 0);
+                      const wheelBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Wheeling')?.displayValue ?? 0);
+                      
+                      const harvNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0) : 0;
+                      const forwNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : 0;
+                      const travNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0) : 0;
+                      const wheelNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : 0;
+                      
+                      const harvNew_all = hasSnapshot ? (pieDataNew.find(it => it.name === 'Harvester')?.displayValue ?? 0) : 0;
+                      const forwNew_all = hasSnapshot ? (pieDataNew.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : 0;
+                      const travNew_all = hasSnapshot ? (pieDataNew.find(it => it.name === 'Traveling')?.displayValue ?? 0) : 0;
+                      const wheelNew_all = hasSnapshot ? (pieDataNew.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : 0;
+                      
+                      baseM0 = harvBase_m0 + forwBase_m0 + travBase_m0 + wheelBase_m0;
+                      baseAll = harvBase_all + forwBase_all + travBase_all + wheelBase_all;
+                      newM0Val = harvNew_m0 + forwNew_m0 + travNew_m0 + wheelNew_m0;
+                      newAll = harvNew_all + forwNew_all + travNew_all + wheelNew_all;
+                    } else if (isTransport) {
+                      baseM0 = transportCost_m0;
+                      baseAll = transportCost_all;
+                      newM0Val = transportCost_m0;
+                      newAll = transportCost_all;
+                    } else {
+                      const newItem = pieDataNew.find(it => it.name === name);
+                      const newM0 = pieDataNew_m0.find(it => it.name === name);
+                      const prevItem = pieDatabase.find(it => it.name === name);
+                      const prevM0 = pieDatabase_m0.find(it => it.name === name);
+                      
+                      baseM0 = hasSnapshot ? (prevM0?.displayValue ?? 0) : (newM0?.displayValue ?? 0);
+                      baseAll = hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0);
+                      newM0Val = hasSnapshot ? (newM0?.displayValue ?? 0) : 0;
+                      newAll = hasSnapshot ? (newItem?.displayValue ?? 0) : 0;
+                    }
+                    
+                    const m0Diff = hasSnapshot ? newM0Val - baseM0 : 0;
+                    const allDiff = hasSnapshot ? newAll - baseAll : 0;
+                    const m0Improve = m0Diff < 0;
+                    const allImprove = allDiff < 0;
+                    
+                    return (
+                      <tr key={name} className={`hover:bg-gray-50 ${name === 'Harvesting' ? 'border-t-2 border-gray-900' : ''}`}>
+                        <td className="border border-gray-300 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            {!isHarvesting && <div className="w-2.5 h-2.5 rounded" style={{backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} />}
+                            <span className={`${isHarvesting ? 'font-bold' : 'font-medium'}`}>{name}</span>
+                          </div>
+                        </td>
+                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''} ${
+                          isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {isTransport ? '—' : hasSnapshot && newM0Val !== 0 ? `${m0Diff <= 0 ? '-' : '+'}${fmt(Math.abs(m0Diff))}` : '—'}
+                        </td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''} ${
+                          isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {isTransport ? '—' : hasSnapshot && newAll !== 0 ? `${allDiff <= 0 ? '-' : '+'}${fmt(Math.abs(allDiff))}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  {['Demand', 'Ind_value'].map((name, idx) => {
+                    const i = 6 + idx;
+                    const newItem = pieDataNew.find(it => it.name === name);
+                    const newM0 = pieDataNew_m0.find(it => it.name === name);
+                    const prevItem = pieDatabase.find(it => it.name === name);
+                    const prevM0 = pieDatabase_m0.find(it => it.name === name);
+                    
+                    const baseM0 = hasSnapshot ? (prevM0?.displayValue ?? 0) : (newM0?.displayValue ?? 0);
+                    const baseAll = hasSnapshot ? (prevItem?.displayValue ?? 0) : (newItem?.displayValue ?? 0);
+                    const newM0Val = hasSnapshot ? (newM0?.displayValue ?? 0) : 0;
+                    const newAll = hasSnapshot ? (newItem?.displayValue ?? 0) : 0;
+                    
+                    const m0Diff = hasSnapshot ? newM0Val - baseM0 : 0;
+                    const allDiff = hasSnapshot ? newAll - baseAll : 0;
+                    const isIndVal = name === 'Ind_value';
+                    const m0Improve = isIndVal ? m0Diff > 0 : m0Diff < 0;
+                    const allImprove = isIndVal ? allDiff > 0 : allDiff < 0;
+                    
+                    return (
+                      <tr key={name} className={`hover:bg-gray-50`}>
+                        <td className="border border-gray-300 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded" style={{backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} />
+                            <span className="font-medium">{name}</span>
+                          </div>
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 ? 'text-right' : 'text-center'} font-medium ${
+                          !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {hasSnapshot && newM0Val !== 0 ? `${isIndVal ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+')}${fmt(Math.abs(m0Diff))}` : '—'}
+                        </td>
+                        <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 ? 'text-right' : 'text-center'} font-medium ${
+                          !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
+                        }`}>
+                          {hasSnapshot && newAll !== 0 ? `${isIndVal ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+')}${fmt(Math.abs(allDiff))}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
               </div>
             </div>
             

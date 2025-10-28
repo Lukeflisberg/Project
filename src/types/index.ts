@@ -26,7 +26,7 @@ export interface AssortmentsGraph {
 }
 
 export interface TransportCosts {
-  monthID: string;
+  monthID: number;
   cost: number;
 }
 
@@ -148,7 +148,7 @@ export interface Resource {
     p15: number;
     p16: number;
   }
-} 
+} // Here. Change the entry to be [p1, p2, p3...]
 
 export interface Demand {
   Product: string;
@@ -156,7 +156,6 @@ export interface Demand {
   demand: {
     period: string;
     demand: number;
-    demand_goal: number;
     costBelowAckumGoal: number;
     costAboveAckumGoal: number;
   }[]
