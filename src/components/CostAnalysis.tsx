@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateTotalCostBreakdown } from '../helper/costUtils';
 import { Check, X, Landmark, Undo2, Redo2 } from 'lucide-react';
 import { Task, Month, TransportCosts } from '../types';
 import { historyManager } from '../context/HistoryManager';
 import { tasksEqual } from '../helper/historyUtils';
+import { firstMonth } from '../helper/monthUtils';
 
 const PIE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#adadadff'];
 
@@ -18,7 +19,7 @@ export function CostsPanel() {
   const canUndo = historyManager.canUndo;
   const canRedo = historyManager.canRedo;
 
-  const transportEntry: TransportCosts | undefined = state.transportCosts.find(t => t.monthID === 1);
+  const transportEntry: TransportCosts | undefined = state.transportCosts.find(t => t.monthID === firstMonth(state.months));
 
   const transportCost_m0 = useMemo(() => 
     (state.transportCosts.length > 0 && transportEntry) ? transportEntry.cost : 0,

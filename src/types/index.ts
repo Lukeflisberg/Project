@@ -26,7 +26,7 @@ export interface AssortmentsGraph {
 }
 
 export interface TransportCosts {
-  monthID: number;
+  monthID: string;
   cost: number;
 }
 
@@ -203,14 +203,6 @@ export interface AppState {
   productionGoals: ProductionGoals[];
   assortments_graph: AssortmentsGraph[];
   transportCosts: TransportCosts[];
-}
-
-export interface ColorPalettes {
-  avvForm: {
-    '�A': string;
-    'GA': string;
-    'SA': string;
-  };
 }
 
 export interface QuantityByPeriod {

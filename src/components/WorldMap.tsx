@@ -3,7 +3,7 @@ import { useMapEvents, MapContainer, TileLayer, Marker, Popup, useMap } from 're
 import L from 'leaflet';
 import { Map as MapIcon, MapPin, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { ColorPalettes, Task, Team } from '../types';
+import { Task, Team } from '../types';
 import { planSequentialLayoutHours, isDisallowed } from '../helper/taskUtils';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
@@ -15,12 +15,14 @@ const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 47
 proj4.defs('EPSG:3006', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
 proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
 
-const COLOR_PALETTES: ColorPalettes = {
-  avvForm: {
-    '�A': '#FF3B30',
-    'GA': '#00D4AA',
-    'SA': '#007AFF',
-  },
+const getAvvFormColorPalette = (uniqueAvvForm: string[]): Record<string, string> => {
+  const colors = ['#FF3B30', '#00D4AA', '#007AFF', '#A8E6CF', '#FFD3B6', '#FFAAA5'];
+  const palette: Record<string, string> = {};
+  uniqueAvvForm.forEach((avvForm, index) => {
+    palette[avvForm] = colors[index % colors.length];
+  });
+
+  return palette;
 };
 
 const getBarighetColorPalette = (uniqueBarighet: string[]): Record<string, string> => {
@@ -81,7 +83,7 @@ export function WorldMap() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>(['�A', 'GA', 'SA']);
+  const [selectedAvvForm, setSelectedAvvForm] = useState<string[]>([]);
   const [selectedBarighet, setSelectedBarighet] = useState<string[]>([]);
   const [showAvvFormPopup, setShowAvvFormPopup] = useState(false);
   const [showBarighetPopup, setShowBarighetPopup] = useState(false);
@@ -199,8 +201,8 @@ export function WorldMap() {
       if (mode === 'none') return state.defaultColor;
 
       if (mode === 'avvForm') {
-        const formType = task.task.avvForm as keyof typeof COLOR_PALETTES.avvForm;
-        return COLOR_PALETTES.avvForm[formType] || state.defaultColor;
+        const avvFormPalette = getAvvFormColorPalette(getUniqueAvvForm());
+        return avvFormPalette[task.task.avvForm] || state.defaultColor;
       }
 
       if (mode === 'barighet') {
@@ -341,12 +343,12 @@ export function WorldMap() {
   const getTaskConnectionLines = () => {
     if (state.selectedTeamId === null) return [];
 
-    const allAvvForms = ['�A', 'GA', 'SA'];
+    const allAvvForms = getUniqueAvvForm();
     const allBarighet = getUniqueBarighet();
-
+    
     const isAvvFormFiltered = selectedAvvForm.length !== allAvvForms.length;
     const isBarighetFiltered = selectedBarighet.length !== allBarighet.length;
-
+    
     if (isAvvFormFiltered || isBarighetFiltered) return [];
 
     const firstMonth = state.months[0];
@@ -566,6 +568,16 @@ export function WorldMap() {
     console.log("Toggled null");
   }
 
+  const getUniqueAvvForm = () => {
+    const avvFormValues = new Set<string>();
+    state.tasks.forEach(task => {
+      if (task.task.barighet) {
+        avvFormValues.add(task.task.avvForm);
+      }
+    });
+    return Array.from(avvFormValues).sort();
+  };
+
   const getUniqueBarighet = () => {
     const barighetValues = new Set<string>();
     state.tasks.forEach(task => {
@@ -575,6 +587,13 @@ export function WorldMap() {
     });
     return Array.from(barighetValues).sort();
   };
+
+  useEffect(() => {
+    const uniqueAvvForm = getUniqueAvvForm();
+    if (selectedAvvForm.length === 0 && uniqueAvvForm.length > 0) {
+      setSelectedAvvForm(uniqueAvvForm);
+    }
+  }, [state.tasks]);
 
   useEffect(() => {
     const uniqueBarighet = getUniqueBarighet();
@@ -834,7 +853,9 @@ export function WorldMap() {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {['�A', 'GA', 'SA'].map(form => (
+                    {getUniqueAvvForm().map(form => {
+                      const avvFormPalette = getAvvFormColorPalette(getUniqueAvvForm());
+                      return (
                       <label key={form} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                         <input
                           type="checkbox"
@@ -845,12 +866,13 @@ export function WorldMap() {
                         {colorMode === 'avvForm' && (
                           <div
                             className="w-4 h-4 rounded border border-gray-300"
-                            style={{ backgroundColor: COLOR_PALETTES.avvForm[form as keyof typeof COLOR_PALETTES.avvForm] }}
+                            style={{ backgroundColor: avvFormPalette[form] }}
                           />
                         )}
                         <span className="text-sm text-gray-700">{form}</span>
                       </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

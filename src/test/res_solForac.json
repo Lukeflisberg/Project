@@ -1,9 +1,9 @@
 {
   "transportCosts": [
-{"monthID":2, "cost":163959.94},
-{"monthID":3, "cost":152634.42},
-{"monthID":4, "cost":137661.51},
-{"monthID":1, "cost":143454.76}],
+{"monthID":" okt", "cost":163959.94},
+{"monthID":" nov", "cost":152634.42},
+{"monthID":" dec", "cost":137661.51},
+{"monthID":" sep", "cost":143454.76}],
   "solution":[
     {"team":"23611", "tasks":[
     {"task":"T359", "start": 0.0000},
