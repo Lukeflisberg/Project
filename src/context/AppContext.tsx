@@ -159,7 +159,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'UPDATE_TASK_HOURS': {
-      console.log('🔥 REDUCER: UPDATE_TASK_HOURS called for', action.taskId);
+      // console.log('🔥 REDUCER: UPDATE_TASK_HOURS called for', action.taskId);
       const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
           ? { 
@@ -178,7 +178,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'BATCH_UPDATE_TASK_HOURS': {
-      console.log('🔥 REDUCER: BATCH_UPDATE_TASK_HOURS called with', action.updates.length, 'updates');
+      // console.log('🔥 REDUCER: BATCH_UPDATE_TASK_HOURS called with', action.updates.length, 'updates');
       
       // Create a Map for O(1) lookup of updates by taskId
       const updateMap = new Map(action.updates.map(u => [u.taskId, u]));
