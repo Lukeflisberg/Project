@@ -16,8 +16,8 @@ export function CostsPanel() {
   const hasSnapshot = state.taskSnapshot.length > 0;
 
   // Get undo/redo state
-  const canUndo = historyManager.canUndo;
-  const canRedo = historyManager.canRedo;
+  const canUndo = state.historyIndex > 0;
+  const canRedo = state.historyIndex < state.historyLength - 1;
 
   const transportEntry: TransportCosts | undefined = state.transportCosts.find(t => t.monthID === firstMonth(state.months));
 
@@ -69,6 +69,13 @@ export function CostsPanel() {
     const previousState = historyManager.undo();
     if (previousState) {
       dispatch({ type: 'UPDATE_TASKS', tasks: previousState });
+
+      // Update history state
+      dispatch({
+        type: 'UPDATE_HISTORY_STATE',
+        historyIndex: historyManager.currentIndex,
+        historyLength: historyManager.length
+      });
     }
 
     const hasSnapshot = state.taskSnapshot.length > 0;
@@ -85,6 +92,13 @@ export function CostsPanel() {
     const nextState = historyManager.redo();
     if (nextState) {
       dispatch({ type: 'UPDATE_TASKS', tasks: nextState });
+
+      // Update history state
+      dispatch({
+        type: 'UPDATE_HISTORY_STATE',
+        historyIndex: historyManager.currentIndex,
+        historyLength: historyManager.length
+      });
     }
 
     const hasSnapshot = state.taskSnapshot.length > 0;

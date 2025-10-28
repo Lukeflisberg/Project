@@ -28,7 +28,26 @@ export function GanttChart() {
   const [, setSnapLeftPct] = useState<number | null>(null);
   const [, setDragOffsetOcc] = useState(0);
   const [dragHoverTaskId, setDragHoverTaskId] = useState<string | null>(null);
+
   const ganttRef = useRef<HTMLDivElement>(null);
+
+  // track when we should push to history
+  const shouldPushToHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (shouldPushToHistoryRef.current) {
+      shouldPushToHistoryRef.current = false;
+      historyManager.push(state.tasks);
+      console.log('Pushed to history after state update');
+
+      // Update history state in context
+      dispatch({
+        type: 'UPDATE_HISTORY_STATE',
+        historyIndex: historyManager.currentIndex,
+        historyLength: historyManager.length
+      });
+    }
+  }, [state.tasks, dispatch]);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -160,7 +179,7 @@ export function GanttChart() {
       }))
     });
     
-    console.log('created snapshot');
+    // console.log('created snapshot');
   }
 
     dispatch({ type: 'SET_SELECTED_TASK', taskId: null, toggle_team: state.selectedTeamId });
@@ -294,7 +313,7 @@ export function GanttChart() {
         // 1) Snap to neighbor edges (priority at drop)
         const snapNow = getSnapAt(evt.clientX, evt.clientY, taskId);
         if (snapNow) {
-          console.log("Attempting to snap to neighbour edges");
+          // console.log("Attempting to snap to neighbour edges");
           const target = state.tasks.find(t => t.task.id === snapNow.taskId);
           if (target) {
             const desiredStart = snapNow.side === 'left'
@@ -323,12 +342,12 @@ export function GanttChart() {
               }));
 
               if (batchUpdates.length > 0) {
-                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                 dispatch({
                   type: 'BATCH_UPDATE_TASK_HOURS',
                   updates: batchUpdates
                 });
-                console.log("Success");
+                // console.log("Success");
               }
               taskUpdated = true;
             } else {
@@ -352,12 +371,12 @@ export function GanttChart() {
               }));
 
               if (batchUpdates.length > 0) {
-                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                 dispatch({
                   type: 'BATCH_UPDATE_TASK_HOURS',
                   updates: batchUpdates
                 });
-                console.log("Success");
+                // console.log("Success");
               }
               taskUpdated = true;
             }
@@ -366,24 +385,24 @@ export function GanttChart() {
 
         // 2) Unassign the task
         if (!taskUpdated) {
-          const unassignedMenu = document.querySelector('.unassigned-tasks-container');
+          // const unassignedMenu = document.querySelector('.unassigned-tasks-container');
           const worldmap = document.querySelector('.world-map-container');
           
-          if (unassignedMenu) {
-            console.log("Attempting to move task to unassignedMenu");
-            const r = unassignedMenu.getBoundingClientRect();
-            if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
-              console.log("Success")
-              dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: null });
-              taskUpdated = true;
-            } 
-          }
+          // if (unassignedMenu) {
+          //   // console.log("Attempting to move task to unassignedMenu");
+          //   const r = unassignedMenu.getBoundingClientRect();
+          //   if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
+          //     // console.log("Success")
+          //     dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: null });
+          //     taskUpdated = true;
+          //   } 
+          // }
 
           if (!taskUpdated && worldmap) {
-            console.log("Attempting to move task to worldmap");
+            // console.log("Attempting to move task to worldmap");
             const r = worldmap.getBoundingClientRect();
             if (evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom) {
-              console.log("Success")
+              // console.log("Success")
               dispatch({ type: 'UPDATE_TASK_TEAM', taskId, newTeamId: null });
               taskUpdated = true;
             } 
@@ -393,7 +412,7 @@ export function GanttChart() {
         if (!taskUpdated) {
           // 3) Direct drop onto task body
           {
-            console.log("Attempting to drop task onto other task body");
+            // console.log("Attempting to drop task onto other task body");
             const targetTeamId = getTeamFromMousePosition(evt.clientY);
             const timeline = ganttRef.current?.querySelector('.timeline-content') as HTMLElement | null;
             const rect = timeline?.getBoundingClientRect();
@@ -451,12 +470,12 @@ export function GanttChart() {
                     }));
 
                     if (batchUpdates.length > 0) {
-                      console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                      // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                       dispatch({
                         type: 'BATCH_UPDATE_TASK_HOURS',
                         updates: batchUpdates
                       });
-                      console.log("Success");
+                      // console.log("Success");
                     }
                     taskUpdated = true;
                   } else {
@@ -485,12 +504,12 @@ export function GanttChart() {
                       }));
 
                       if (batchUpdates.length > 0) {
-                        console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                        // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                         dispatch({
                           type: 'BATCH_UPDATE_TASK_HOURS',
                           updates: batchUpdates
                         });
-                        console.log("Success");
+                        // console.log("Success");
                       }
                       taskUpdated = true;
                     }
@@ -502,7 +521,7 @@ export function GanttChart() {
 
           // 4) Snap to neighbor edges (deferred)
           if (snapTarget && !taskUpdated) {
-            console.log("Attempting deffered snap to neightbor edges");
+            // console.log("Attempting deffered snap to neightbor edges");
             const target = state.tasks.find(t => t.task.id === snapTarget.taskId);
             if (isDisallowed(currentTask, snapTarget.teamId)) {
               // skip disallowed team assignment
@@ -526,12 +545,12 @@ export function GanttChart() {
                 }));
 
                 if (batchUpdates.length > 0) {
-                  console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                  // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                   dispatch({
                     type: 'BATCH_UPDATE_TASK_HOURS',
                     updates: batchUpdates
                   });
-                  console.log("Success");
+                  // console.log("Success");
                 }
                 taskUpdated = true;
               } else {
@@ -555,12 +574,12 @@ export function GanttChart() {
                 }));
 
                 if (batchUpdates.length > 0) {
-                  console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                  // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                   dispatch({
                     type: 'BATCH_UPDATE_TASK_HOURS',
                     updates: batchUpdates
                   });
-                  console.log("Success");
+                  // console.log("Success");
                 }
                 taskUpdated = true;
               }
@@ -569,7 +588,7 @@ export function GanttChart() {
 
           // 5) Combined horizontal/vertical shift
           if (!taskUpdated) {
-            console.log("Attempting to combine horizontal and vertical shift");
+            // console.log("Attempting to combine horizontal and vertical shift");
             const timelineContent = ganttRef.current?.querySelector('.timeline-content');
             const rect = timelineContent?.getBoundingClientRect();
             const hasHoriz = !!rect && Math.abs(finalOffset.x) > 5;
@@ -582,7 +601,7 @@ export function GanttChart() {
 
             // Prevent drop in invalid period for horizontal/vertical moves
             if (proposedStart >= totalHours || isInInvalidPeriod(currentTask, proposedStart, proposedEnd, periods, periodOffsets)) {
-              console.log("Invalid Period");
+              // console.log("Invalid Period");
               cancelDrag();
               return;
             }
@@ -609,12 +628,12 @@ export function GanttChart() {
               }));
 
               if (batchUpdates.length > 0) {
-                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                 dispatch({
                   type: 'BATCH_UPDATE_TASK_HOURS',
                   updates: batchUpdates
                 });
-                console.log("Success");
+                // console.log("Success");
               }
 
               for (const id of plan['unassign']) {
@@ -624,7 +643,7 @@ export function GanttChart() {
                   newTeamId: null
                 });
               }
-              console.log("Success");
+              // console.log("Success");
               taskUpdated = true;
 
             } else if (hasHoriz && ganttRef.current) {
@@ -645,12 +664,12 @@ export function GanttChart() {
               }));
 
               if (batchUpdates.length > 0) {
-                console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
+                // console.log('📤 DISPATCHING BATCH_UPDATE_TASK_HOURS with', batchUpdates.length, 'updates');
                 dispatch({
                   type: 'BATCH_UPDATE_TASK_HOURS',
                   updates: batchUpdates
                 });
-                console.log("Success");
+                // console.log("Success");
               }
 
               for (const id of plan['unassign']) {
@@ -660,7 +679,7 @@ export function GanttChart() {
                   newTeamId: null
                 });
               }
-              console.log("Success");
+              // console.log("Success");
               taskUpdated = true;
             }
           }
@@ -677,14 +696,14 @@ export function GanttChart() {
         const teamId = state.tasks.find(t => t.task.id === taskId)?.duration.teamId ?? 'all';
 
         dispatch({ type: 'SET_SELECTED_TASK', taskId, toggle_team: teamId });
-        console.log("Clicked on task", taskId);
+        // console.log("Clicked on task", taskId);
       }
 
       // Cleanup drag state and listeners
       cancelDrag();
     
-      // Push the state
-      historyManager.push(state.tasks);
+      // Schedule push
+      shouldPushToHistoryRef.current = true;
     };
 
     // Add global mouse event listeners for drag
@@ -695,7 +714,7 @@ export function GanttChart() {
   // Handler for importing data from a file
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch({ type: 'RESET_STATE' });
-    console.log("Reset state: ", state.tasks, state.teams, state.periods);
+    // console.log("Reset state: ", state.tasks, state.teams, state.periods);
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -727,8 +746,8 @@ export function GanttChart() {
         periods: formattedPeriods
       });
       _formattedPeriods = formattedPeriods;
-      console.log("Imported Periods: ", formattedPeriods);
-      console.log("Total hours: ", _totalHours);
+      // console.log("Imported Periods: ", formattedPeriods);
+      // console.log("Total hours: ", _totalHours);
     } 
 
     if (_formattedPeriods === null) {
@@ -749,19 +768,19 @@ export function GanttChart() {
     // Import months
     if (result.months && Array.isArray(result.months)) {
       dispatch({ type: 'SET_MONTHS', months: result.months });
-      console.log("Imported months: ", result.months);
+      // console.log("Imported months: ", result.months);
     }
 
     // Import production goals
     if (result.productionGoals && Array.isArray(result.productionGoals)) {
       dispatch({ type: 'SET_PRODUCTION_GOALS', productionGoals: result.productionGoals})
-      console.log("Imported Production Goals: ", result.productionGoals);
+      // console.log("Imported Production Goals: ", result.productionGoals);
     }
 
     // Import teams 
     if (result.teams && Array.isArray(result.teams)) {
       dispatch({ type: 'UPDATE_TEAMS', teams: result.teams });
-      console.log("Imported Teams: ", result.teams);
+      // console.log("Imported Teams: ", result.teams);
     }
 
     // Import tasks
@@ -822,7 +841,7 @@ export function GanttChart() {
       });
 
       dispatch({ type: 'UPDATE_TASKS', tasks: formattedTasks });
-      console.log("Imported Tasks: ", formattedTasks);
+      // console.log("Imported Tasks: ", formattedTasks);
     }
 
     // Import Resources
@@ -856,25 +875,25 @@ export function GanttChart() {
         type: 'SET_RESOURCES',
         resources: formattedResources
       });
-      console.log("Imported Resources: ", formattedResources);
+      // console.log("Imported Resources: ", formattedResources);
     }
 
     // Import Demand
     if (result.Demand && Array.isArray(result.Demand)) {
       dispatch({ type: 'SET_DEMAND', demand: result.Demand });
-      console.log("Imported Demand: ", result.Demand);
+      // console.log("Imported Demand: ", result.Demand);
     }
 
     // Import Assortments Graph
     if (result.assortments_graph && Array.isArray(result.assortments_graph)) {
       dispatch({ type: 'SET_ASSORTMENTS_GRAPH', assortmentsGraph: result.assortments_graph });
-      console.log("Imported Assortments Graph: ", result.assortments_graph);
+      // console.log("Imported Assortments Graph: ", result.assortments_graph);
     }
 
     // Import Distances
     if (result.Distances && Array.isArray(result.Distances)) {
       dispatch({ type: 'SET_DISTANCES', distances: result.Distances });
-      console.log("Imported Distances: ", result.Distances);
+      // console.log("Imported Distances: ", result.Distances);
     }
   };
 
@@ -890,7 +909,7 @@ export function GanttChart() {
 
     if (result.transportCosts && Array.isArray(result.transportCosts)) {
       dispatch({ type: 'SET_TRANSPORT_COSTS', transportCosts: result.transportCosts });
-      console.log("Imported Transport Costs: ", result.transportCosts);
+      // console.log("Imported Transport Costs: ", result.transportCosts);
     }
 
     // Reset the teams of all tasks
@@ -902,7 +921,7 @@ export function GanttChart() {
       })
     }
 
-    console.log("Reset all teams");
+    // console.log("Reset all teams");
 
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
@@ -915,7 +934,7 @@ export function GanttChart() {
             });
           } 
           else {
-            console.log("Failed to assign task to team. Team does not exist in current list", team, state.teams, state.teams.some(item => item.id === team));
+            // console.log("Failed to assign task to team. Team does not exist in current list", team, state.teams, state.teams.some(item => item.id === team));
           }
 
           // Update local copy after dispatch
@@ -943,34 +962,34 @@ export function GanttChart() {
       }
     }
 
-    console.log("Updated tasks");
+    // console.log("Updated tasks");
 
     // Resolve overlaps
     const totalTasks: Task[] = _tasks;
     const totalTeams: Team[] = state.teams; 
 
-    console.log("Resolving overlaps...");
-    console.log("Total teams: ", totalTeams.length);
+    // console.log("Resolving overlaps...");
+    // console.log("Total teams: ", totalTeams.length);
 
     for (const p of totalTeams) {
       const teamSiblings = totalTasks
         .filter(t => t.duration.teamId === p.id)
         .sort((a, b) => occStart(a) - occStart(b));
 
-      console.log("Siblings: ", teamSiblings, teamSiblings.length);
+      // console.log("Siblings: ", teamSiblings, teamSiblings.length);
 
       for (let i = 1; i < teamSiblings.length; i++) {
         const prev = teamSiblings[i - 1];
         const curr = teamSiblings[i];
 
-        console.log('');
-        console.log(`Prev: [${prev.duration.startHour}->${endHour(prev)}]`);
-        console.log(`Curr: [${curr.duration.startHour}->${endHour(curr)}]`);
+        // console.log('');
+        // console.log(`Prev: [${prev.duration.startHour}->${endHour(prev)}]`);
+        // console.log(`Curr: [${curr.duration.startHour}->${endHour(curr)}]`);
 
         // If the current start before prev ends -> overlap
         if (curr.duration.startHour < endHour(prev)) {
           let newStart = endHour(prev);
-          console.log(`Overlap detected. Initial newStart: ${newStart}`);
+          // console.log(`Overlap detected. Initial newStart: ${newStart}`);
 
           // Check if newStart is in a valid period for curr
           while (newStart < totalHours) {
@@ -1005,7 +1024,7 @@ export function GanttChart() {
           // If the end is out of range or couldnt find valid period
           if (newStart >= totalHours || 
               !isInValidPeriod(curr, newStart, effectiveDuration(curr), state.periods)) {
-            console.log(`${newStart} will be out of range or in invalid period for ${totalHours}`);
+            // console.log(`${newStart} will be out of range or in invalid period for ${totalHours}`);
             dispatch({
               type: 'UPDATE_TASK_TEAM',
               taskId: curr.task.id,
@@ -1017,7 +1036,7 @@ export function GanttChart() {
             i--; 
           } 
           else {
-            console.log(`Moving curr to ${newStart}`);
+            // console.log(`Moving curr to ${newStart}`);
             dispatch({
               type: 'UPDATE_TASK_HOURS',
               taskId: curr.task.id,
@@ -1031,7 +1050,7 @@ export function GanttChart() {
         } else {
           // Ensure it doesn't overflow
           if (curr.duration.startHour >= totalHours) {
-            console.log(`Curr is overflowing. Curr starts at ${curr.duration.startHour} but totalHours is only ${totalHours}`);
+            // console.log(`Curr is overflowing. Curr starts at ${curr.duration.startHour} but totalHours is only ${totalHours}`);
             dispatch({
               type: 'UPDATE_TASK_TEAM',
               taskId: curr.task.id,
@@ -1042,9 +1061,13 @@ export function GanttChart() {
       }
     }
 
-    useEffect(() => {
-      historyManager.init(state.tasks);
-    }, []);
+    historyManager.init(_tasks);
+
+    dispatch({
+      type: 'UPDATE_HISTORY_STATE',
+      historyIndex: historyManager.currentIndex,
+      historyLength: historyManager.length
+    });
   }  
 
   // ----------------------

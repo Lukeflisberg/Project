@@ -535,6 +535,7 @@ export function WorldMap() {
               type: 'TOGGLE_COMPARISON_MODAL',
               toggledModal: true
             });
+            historyManager.push(state.tasks);
             
             break;
           }
@@ -544,7 +545,7 @@ export function WorldMap() {
       console.log('Dropped outside Gantt chart');
     }
     
-    // Push the state
+    // In case a push is missed
     historyManager.push(state.tasks);
   };
 

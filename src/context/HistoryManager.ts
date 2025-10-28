@@ -8,6 +8,8 @@ class HistoryManager {
     init(initialTasks: Task[]) {
         this.history = [this.deepCopyTasks(initialTasks)];
         this.index = 0;
+
+        // console.log(`init called \nlength: (${this.history.length}) \nindex: (${this.index})`);
     }
 
     clear() {
@@ -27,11 +29,16 @@ class HistoryManager {
         // Store deep copy
         this.history.push(this.deepCopyTasks(tasks));
         this.index++;
+
+        // console.log(`pushed called \nlength: (${this.history.length}) \nindex: (${this.index})`);
     }
 
     undo(): Task[] | null {
         if (this.index > 0) {
             this.index--;
+
+            // console.log(`undo called \nlength: (${this.history.length}) \nindex: (${this.index})`);
+
             return this.deepCopyTasks(this.history[this.index]);
         }
         return null;
@@ -40,6 +47,9 @@ class HistoryManager {
     redo(): Task[] | null {
         if (this.index < this.history.length - 1) {
             this.index++;
+
+            // console.log(`redo called \nlength: (${this.history.length}) \nindex: (${this.index})`);
+        
             return this.deepCopyTasks(this.history[this.index]);
         }
         return null;

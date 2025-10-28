@@ -192,6 +192,9 @@ export interface AppState {
   toggledDrop: boolean;
   toggledModal: boolean;
 
+  historyIndex: number;
+  historyLength: number;
+
   tasks: Task[];
   teams: Team[];
   periods: Period[];  

@@ -33,6 +33,7 @@ type AppAction =
 
   | { type: 'UPDATE_TASKS'; tasks: Task[] }
   | { type: 'UPDATE_TEAMS'; teams: Team[] }
+  | { type: 'UPDATE_HISTORY_STATE'; historyIndex: number; historyLength: number }
 
   | { type: 'RESET_STATE' }
 
@@ -55,6 +56,9 @@ const initialState: AppState = {
   toggledNull: false,
   toggledDrop: false,
   toggledModal: false,
+
+  historyIndex: -1,
+  historyLength: 0,
 
   tasks: [],
   teams: [],
@@ -146,6 +150,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 
     case 'UPDATE_TASK_TEAM': {
+      // console.log('task team');
       const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
           ? { ...task, duration: { ...task.duration, teamId: action.newTeamId } }
@@ -159,7 +164,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'UPDATE_TASK_HOURS': {
-      console.log('🔥 REDUCER: UPDATE_TASK_HOURS called for', action.taskId);
+      // console.log('task hour');
       const updatedTasks = state.tasks.map(task =>
         task.task.id === action.taskId
           ? { 
@@ -178,7 +183,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     };
 
     case 'BATCH_UPDATE_TASK_HOURS': {
-      console.log('🔥 REDUCER: BATCH_UPDATE_TASK_HOURS called with', action.updates.length, 'updates');
+      // console.log('batch task hour');
       
       // Create a Map for O(1) lookup of updates by taskId
       const updateMap = new Map(action.updates.map(u => [u.taskId, u]));
@@ -209,6 +214,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'UPDATE_TEAMS':
       return { ...state, teams: action.teams };
+    
+    case 'UPDATE_HISTORY_STATE':
+      return { ...state, historyIndex: action.historyIndex, historyLength: action.historyLength };
 
     case 'RESET_STATE':
       return { ...state, tasks: [], teams: [], periods: [] }
