@@ -214,7 +214,7 @@ export function CostsPanel() {
             <div style={{width: 'calc(100% - 200px)'}} className="overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
-                {/* Your existing table code */}
+                {/* Table code */}
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border border-gray-300 px-2 py-1 text-center font-semibold">Type</th>
@@ -225,7 +225,7 @@ export function CostsPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Your existing table rows - keeping all the complex logic intact */}
+                  {/* Table rows */}
                   {['Harvester', 'Forwarder', 'Traveling', 'Wheeling', 'Harvesting', 'Trailer', 'Transport'].map((name, i) => {
                     const isTransport = name === 'Transport';
                     const isHarvesting = name === 'Harvesting';
@@ -237,12 +237,12 @@ export function CostsPanel() {
                       const forwBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0);
                       const travBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0);
                       const wheelBase_m0 = hasSnapshot ? (pieDatabase_m0.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : (pieDataNew_m0.find(it => it.name === 'Wheeling')?.displayValue ?? 0);
-                      
+
                       const harvBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Harvester')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Harvester')?.displayValue ?? 0);
                       const forwBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Forwarder')?.displayValue ?? 0);
                       const travBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Traveling')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Traveling')?.displayValue ?? 0);
                       const wheelBase_all = hasSnapshot ? (pieDatabase.find(it => it.name === 'Wheeling')?.displayValue ?? 0) : (pieDataNew.find(it => it.name === 'Wheeling')?.displayValue ?? 0);
-                      
+
                       const harvNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Harvester')?.displayValue ?? 0) : 0;
                       const forwNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Forwarder')?.displayValue ?? 0) : 0;
                       const travNew_m0 = hasSnapshot ? (pieDataNew_m0.find(it => it.name === 'Traveling')?.displayValue ?? 0) : 0;
@@ -278,6 +278,8 @@ export function CostsPanel() {
                     const allDiff = hasSnapshot ? newAll - baseAll : 0;
                     const m0Improve = m0Diff < 0;
                     const allImprove = allDiff < 0;
+
+                    console.log(pieDataNew_m0.find(it => it.name === 'Trailer')?.displayValue ?? 0);
                     
                     return (
                       <tr key={name} className={`hover:bg-gray-50 ${name === 'Harvesting' ? 'border-t-2 border-gray-900' : ''}`}>

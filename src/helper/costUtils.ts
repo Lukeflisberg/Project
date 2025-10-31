@@ -110,30 +110,41 @@ export function calculateTotalCostBreakdown(
             // option1: travel cost occures when the next task starts
             // option2: travel cost occures during the time between the intial task and the next task
 
-            // option 1:
+            // Simply, only apply cost if move is within range
             if (endHour(fromTask) < timeWindow.end) {
-                // get the time between the tasks
-                const travelStartHour = endHour(fromTask);
-                const travelEndHour = toTask.duration.startHour;
-                const timeBetween = travelEndHour - travelStartHour;
-
-                // check the proportion of travel time that falls within the timeWindow
-                const overlapStart = Math.max(travelStartHour, timeWindow.start);
-                const overlapEnd = Math.min(travelEndHour, timeWindow.end);
-                const overlap = Math.max(0, overlapEnd - overlapStart);
-
-                // calculate costs based on that
-                const proportion =  overlap / timeBetween;
-                // console.log('Travel Start: ', travelStartHour, '\nTravel End: ', travelEndHour, '\nOverlap Start: ', overlapStart, '\nOverlap End: ', overlapEnd, '\nOverlap: ', overlap, '\nTime Between: ', timeBetween, '\nProportion: ', proportion);
-
-                const adjustedDistance = distance * proportion;
-
-                if (distance > team.maxWheelingDist_km) {
-                    trailerCosts += (team.fixMovingCostWithTrailer + (adjustedDistance / team.trailerAverageSpeed) * team.trailerCost);
-                } else {
-                    wheelingCosts += (adjustedDistance * team.fixMovingCostWithoutTrailer);
+                if (toTask.duration.startHour < timeWindow.end) {
+                    if (distance > team.maxWheelingDist_km) {
+                        trailerCosts += (team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost);
+                    } else {
+                        wheelingCosts += distance * team.fixMovingCostWithoutTrailer;
+                    }
                 }
             }
+
+            // option 1:
+            // if (endHour(fromTask) < timeWindow.end) {
+            //     // get the time between the tasks
+            //     const travelStartHour = endHour(fromTask);
+            //     const travelEndHour = toTask.duration.startHour + 1;
+            //     const timeBetween = travelEndHour - travelStartHour;
+
+            //     // check the proportion of travel time that falls within the timeWindow
+            //     const overlapStart = Math.max(travelStartHour, timeWindow.start);
+            //     const overlapEnd = Math.min(travelEndHour, timeWindow.end);
+            //     const overlap = Math.max(0, overlapEnd - overlapStart);
+
+            //     // calculate costs based on that
+            //     const proportion =  overlap / timeBetween;
+            //     // console.log('Travel Start: ', travelStartHour, '\nTravel End: ', travelEndHour, '\nOverlap Start: ', overlapStart, '\nOverlap End: ', overlapEnd, '\nOverlap: ', overlap, '\nTime Between: ', timeBetween, '\nProportion: ', proportion);
+
+            //     const adjustedDistance = distance * proportion;
+
+            //     if (distance > team.maxWheelingDist_km) {
+            //         trailerCosts += (team.fixMovingCostWithTrailer + (adjustedDistance / team.trailerAverageSpeed) * team.trailerCost);
+            //     } else {
+            //         wheelingCosts += (adjustedDistance * team.fixMovingCostWithoutTrailer);
+            //     }
+            // }
 
             // option 2:
             // if (toTask.duration.startHour < timeWindow.end) {

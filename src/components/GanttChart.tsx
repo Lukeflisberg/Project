@@ -38,7 +38,7 @@ export function GanttChart() {
     if (shouldPushToHistoryRef.current) {
       shouldPushToHistoryRef.current = false;
       historyManager.push(state.tasks);
-      console.log('Pushed to history after state update');
+      // console.log('Pushed to history after state update');
 
       // Update history state in context
       dispatch({
@@ -714,7 +714,7 @@ export function GanttChart() {
   // Handler for importing data from a file
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch({ type: 'RESET_STATE' });
-    // console.log("Reset state: ", state.tasks, state.teams, state.periods);
+    console.log("Reset state: ", state.tasks, state.teams, state.periods);
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -746,8 +746,8 @@ export function GanttChart() {
         periods: formattedPeriods
       });
       _formattedPeriods = formattedPeriods;
-      // console.log("Imported Periods: ", formattedPeriods);
-      // console.log("Total hours: ", _totalHours);
+      console.log("Imported Periods: ", formattedPeriods);
+      console.log("Total hours: ", _totalHours);
     } 
 
     if (_formattedPeriods === null) {
@@ -768,19 +768,19 @@ export function GanttChart() {
     // Import months
     if (result.months && Array.isArray(result.months)) {
       dispatch({ type: 'SET_MONTHS', months: result.months });
-      // console.log("Imported months: ", result.months);
+      console.log("Imported months: ", result.months);
     }
 
     // Import production goals
     if (result.productionGoals && Array.isArray(result.productionGoals)) {
       dispatch({ type: 'SET_PRODUCTION_GOALS', productionGoals: result.productionGoals})
-      // console.log("Imported Production Goals: ", result.productionGoals);
+      console.log("Imported Production Goals: ", result.productionGoals);
     }
 
     // Import teams 
     if (result.teams && Array.isArray(result.teams)) {
       dispatch({ type: 'UPDATE_TEAMS', teams: result.teams });
-      // console.log("Imported Teams: ", result.teams);
+      console.log("Imported Teams: ", result.teams);
     }
 
     // Import tasks
@@ -841,7 +841,7 @@ export function GanttChart() {
       });
 
       dispatch({ type: 'UPDATE_TASKS', tasks: formattedTasks });
-      // console.log("Imported Tasks: ", formattedTasks);
+      console.log("Imported Tasks: ", formattedTasks);
     }
 
     // Import Resources
@@ -875,25 +875,25 @@ export function GanttChart() {
         type: 'SET_RESOURCES',
         resources: formattedResources
       });
-      // console.log("Imported Resources: ", formattedResources);
+      console.log("Imported Resources: ", formattedResources);
     }
 
     // Import Demand
     if (result.Demand && Array.isArray(result.Demand)) {
       dispatch({ type: 'SET_DEMAND', demand: result.Demand });
-      // console.log("Imported Demand: ", result.Demand);
+      console.log("Imported Demand: ", result.Demand);
     }
 
     // Import Assortments Graph
     if (result.assortments_graph && Array.isArray(result.assortments_graph)) {
       dispatch({ type: 'SET_ASSORTMENTS_GRAPH', assortmentsGraph: result.assortments_graph });
-      // console.log("Imported Assortments Graph: ", result.assortments_graph);
+      console.log("Imported Assortments Graph: ", result.assortments_graph);
     }
 
     // Import Distances
     if (result.Distances && Array.isArray(result.Distances)) {
       dispatch({ type: 'SET_DISTANCES', distances: result.Distances });
-      // console.log("Imported Distances: ", result.Distances);
+      console.log("Imported Distances: ", result.Distances);
     }
   };
 
@@ -909,7 +909,7 @@ export function GanttChart() {
 
     if (result.transportCosts && Array.isArray(result.transportCosts)) {
       dispatch({ type: 'SET_TRANSPORT_COSTS', transportCosts: result.transportCosts });
-      // console.log("Imported Transport Costs: ", result.transportCosts);
+      console.log("Imported Transport Costs: ", result.transportCosts);
     }
 
     // Reset the teams of all tasks
@@ -921,7 +921,7 @@ export function GanttChart() {
       })
     }
 
-    // console.log("Reset all teams");
+    console.log("Reset all teams");
 
     if (result.solution && Array.isArray(result.solution)) {
       for (const {team, tasks} of result.solution) {
@@ -962,14 +962,14 @@ export function GanttChart() {
       }
     }
 
-    // console.log("Updated tasks");
+    console.log("Updated tasks");
 
     // Resolve overlaps
     const totalTasks: Task[] = _tasks;
     const totalTeams: Team[] = state.teams; 
 
-    // console.log("Resolving overlaps...");
-    // console.log("Total teams: ", totalTeams.length);
+    console.log("Resolving overlaps...");
+    console.log("Total teams: ", totalTeams.length);
 
     for (const p of totalTeams) {
       const teamSiblings = totalTasks

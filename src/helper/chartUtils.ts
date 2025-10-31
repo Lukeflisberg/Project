@@ -269,8 +269,8 @@ export function calculateDemandPerPeriod(
                 result[groupKey][i] += demands[i].demand;
             } else {
                 demandType === 'min' 
-                    ? result[groupKey][i] += demands[i].demand // Change too demandMin
-                    : result[groupKey][i] += demands[i].demand // Change too demandGoal
+                    ? result[groupKey][i] += demands[i].demand      
+                    : result[groupKey][i] += demands[i].demand_goal 
             }
         }
     }
