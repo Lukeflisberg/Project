@@ -9,6 +9,8 @@ import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 import { historyManager } from '../context/HistoryManager';
 
+// world map
+
 const DEFAULT_POSITION: { x: number, y: number } = { x: 1156, y: 66 };
 const DEFAULT_SIZE: { width: number, height: number } = { width: 750, height: 475 };
 
