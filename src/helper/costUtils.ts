@@ -116,7 +116,7 @@ export function calculateTotalCostBreakdown(
                     if (distance > team.maxWheelingDist_km) {
                         trailerCosts += (team.fixMovingCostWithTrailer + (distance / team.trailerAverageSpeed) * team.trailerCost);
                     } else {
-                        wheelingCosts += distance * team.fixMovingCostWithoutTrailer;
+                        wheelingCosts += team.fixMovingCostWithoutTrailer;
                     }
                 }
             }
