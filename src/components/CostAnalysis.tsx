@@ -289,17 +289,17 @@ export function CostsPanel() {
                             <span className={`${isHarvesting ? 'font-bold' : 'font-medium'}`}>{name}</span>
                           </div>
                         </td>
-                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
-                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{fmt(baseM0)}</td>
+                        <td className={`border border-gray-300 px-2 py-1 text-right ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''}`}>{fmt(baseAll)}</td>
                         <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''} ${
                           isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                         }`}>
-                          {isTransport ? '—' : hasSnapshot && newM0Val !== 0 ? `${m0Diff <= 0 ? '-' : '+'}${fmt(Math.abs(m0Diff))}` : '—'}
+                          {isTransport ? '—' : hasSnapshot &&  `${m0Diff <= 0 ? '-' : '+'}${fmt(Math.abs(m0Diff))}`}
                         </td>
                         <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 && !isTransport ? 'text-right' : 'text-center'} font-medium ${isTransport || isHarvesting ? 'italic' : ''} ${isHarvesting ? 'font-bold' : ''} ${
                           isTransport ? 'text-gray-400 bg-gray-100' : !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                         }`}>
-                          {isTransport ? '—' : hasSnapshot && newAll !== 0 ? `${allDiff <= 0 ? '-' : '+'}${fmt(Math.abs(allDiff))}` : '—'}
+                          {isTransport ? '—' : hasSnapshot && `${allDiff <= 0 ? '-' : '+'}${fmt(Math.abs(allDiff))}`}
                         </td>
                       </tr>
                     );
@@ -331,17 +331,17 @@ export function CostsPanel() {
                             <span className="font-medium">{name}</span>
                           </div>
                         </td>
-                        <td className="border border-gray-300 px-2 py-1 text-right">{baseM0 !== 0 ? fmt(baseM0) : '—'}</td>
-                        <td className="border border-gray-300 px-2 py-1 text-right">{baseAll !== 0 ? fmt(baseAll) : '—'}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{fmt(baseM0)}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">{fmt(baseAll)}</td>
                         <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newM0Val !== 0 ? 'text-right' : 'text-center'} font-medium ${
                           !hasSnapshot ? 'text-gray-400' : m0Diff === 0 ? 'bg-gray-50' : m0Improve ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                         }`}>
-                          {hasSnapshot && newM0Val !== 0 ? `${isIndVal ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+')}${fmt(Math.abs(m0Diff))}` : '—'}
+                          {hasSnapshot && `${isIndVal ? (m0Diff >= 0 ? '+' : '-') : (m0Diff <= 0 ? '-' : '+')}${fmt(Math.abs(m0Diff))}`}
                         </td>
                         <td className={`border border-gray-300 px-2 py-1 ${hasSnapshot && newAll !== 0 ? 'text-right' : 'text-center'} font-medium ${
                           !hasSnapshot ? 'text-gray-400' : allDiff === 0 ? 'bg-gray-50' : allImprove ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
                         }`}>
-                          {hasSnapshot && newAll !== 0 ? `${isIndVal ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+')}${fmt(Math.abs(allDiff))}` : '—'}
+                          {hasSnapshot && `${isIndVal ? (allDiff >= 0 ? '+' : '-') : (allDiff <= 0 ? '-' : '+')}${fmt(Math.abs(allDiff))}`}
                         </td>
                       </tr>
                     );
